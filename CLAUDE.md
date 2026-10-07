@@ -25,6 +25,10 @@ state of this one: `Raw/00-Project-Overview/Warrant-Pointer.md` in the vault.
 - Record each experiment in this repo first, so teammates see it.
 - Then add a short summary note to the vault (result, decision, link back to the repo file or issue).
 - Never copy an ADR or `CONTEXT.md` into the vault; link to it.
+- After a grilling session ends and the user confirms the shared understanding, offer to write a
+  short summary note in the vault (what was decided, which `CONTEXT.md` terms and ADRs changed,
+  with links back to the repo) under `Raw/03-Design-Docs/Governing-Period/`. Write it only if the
+  user agrees.
 
 ## Research notes
 
