@@ -21,6 +21,17 @@ A question whose correct answer depends on whether a given claim is known, used 
 claim is worth. One claim can have many probe questions.
 _Avoid_: test question, query
 
+**Check battery**:
+A fixed, recorded set of checks run against a database, frozen before any result is scored. Whether
+the data can settle a claim is always stated relative to a named battery.
+_Avoid_: checker, detector, toolbox, test suite
+
+**Settled**:
+A claim is settled under a check battery when the battery's output establishes it and rules out the
+competing readings of the data. "Not settled" means only that this battery failed, not that no check
+could succeed.
+_Avoid_: decided, proven, detected, resolved
+
 **Injected defect**:
 A deliberate, recorded change to a clean database that makes a known claim true. It is a way to
 produce claims whose truth is known, not a unit of analysis.
