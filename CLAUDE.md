@@ -25,3 +25,9 @@ state of this one: `Raw/00-Project-Overview/Warrant-Pointer.md` in the vault.
 - Record each experiment in this repo first, so teammates see it.
 - Then add a short summary note to the vault (result, decision, link back to the repo file or issue).
 - Never copy an ADR or `CONTEXT.md` into the vault; link to it.
+
+## Research notes
+
+Findings that teammates need (API or dataset facts, primary-source investigations) are written
+to this repo under `docs/research/`, with a short summary note plus link in the vault.
+Personal literature reading stays in the vault only (`Raw/01-Research/LLM-Research/`).
