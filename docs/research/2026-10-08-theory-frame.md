@@ -137,6 +137,27 @@ Niven & Kao 2019) does not apply.
 4. **"The true reading may not be among those written down."** State this assumption; treat absence
    claims as resting on a closed-world assumption.
 
+## Positioning (decided 2026-10-08)
+
+For the abstract:
+
+> Prior work assigns a task to the human or the AI by who is more likely to be right. We assign the
+> writing of a claim by whether the data can tell its readings apart; where it cannot, the person is
+> the claim's author, not a better predictor.
+
+For the introduction, against the closest neighbour (Qi, Xu & Li 2026, arXiv 2607.02579):
+
+> Closest to our setting, GovMem gates an agent's memory writes by how independent the supporting
+> traces are; we gate them by what checks on the data can rule out, and test that rule against model
+> confidence for each kind of claim.
+
+One line each in related work:
+
+- **Learning to defer** decides who answers each query; Warrant decides who may write each claim.
+- **Huang et al. 2023; Wretblad et al. 2024** show that documentation helps; Warrant asks who may
+  write it.
+- **BIRD-Interact** fixes in advance which knowledge must be asked; Warrant measures it.
+
 ## Decisions that followed (2026-10-08)
 
 - **Names**: reading, reading set, predicted outcome (see CONTEXT.md).
