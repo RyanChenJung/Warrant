@@ -109,6 +109,12 @@ A question whose correct answer depends on whether a given claim is known, used 
 claim is worth. One claim can have many probe questions.
 _Avoid_: test question, query
 
+**Form familiarity**:
+Whether the value or term a probe question turns on looks familiar (an everyday word with a local
+meaning, such as `OPEN`) or opaque (an unfamiliar code, such as `X7`). Recorded on every probe
+question.
+_Avoid_: word familiarity, surface form
+
 **Correct refusal**:
 A response to a probe question the data cannot answer that says what is missing and offers what can
 be answered instead. A bare "cannot answer" does not count.
