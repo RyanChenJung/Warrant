@@ -15,12 +15,13 @@ _Avoid_: fact, knowledge item, belief, memory entry
 
 **Claim kind**:
 A class of claims that say the same sort of thing about a dataset. There are five: coverage, grain,
-code meaning, column formula and term boundary. Results are reported per claim kind.
+value meaning, column formula and term boundary. Results are reported per claim kind. Join paths
+are out of scope for now.
 _Avoid_: defect type, category, knowledge type
 
 **Coverage**:
-The claim kind about what population a table was cut from and what it silently omits, such as "this
-export only contains closed work orders".
+The claim kind about what population a table was cut from, what it silently omits, and what data
+does not exist anywhere, such as "this export only contains closed work orders".
 _Avoid_: scope, completeness
 
 **Grain**:
@@ -28,9 +29,10 @@ The claim kind about what one row counts as, such as "a row may be a sub-task; a
 parent".
 _Avoid_: row unit, granularity, row meaning
 
-**Code meaning**:
-The claim kind about what a stored value stands for, such as "'+' means the molecule is carcinogenic".
-_Avoid_: value mapping, value illustration
+**Value meaning**:
+The claim kind about what a stored value stands for, including codes, units and the direction of an
+ordinal scale, such as "'+' means the molecule is carcinogenic" or "priority 1 is the most urgent".
+_Avoid_: code meaning, value mapping, value illustration, field semantics
 
 **Column formula**:
 The claim kind about which arithmetic relation between columns a business quantity names, such as
