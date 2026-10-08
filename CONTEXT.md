@@ -66,6 +66,13 @@ A fixed, recorded set of checks run against a database, frozen before any result
 the data can settle a claim is always stated relative to a named battery.
 _Avoid_: checker, detector, toolbox, test suite
 
+**Documentation**:
+Written descriptions of a dataset the agent may read, such as column and value descriptions or a
+glossary. Documentation can propose a claim but not settle it: the agent writes a claim taken from
+documentation only if the check battery finds nothing in the data that contradicts it, cites the
+source, and leaves contradicted claims to a person.
+_Avoid_: data dictionary, metadata, docs
+
 **Settled**:
 A claim is settled under a check battery when the battery's output establishes it and rules out the
 competing readings of the data. "Not settled" means only that this battery failed, not that no check
@@ -79,6 +86,11 @@ A deliberate, recorded change to a clean database, or a stipulated convention, t
 claim true. Term-boundary claims usually need only the convention, not a data change. It is a way to
 produce claims whose truth is known, not a unit of analysis.
 _Avoid_: trap, bug, corruption
+
+**Stale documentation**:
+Documentation that no longer matches the data, produced on purpose by injecting a defect into the
+data and leaving its documentation unchanged.
+_Avoid_: outdated docs, documentation drift
 
 **Probe question**:
 A question whose correct answer depends on whether a given claim is known, used to measure what the
