@@ -5,6 +5,8 @@ a person, decided by whether the data can settle them.
 
 ## Language
 
+### Claims
+
 **Claim**:
 A natural-language statement about a dataset that an agent's knowledge store holds or could hold,
 such as "this export only contains closed work orders". It can be true or false; who may write it is
@@ -15,12 +17,6 @@ _Avoid_: fact, knowledge item, belief, memory entry
 A class of claims that say the same sort of thing about a dataset, such as what a table covers or
 what one row represents. Results are reported per claim kind.
 _Avoid_: defect type, category, knowledge type
-
-**Allocation rule**:
-A rule that decides, for each claim, who may write it into the knowledge store: the agent, a person,
-or both. The project compares allocation rules across claim kinds by answer accuracy and by how
-often a person is asked.
-_Avoid_: guideline, policy, routing rule
 
 **Reference claim**:
 The claim recorded when a defect is injected, in the words a knowledgeable person would use. It
@@ -33,10 +29,13 @@ A claim the agent writes although the check battery did not settle it, because t
 confident in it; it is marked as not confirmed by a person.
 _Avoid_: unverified claim, tentative claim, guess
 
-**Probe question**:
-A question whose correct answer depends on whether a given claim is known, used to measure what the
-claim is worth. One claim can have many probe questions.
-_Avoid_: test question, query
+### Allocation
+
+**Allocation rule**:
+A rule that decides, for each claim, who may write it into the knowledge store: the agent, a person,
+or both. The project compares allocation rules across claim kinds by answer accuracy and by how
+often a person is asked.
+_Avoid_: guideline, policy, routing rule
 
 **Check battery**:
 A fixed, recorded set of checks run against a database, frozen before any result is scored. Whether
@@ -49,7 +48,28 @@ competing readings of the data. "Not settled" means only that this battery faile
 could succeed.
 _Avoid_: decided, proven, detected, resolved
 
+### Measurement
+
 **Injected defect**:
 A deliberate, recorded change to a clean database that makes a known claim true. It is a way to
 produce claims whose truth is known, not a unit of analysis.
 _Avoid_: trap, bug, corruption
+
+**Probe question**:
+A question whose correct answer depends on whether a given claim is known, used to measure what the
+claim is worth. One claim can have many probe questions.
+_Avoid_: test question, query
+
+**Correct refusal**:
+A response to a probe question the data cannot answer that says what is missing and offers what can
+be answered instead. A bare "cannot answer" does not count.
+_Avoid_: abstention, decline
+
+**Over-refusal**:
+A refusal of a probe question the data can answer.
+_Avoid_: false refusal, wrong abstention
+
+**Clarification request**:
+A response that asks the user a question instead of answering. It is reported separately and not
+scored as right or wrong, because no simulated user answers it.
+_Avoid_: follow-up, counter-question
