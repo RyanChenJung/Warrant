@@ -109,6 +109,25 @@ A question whose correct answer depends on whether a given claim is known, used 
 claim is worth. One claim can have many probe questions.
 _Avoid_: test question, query
 
+**Person's contribution**:
+For a claim kind, answer accuracy when every claim comes from a person minus accuracy when the agent
+writes every claim itself. The headline result, always reported with its uncertainty.
+_Avoid_: human lift, arm 3 minus arm 2
+
+**Agent's contribution**:
+For a claim kind, answer accuracy when the agent writes every claim itself minus accuracy with an
+empty knowledge store.
+_Avoid_: automation lift
+
+**Allocation outcome**:
+Where a claim kind falls, read from the two contributions with cutoffs fixed in advance: agent
+alone, both, or person only. Outcomes from a small sample are reported as provisional.
+_Avoid_: cell, verdict, category
+
+**Migration**:
+A claim kind whose allocation outcome changes between the baseline and the extended battery.
+_Avoid_: line shift, movement
+
 **Form familiarity**:
 Whether the value or term a probe question turns on looks familiar (an everyday word with a local
 meaning, such as `OPEN`) or opaque (an unfamiliar code, such as `X7`). Recorded on every probe
