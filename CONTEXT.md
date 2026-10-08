@@ -66,6 +66,16 @@ A fixed, recorded set of checks run against a database, frozen before any result
 the data can settle a claim is always stated relative to a named battery.
 _Avoid_: checker, detector, toolbox, test suite
 
+**Baseline battery**:
+The weaker check battery: detectors that existed before this project's defects were designed, used
+with their logic unchanged.
+_Avoid_: level 1, basic checks
+
+**Extended battery**:
+The baseline battery plus cross-table checks, frozen before any defect is injected. Comparing the
+two shows whether the line between agent and person moves when the checks get stronger.
+_Avoid_: level 2, advanced checks, full battery
+
 **Documentation**:
 Written descriptions of a dataset the agent may read, such as column and value descriptions or a
 glossary. Documentation can propose a claim but not settle it: the agent writes a claim taken from
