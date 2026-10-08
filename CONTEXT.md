@@ -16,6 +16,12 @@ A class of claims that say the same sort of thing about a dataset, such as what 
 what one row represents. Results are reported per claim kind.
 _Avoid_: defect type, category, knowledge type
 
+**Allocation rule**:
+A rule that decides, for each claim, who may write it into the knowledge store: the agent, a person,
+or both. The project compares allocation rules across claim kinds by answer accuracy and by how
+often a person is asked.
+_Avoid_: guideline, policy, routing rule
+
 **Probe question**:
 A question whose correct answer depends on whether a given claim is known, used to measure what the
 claim is worth. One claim can have many probe questions.
