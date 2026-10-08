@@ -22,6 +22,12 @@ or both. The project compares allocation rules across claim kinds by answer accu
 often a person is asked.
 _Avoid_: guideline, policy, routing rule
 
+**Reference claim**:
+The claim recorded when a defect is injected, in the words a knowledgeable person would use. It
+contains only what that person knows without querying the data: no counts, ratios, SQL or filter
+conditions, though it may name fields and codes a person would naturally mention.
+_Avoid_: gold sentence, human sentence, oracle, injector log
+
 **Provisional claim**:
 A claim the agent writes although the check battery did not settle it, because the agent is highly
 confident in it; it is marked as not confirmed by a person.
