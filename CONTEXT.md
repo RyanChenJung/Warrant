@@ -5,6 +5,13 @@ a person, decided by whether the data can settle them.
 
 ## Language
 
+**Warrant**:
+What licenses writing a claim into the knowledge store as known: settlement by a check battery, a
+person's declaration, or documentation the data does not contradict. This is the epistemic sense the
+project name uses. In a claim's record, the step from evidence to claim is called the inference rule,
+not the warrant.
+_Avoid_: using "warrant" for the inference rule, justification
+
 ### Claims
 
 **Claim**:
@@ -86,10 +93,21 @@ source, and leaves contradicted claims to a person. Documentation is read when c
 not when probe questions are answered.
 _Avoid_: data dictionary, metadata, docs
 
+**Reading**:
+One competing interpretation of what the data means for a claim, such as "'+' means carcinogenic"
+against "'+' means not carcinogenic".
+_Avoid_: interpretation, hypothesis, alternative
+
+**Reading set**:
+All readings of a claim, written down when the defect is injected and frozen together with the check
+batteries.
+_Avoid_: candidate set, hypothesis space
+
 **Settled**:
-A claim is settled under a check battery when the battery's output establishes it and rules out the
-competing readings of the data. "Not settled" means only that this battery failed, not that no check
-could succeed.
+A claim is settled under a check battery when it holds in every reading of its reading set that the
+battery cannot tell apart from the true one. "Not settled" means only that this battery failed, not
+that no check could succeed. Readings that would leave the database identical can never be told
+apart by any battery.
 _Avoid_: decided, proven, detected, resolved
 
 ### Measurement
@@ -121,9 +139,16 @@ empty knowledge store.
 _Avoid_: automation lift
 
 **Allocation outcome**:
-Where a claim kind falls, read from the two contributions with cutoffs fixed in advance: agent
-alone, both, or person only. Outcomes from a small sample are reported as provisional.
+Where a claim kind falls as measured, read from the two contributions with cutoffs fixed in advance:
+agent alone, both, or person only. Outcomes from a small sample are reported as provisional.
 _Avoid_: cell, verdict, category
+
+**Predicted outcome**:
+The allocation outcome a claim is expected to have under a battery, computed before any agent runs
+by building the database each reading would produce and running the battery on it: agent alone if
+only readings that agree on the claim survive, both if some but not all are removed, person only if
+none are. The main test is whether predicted and allocation outcomes agree.
+_Avoid_: expected outcome, hypothesis
 
 **Migration**:
 A claim kind whose allocation outcome changes between the baseline and the extended battery.
