@@ -22,6 +22,11 @@ or both. The project compares allocation rules across claim kinds by answer accu
 often a person is asked.
 _Avoid_: guideline, policy, routing rule
 
+**Provisional claim**:
+A claim the agent writes although the check battery did not settle it, because the agent is highly
+confident in it; it is marked as not confirmed by a person.
+_Avoid_: unverified claim, tentative claim, guess
+
 **Probe question**:
 A question whose correct answer depends on whether a given claim is known, used to measure what the
 claim is worth. One claim can have many probe questions.
