@@ -14,9 +14,33 @@ what the project allocates.
 _Avoid_: fact, knowledge item, belief, memory entry
 
 **Claim kind**:
-A class of claims that say the same sort of thing about a dataset, such as what a table covers or
-what one row represents. Results are reported per claim kind.
+A class of claims that say the same sort of thing about a dataset. There are five: coverage, grain,
+code meaning, column formula and term boundary. Results are reported per claim kind.
 _Avoid_: defect type, category, knowledge type
+
+**Coverage**:
+The claim kind about what population a table was cut from and what it silently omits, such as "this
+export only contains closed work orders".
+_Avoid_: scope, completeness
+
+**Grain**:
+The claim kind about what one row counts as, such as "a row may be a sub-task; a work order means the
+parent".
+_Avoid_: row unit, granularity, row meaning
+
+**Code meaning**:
+The claim kind about what a stored value stands for, such as "'+' means the molecule is carcinogenic".
+_Avoid_: value mapping, value illustration
+
+**Column formula**:
+The claim kind about which arithmetic relation between columns a business quantity names, such as
+which cost components make up a total.
+_Avoid_: derived metric, calculation knowledge
+
+**Term boundary**:
+The claim kind about what a business term includes, as an extension or a threshold, such as
+"domestic includes Canada" or what counts as a large order.
+_Avoid_: term extension, business definition, threshold
 
 **Reference claim**:
 The claim recorded when a defect is injected, in the words a knowledgeable person would use. It
@@ -51,7 +75,8 @@ _Avoid_: decided, proven, detected, resolved
 ### Measurement
 
 **Injected defect**:
-A deliberate, recorded change to a clean database that makes a known claim true. It is a way to
+A deliberate, recorded change to a clean database, or a stipulated convention, that makes a known
+claim true. Term-boundary claims usually need only the convention, not a data change. It is a way to
 produce claims whose truth is known, not a unit of analysis.
 _Avoid_: trap, bug, corruption
 
