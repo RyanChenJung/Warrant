@@ -82,7 +82,8 @@ _Avoid_: level 2, advanced checks, full battery
 Written descriptions of a dataset the agent may read, such as column and value descriptions or a
 glossary. Documentation can propose a claim but not settle it: the agent writes a claim taken from
 documentation only if the check battery finds nothing in the data that contradicts it, cites the
-source, and leaves contradicted claims to a person.
+source, and leaves contradicted claims to a person. Documentation is read when claims are written,
+not when probe questions are answered.
 _Avoid_: data dictionary, metadata, docs
 
 **Settled**:
