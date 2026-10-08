@@ -137,16 +137,20 @@ Niven & Kao 2019) does not apply.
 4. **"The true reading may not be among those written down."** State this assumption; treat absence
    claims as resting on a closed-world assumption.
 
-## Open decisions
+## Decisions that followed (2026-10-08)
 
-- Names for the written-down readings and for the predicted outcome (as distinct from the measured
-  allocation outcome).
-- Whether an authoritative record (a regulation, an issued glossary) can settle the convention part.
-  CONTEXT.md currently says documentation never settles; the Searle 2010 support for treating written
-  rules as standing declarations rests only on a review.
-- Which sense of "warrant" the project name uses: in epistemology, what turns true belief into
-  knowledge (Plantinga 1993), which fits "what licenses writing a claim as known"; in Toulmin, an
-  inference rule.
+- **Names**: reading, reading set, predicted outcome (see CONTEXT.md).
+- **"Warrant"** in the project name is the epistemic sense (Plantinga 1993): what licenses writing a
+  claim as known. Toulmin's warrant slot is called the inference rule.
+- **Documentation for conventions.** "The data does not contradict it" is vacuous for convention-part
+  claims, because their readings leave the database identical: a stale glossary saying "domestic
+  means the US only" can never be caught by checks. The experiment keeps the uniform documentation
+  rule, which turns this into a prediction: stale documentation is caught for coverage and grain but
+  not for value meaning or term boundary. The thesis then recommends, with that evidence, that a
+  person confirm documentation-backed convention claims unless the source is an authoritative record
+  (a regulation, or a glossary with a named owner and date). Treating written rules as standing
+  declarations (Searle 2010) rests only on a review so far; read the primary text before relying on
+  it.
 
 ## Citation notes from the check
 

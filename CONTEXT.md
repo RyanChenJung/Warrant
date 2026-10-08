@@ -75,6 +75,12 @@ A fixed, recorded set of checks run against a database, frozen before any result
 the data can settle a claim is always stated relative to a named battery.
 _Avoid_: checker, detector, toolbox, test suite
 
+**Authoritative record**:
+Documentation issued by whoever sets a convention, such as a regulation or a glossary with a named
+owner and date, treated as that owner's declaration. Column descriptions written by others are
+ordinary documentation, not authoritative records.
+_Avoid_: official docs, source of truth
+
 **Baseline battery**:
 The weaker check battery: detectors that existed before this project's defects were designed, used
 with their logic unchanged.
