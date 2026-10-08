@@ -14,8 +14,8 @@ version is used here.
 - **A better description of an expression has three parts:** which part of its meaning is left open,
   who fixes that part, and how familiar the word looks. A familiar word with a local meaning is the
   dangerous case: the agent is confident and does not think to ask.
-- **Each existing claim kind has a linguistic counterpart** (table in section 3). One kind of claim
-  fits none of them: what a business term includes ("domestic", "large order", "active customer").
+- **Each of the five claim kinds has a linguistic counterpart** (table in section 3); term boundary
+  ("domestic", "large order", "active customer") is the kind the earlier four-kind list missed.
 - **Each claim kind mixes a part fixed by the data and a part fixed by convention.** The convention
   part is what checks cannot settle.
 - **The "domestic = US + Canada" example is a public term of art**, defined in US DOT reporting rules
@@ -65,11 +65,11 @@ Where the intuition holds, it holds one level down, for two subclasses of adject
 
 | Claim kind | Counterpart | Part fixed by the data | Part fixed by convention |
 |---|---|---|---|
-| What a table covers | Quantifier domain restriction (Stanley & Szabo 2000; von Fintel 1994) | Symptoms, e.g. a status column with one value | Which population the export was cut from, recorded outside the rows |
-| What one row counts as | Individuation, what counts as one (Gupta 1980; Krifka 1990; Rothstein 2010) | Candidate units: parent IDs, many rows per entity | Which unit the word names ("work order" means the parent) |
-| What a code means | Communal lexicon (Clark 1998) | Co-occurring fields that hint at a meaning | The assignment of meaning to the code |
-| Formulas between columns | Derived-metric definitions (Sheth & Larson 1990; Madnick & Zhu 2006) | Whether an identity holds across rows | Which formula a business term names |
-| What a business term includes (does not fit the four above) | Relational and gradable expressions (Partee 1989; Kennedy 2007) | Only if the classification itself is stored, e.g. a region flag | The extension or threshold |
+| Coverage | Quantifier domain restriction (Stanley & Szabo 2000; von Fintel 1994) | Symptoms, e.g. a status column with one value | Which population the export was cut from, recorded outside the rows |
+| Grain | Individuation, what counts as one (Gupta 1980; Krifka 1990; Rothstein 2010) | Candidate units: parent IDs, many rows per entity | Which unit the word names ("work order" means the parent) |
+| Value meaning | Communal lexicon (Clark 1998) | Co-occurring fields that hint at a meaning | The assignment of meaning to the code |
+| Column formula | Derived-metric definitions (Sheth & Larson 1990; Madnick & Zhu 2006) | Whether an identity holds across rows | Which formula a business term names |
+| Term boundary | Relational and gradable expressions (Partee 1989; Kennedy 2007) | Only if the classification itself is stored, e.g. a region flag | The extension or threshold |
 
 Gupta's standard example is about an airline: "National Airlines served at least two million
 passengers" does not imply two million persons, because passengers and persons are counted
@@ -95,7 +95,7 @@ wrong.
 Daft & Lengel (1986): uncertainty is not knowing the value of a known variable; equivocality is not
 knowing what the variable is. A yes/no question resolves uncertainty ("does this export include open
 work orders?"); equivocality needs someone to supply a definition ("what does a work order mean
-here?"). Coverage claims look like uncertainty; row-unit claims look like equivocality. Relevant to
+here?"). Coverage claims look like uncertainty; grain claims look like equivocality. Relevant to
 #2 (simulated expert) and #3 (answer-time policy).
 
 ## 6. A parallel from law: ordinary meaning and terms of art
@@ -111,25 +111,25 @@ the same way the courts do, without anyone to prove the trade meaning.
 
 - Huang, Damalapati & Wu 2023 (NeurIPS TRL workshop), "Data Ambiguity Strikes Back": documenting
   coverage and granularity raised GPT text-to-SQL accuracy (from 80.0% to 86.7% on top of earlier
-  documentation levels; small sample). Coverage and row granularity have therefore been studied as
+  documentation levels; small sample). Coverage and grain have therefore been studied as
   documentation, though not injected or allocated.
 - Jin et al. 2026 (CIDR), "Text-to-SQL Benchmarks Are Broken": the most frequent BIRD annotation
   error is misunderstanding the data, e.g. omitting `rtype='S'` where one table mixes schools and
-  districts. That is a naturally occurring row-unit case inside BIRD.
+  districts. That is a naturally occurring grain case inside BIRD.
 - BIRD-Interact (ICLR 2026): knowledge ambiguities have the lowest success and schema linking the
   highest.
 
 ## 8. Testable hypotheses
 
-1. **Familiar words cause silent errors.** Within one claim kind, the same fact probed through a
+1. **Familiar words cause silent errors.** Within one claim kind, the same claim probed through a
    familiar word with a local meaning (status `OPEN` meaning something specific) gives more confident
    wrong answers and fewer clarification requests than through an opaque code (`X7`).
 2. **The part-of-speech effect disappears once semantic type is coded.** Descriptive only, given
    few terms per cell.
 3. **Anchor right, extension wrong.** For "domestic includes Canada", errors are "US only", not the
    wrong country; giving the anchor (the company's country) does not help, giving the extension does.
-4. **Detectable but not settleable.** For coverage and row-unit defects the battery flags an anomaly
-   but cannot pick the reading; for code-meaning and term-extension defects it flags nothing.
+4. **Detectable but not settleable.** For coverage and grain defects the battery flags an anomaly but
+   cannot pick the reading; for value-meaning and term-boundary defects it flags nothing.
 5. **A simulated expert is valid only if restricted** to the reference claims (see #2).
 
 ## References

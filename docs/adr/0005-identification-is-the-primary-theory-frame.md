@@ -7,7 +7,7 @@ allocation outcomes and predicts them before any agent runs, which Toulmin's lay
 it describes arguments without a rule for evaluating them. Searle's constitutive rules explain why
 readings that leave the database identical need a person, as the rule's author rather than a better
 predictor; Toulmin's layout, with its warrant slot called the inference rule, is the record kept for
-each claim.
+each claim (comparison and citations: `docs/research/2026-10-08-theory-frame.md`).
 
 ## Considered Options
 
@@ -20,7 +20,9 @@ each claim.
 ## Consequences
 
 - The project name uses "warrant" in the epistemic sense: what licenses writing a claim as known.
-- The main test is whether predicted and measured allocation outcomes agree; the expected objection
-  "this is just identifiability" is conceded, with the contribution placed in using it as a write
-  rule, the head-to-head tests against confidence and relative accuracy, and per-kind migration.
-- Comparison and citations: `docs/research/2026-10-08-theory-frame.md`.
+- The main test is whether each claim kind's measured allocation outcome agrees with the predicted
+  outcomes of its claims; how per-claim predictions combine into one prediction per claim kind is
+  fixed together with the batteries (ADR 0002).
+- The expected objection "this is just identifiability" is conceded; the contribution is using it as
+  a write rule, the head-to-head tests against the confidence rule and relative accuracy, and
+  per-kind migration.

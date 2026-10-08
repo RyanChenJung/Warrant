@@ -1,4 +1,4 @@
-# The model's prior knowledge and confidence routing
+# The model's prior knowledge and the confidence rule
 
 2026-10-08. Two literature sweeps, an inventory of the team's BIRD obfuscation pipeline, and a
 reviewer-style critique, run while deciding how to treat claims an LLM writes from its own prior
@@ -9,7 +9,7 @@ list with links is in the author's reading list.
 
 Besides the data and a person, a model's prior knowledge is a third source of support. An LLM guesses
 "'+' means carcinogenic" from a toxicology database name: the data did not settle it, the prior did.
-The first idea was to route such claims by confidence: very confident, write it marked as not
+The first idea was to allocate such claims by confidence: very confident, write it marked as not
 confirmed by a person (a provisional claim); otherwise ask a person.
 
 ## Findings
@@ -23,19 +23,21 @@ confirmed by a person (a provisional claim); otherwise ask a person.
 2. **The two rules disagree only where the data cannot settle a claim but the model is confident.**
    The decisive case is a prior that is present but wrong: a familiar-looking code whose meaning is
    local.
-3. **The obfuscation pipeline does not remove the prior.** It renames tables and columns (translated
-   per database into one of five languages; English databases keep their names) but leaves values,
-   database names, question wording and the meaning of evidence unchanged. Renaming mostly tests
+3. **The obfuscation pipeline does not remove the prior.** Its core arm renames tables and columns
+   (translated per database into one of five languages; English databases keep their names) and
+   leaves values, database names, question wording and the meaning of evidence unchanged; its
+   optional decoy and paraphrase arms add trap columns and tables or reword questions, but none
+   changes what an existing value means. Renaming mostly tests
    schema linking: with positional identifiers on BIRD mini-dev, most errors become wrong-column
    picks (Su et al. 2026).
 4. **Value-only recoding is a clean manipulation.** Three versions of the same data: original codes
    (the prior helps), arbitrary codes (no prior), swapped codes such as '+' and '-' exchanged (the
-   prior is present and wrong). Checks that look only inside the data give the same verdict under any
-   relabelling, so the decidability rule decides identically in all three; only confidence-based
-   rules can change, and only because of the prior.
+   prior is present and wrong). Checks that look only inside the data give the same output under any
+   relabelling, so the settlement rule gives the same allocation in all three; only the confidence
+   and hybrid rules can change, and only because of the prior.
 5. **Closest precedents.** Flipped and unrelated labels remove or invert the prior (Wei et al. 2023);
    entity substitution (Longpre et al. 2021); prior strength against context (ClashEval, Wu, Wu & Zou
-   2024); counterfactual databases with the same schema (ContraTable, Wang & Liu 2026); routing
+   2024); counterfactual databases with the same schema (ContraTable, Wang & Liu 2026); sending
    column-name expansions to human review by an LLM-judge score (TACO, Cai et al. 2026); a verifier
    beating LLM uncertainty at picking labels for human review (Wang et al. 2024, Lapras). Counter-
    evidence: simple uncertainty estimates are competitive for deciding when to trust parametric
@@ -50,14 +52,15 @@ confirmed by a person (a provisional claim); otherwise ask a person.
 
 ## How it was folded into the design
 
-- No separate model-prior experiment. The confidence rule (the baseline) and the hybrid rule that
-  writes provisional claims are columns of the allocation table.
+- No separate model-prior experiment. The confidence rule (the main rival to the settlement rule)
+  and the hybrid rule that writes provisional claims are columns of the allocation table.
 - Swapped-code defects are value-meaning injected defects; leaving the documentation unchanged makes
   them stale documentation as well.
-- A memorisation check runs in week one, because original BIRD is public: renaming identifiers cost
-  one model about 4.8 points without hints (5 to 10 points in some languages), which shows it
-  remembers names, not that it has memorised answers. Remembered meanings act like invisible stale
-  documentation for value-meaning and term-boundary defects.
+- A memorisation check runs in week one, because original BIRD is public. A preliminary run in the
+  team's obfuscation work, measured before BIRD's gold SQL was cleaned and since superseded, suggested
+  that renaming identifiers costs only a few points of accuracy, which would mean the model remembers
+  names rather than answers; the week-one check measures this afresh. Remembered meanings act like
+  invisible stale documentation for value-meaning and term-boundary defects.
 - Familiar words against opaque codes is labelled on every probe question; the paired experiment is
   issue #4.
 - The confidence threshold is tuned on databases outside the showcase set and frozen (ADR 0002).
@@ -65,10 +68,11 @@ confirmed by a person (a provisional claim); otherwise ask a person.
 ## Quantities to report
 
 - The share of swapped-code claims, not settled by the battery, on which the model's confidence is
-  still above the frozen threshold: the rate at which confidence routing writes a wrong claim.
+  still above the frozen threshold: the rate at which the confidence rule writes a wrong claim.
 - Wrong writes against the share of misleading codes in a deployment: flat at zero for the
-  decidability rule (at the cost of a fixed number of person asks), rising with that share for
-  confidence routing.
+  settlement rule without documentation (at the cost of a fixed number of person asks), rising with
+  that share for the confidence rule. With documentation, stale value-meaning documentation slips
+  through (ADR 0004), so wrong writes in that condition rise with the share of stale documentation.
 
 ## References
 

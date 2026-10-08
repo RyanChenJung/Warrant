@@ -29,8 +29,8 @@ The same structure exists in three fields, which is why it reads across the cand
 
 Definitions below are this project's synthesis; no cited author defines them this way.
 
-- The **readings** of a claim are its competing interpretations, written down when the defect is
-  injected, alongside the reference claim, and frozen together with the check battery.
+- The **readings** of a claim are its competing interpretations, written down with the reference
+  claim and committed before the defect is injected, like the check batteries.
 - For each reading, imagine the database that would result if it were the true one. For a pure
   convention, that database is the clean database itself.
 - The battery **cannot tell two readings apart** when it produces the same output on both databases.
@@ -53,7 +53,7 @@ Definitions below are this project's synthesis; no cited author defines them thi
   of decreasing credibility they should be the least reliable.
 - **Absence claims** ("this data exists nowhere") rest on a closed-world assumption (Reiter 1978)
   that checks inside the database cannot establish.
-- **The confidence baseline is a rival rule, not a weaker version of this one.** El-Yaniv & Wiener
+- **The confidence rule is a rival rule, not a weaker version of this one.** El-Yaniv & Wiener
   show that, in the noise-free realizable setting, the optimal selection function "is not obtained by
   thresholding soft classification values".
 
@@ -65,9 +65,9 @@ agent involved. The experiment then tests whether the measured allocation outcom
 comparisons decide between this rule and its rivals:
 
 - **Off-diagonal claims**: easy but unsettled (a familiar-word term boundary) and hard but settled
-  (grain resolved by a cross-table check). Confidence and difficulty-based rules disagree with
+  (grain resolved by a cross-table check). The confidence rule and difficulty-based rules disagree with
   settlement exactly here.
-- **Stronger model, battery fixed**: confidence-based rules and learning to defer predict more claims
+- **Stronger model, battery fixed**: the confidence rule and learning to defer predict more claims
   written by the agent alone; identification predicts the same allocation. Issue #5 (open-weights
   replication) can supply the second model.
 
@@ -105,7 +105,8 @@ comparisons decide between this rule and its rivals:
 | Rebuttal | The readings not yet removed | Usually all readings |
 | Qualifier | Settled, person-confirmed, documentation not contradicted, or provisional | Same |
 
-The person does not state the inference rule; the person supplies backing for an institutional one.
+For a convention-part claim the claim and its inference rule are the same counts-as rule; the person
+authors it, and the declaration is recorded as backing.
 Because every slot is filled from battery logs and readings written down in advance, the usual NLP
 objection that Toulmin slots cannot be annotated reliably (Habernal & Gurevych 2017 dropped warrants;
 Niven & Kao 2019) does not apply.
@@ -126,7 +127,7 @@ Niven & Kao 2019) does not apply.
 
 ## Expected attacks
 
-1. **"You chose the readings."** Write them down at injection time and freeze them with the battery;
+1. **"You chose the readings."** Write them down and commit them before the defect is injected;
    for robustness, add readings proposed afterwards by an independent model or person and report how
    many outcomes change.
 2. **"This is just identifiability."** Concede it. The contribution is using it as the rule for what
@@ -163,12 +164,14 @@ One line each in related work:
 - **Names**: reading, reading set, predicted outcome (see CONTEXT.md).
 - **"Warrant"** in the project name is the epistemic sense (Plantinga 1993): what licenses writing a
   claim as known. Toulmin's warrant slot is called the inference rule.
-- **Documentation for conventions.** "The data does not contradict it" is vacuous for convention-part
-  claims, because their readings leave the database identical: a stale glossary saying "domestic
-  means the US only" can never be caught by checks. The experiment keeps the uniform documentation
-  rule, which turns this into a prediction: stale documentation is caught for coverage and grain but
-  not for value meaning or term boundary. The thesis then recommends, with that evidence, that a
-  person confirm documentation-backed convention claims unless the source is an authoritative record
+- **Documentation for conventions.** "The data does not contradict it" is vacuous for the convention
+  part of a claim, because its readings leave the database identical: a stale glossary saying
+  "domestic means the US only" can never be caught by checks. The experiment keeps the uniform
+  documentation rule, which turns this into a prediction: stale documentation is caught for coverage,
+  grain and whether a column formula's identity holds, but not for value meaning, term boundary or
+  which quantity a business term names. The thesis then recommends, with that evidence, that a person
+  confirm the convention part of documentation-backed claims unless the source is an authoritative
+  record
   (a regulation, or a glossary with a named owner and date). Treating written rules as standing
   declarations (Searle 2010) rests only on a review so far; read the primary text before relying on
   it.
