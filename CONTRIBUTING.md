@@ -23,8 +23,9 @@ pinned in `uv.lock`. Add a dependency with `uv add <package>` and commit `uv.loc
 2. **Branch.** `git switch -c <n>-short-name` from an up-to-date `main`.
 3. **Build it.** Open Claude Code in the repo and ask it to implement issue `#<n>` against its
    acceptance criteria, tests first. Read and run what it writes; you are the author.
-4. **Open a PR** with `Closes #<n>` in the description and ask one teammate to review. Merge after
-   one approval and green tests; merging closes the issue and unblocks the tickets waiting on it.
+4. **Open a PR** with `Closes #<n>` in the description and merge it yourself once the tests pass; no
+   review is needed, so we can iterate fast. Every change to `main` still goes through a PR. Merging
+   closes the issue and unblocks the tickets waiting on it.
 5. **Log your time.** Once a week, comment on each ticket you worked on: hours spent and which
    acceptance criteria are met. The October 17 checkpoint (#57) compares these logs with the
    estimates.
