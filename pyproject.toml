@@ -5,6 +5,7 @@ description = "Which claims about a dataset an AI agent may write into its own k
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
+    "anthropic[bedrock]>=1.13.0",
     "pyyaml>=6.0",
 ]
 

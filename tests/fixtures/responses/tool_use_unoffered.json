@@ -1,0 +1,17 @@
+{
+  "id": "msg_recorded_tool_use_unoffered",
+  "type": "message",
+  "role": "assistant",
+  "model": "anthropic.claude-model-placeholder",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_recorded_escalate",
+      "name": "escalate",
+      "input": {"question": "Which statuses count as open?"}
+    }
+  ],
+  "usage": {"input_tokens": 1200, "output_tokens": 30}
+}

@@ -52,8 +52,15 @@ class Usage:
 
 @dataclass(frozen=True)
 class AgentOutput:
-    response: Response
+    """One call's outcome: a response, or a failure that says why there is none.
+
+    A failed call is recorded rather than scored, so exactly one of the two is set. The usage is
+    the call's whole token cost, retries included.
+    """
+
+    response: Response | None
     usage: Usage
+    failure: str = ""
 
 
 class Agent(Protocol):
