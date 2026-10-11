@@ -2,6 +2,13 @@
 
 Repo language: English for all code, comments, commit messages, docs and issues.
 
+## Working on a ticket
+
+Follow `CONTRIBUTING.md`: read the issue with `gh issue view <n> --comments`, write tests for its
+acceptance criteria first, put the code in the package `CONTRIBUTING.md` names for the ticket, and
+run `uv run pytest` before opening a PR with `Closes #<n>`. Never inject a defect before the freeze
+commit is on the public remote (ADR 0007), and never commit a database file or credentials.
+
 ## Agent skills
 
 ### Issue tracker

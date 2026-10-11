@@ -1,0 +1,24 @@
+[project]
+name = "warrant"
+version = "0.1.0"
+description = "Which claims about a dataset an AI agent may write into its own knowledge store, and which need a person"
+requires-python = ">=3.13"
+license = "MIT"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.uv.build-backend]
+# Flat layout, as in Gloss: the package lives at ./warrant, not ./src/warrant.
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
