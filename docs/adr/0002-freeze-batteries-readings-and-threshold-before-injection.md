@@ -1,5 +1,7 @@
 # Freeze the check batteries, reading sets, confidence threshold and outcome cutoffs before injecting any defect
 
+Status: amended by ADR 0007.
+
 We inject the defects ourselves, so any check, reading, threshold or cutoff chosen after the defects
 exist can be fitted to them, which would manufacture both the predicted outcomes and migration. The
 baseline battery is therefore checks that existed before this project's defects were designed (Gloss,

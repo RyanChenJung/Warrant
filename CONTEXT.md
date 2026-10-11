@@ -6,10 +6,30 @@ a person, decided by whether the data can settle them.
 ## Language
 
 **Warrant**:
-What licenses writing a claim into the knowledge store as known: settlement by a check battery, a
-person's declaration, or documentation the data does not contradict. This is the epistemic sense the
-project name uses, not Toulmin's inference rule.
+What licenses writing a claim into the knowledge store as known. There are four kinds: a data
+warrant, a record warrant, a testimony warrant and a declaration warrant. Documentation the data
+does not contradict warrants only the data part of a claim. This is the epistemic sense the project name uses, not
+Toulmin's inference rule.
 _Avoid_: using "warrant" for the inference rule, justification
+
+**Data warrant**:
+The warrant a claim has when the check battery settles it.
+_Avoid_: data-backed, verified
+
+**Record warrant**:
+The warrant a claim has when an authoritative record states it, tied to the version of the record
+that stated it.
+_Avoid_: documented, sourced
+
+**Testimony warrant**:
+The warrant a claim has when the check battery leaves more than one of its readings and a person
+reports which is true, where those readings would produce different databases, so a stronger
+battery could settle the claim later.
+_Avoid_: human confirmation, partial settlement
+
+**Declaration warrant**:
+The warrant a claim has when only a person can fix its convention part and a person has declared it.
+_Avoid_: human-written, expert claim
 
 ### Claims
 
@@ -84,8 +104,9 @@ leaves the rest to a person.
 _Avoid_: decidability rule, decidability-first
 
 **Confidence rule**:
-The allocation rule that lets the agent write a claim when its confidence in it is above a frozen
-threshold and leaves the rest to a person; the main rival to the settlement rule.
+The allocation rule that lets the agent write the claims it is most confident in and sends to a
+person as many claims as the settlement rule does, its least confident ones; the main rival to the
+settlement rule.
 _Avoid_: confidence routing, confidence baseline
 
 **Hybrid rule**:
@@ -133,6 +154,38 @@ A claim is settled under a check battery when it holds in every reading of its r
 battery cannot tell apart from the true one. "Not settled" means only that this battery failed, not
 that no check could succeed.
 _Avoid_: decided, proven, detected, resolved
+
+### Drift
+
+**Drift**:
+A change, made outside the conversation after a claim was written, in which reading of the claim is
+true, such as a code's meaning being redefined or an export starting to include open orders.
+_Avoid_: staleness, update, out-of-band change
+
+**Data-part drift**:
+Drift that changes the database, so a check battery can detect it if the old and new readings lie
+in classes the battery tells apart.
+_Avoid_: data drift, schema drift
+
+**Convention drift**:
+Drift that leaves the database identical, so no check battery can detect it. It is documented when
+the authoritative record changes with it and undocumented otherwise.
+_Avoid_: rule drift, definition change
+
+**Drift reading**:
+The reading a claim drifts to, declared and frozen with its reading set before its defect is
+injected.
+_Avoid_: new reading, target reading, r-prime
+
+**Stored answer**:
+A memory that keeps the value or answer a claim led to, without the claim's warrant, so nothing can
+tell when it becomes false.
+_Avoid_: cached answer, answer memory
+
+**Version link**:
+A memory that keeps a claim together with the authoritative record and version that warrant it, so
+a change of version shows that the claim may be stale.
+_Avoid_: pointer, citation
 
 ### Measurement
 
@@ -194,3 +247,13 @@ _Avoid_: false refusal, wrong abstention
 **Clarification request**:
 A response that asks the user a question instead of answering.
 _Avoid_: follow-up, counter-question
+
+**Escalation**:
+Asking, while answering, the person who can fix a claim's convention whether a stored claim still
+holds, instead of relying on it. It is an act within answering, not a kind of final response, and
+unlike a clarification request it is about the knowledge store, not about the question.
+_Avoid_: deferral, asking for help, human-in-the-loop
+
+**Silent error**:
+A wrong answer given without an error, a refusal, a clarification request or an escalation.
+_Avoid_: hidden error, confident error

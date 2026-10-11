@@ -1,0 +1,13 @@
+Data licence
+
+Data files in this repository that are derived from LiveSQLBench-Base-Lite
+(https://huggingface.co/datasets/birdsql/livesqlbench-base-lite-sqlite), such as
+edited knowledge-base entries, defect specifications and drift tasks, are
+licensed under the Creative Commons Attribution-ShareAlike 4.0 International
+licence (CC BY-SA 4.0): https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+LiveSQLBench-Base-Lite is published by its authors under CC BY-SA 4.0. The README
+names the directories that hold derived data and the changes made to it.
+
+All other files (code and documentation) are licensed under the MIT licence in
+LICENSE.
