@@ -23,22 +23,8 @@ Default five-label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, 
 
 Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`.
 
-## Project memory in the Obsidian vault
+## Records
 
-This repo is the source of truth for code, experiments, `CONTEXT.md`, ADRs and issues.
-The author's Obsidian vault keeps a pointer note so other projects can find the current
-state of this one: `Raw/00-Project-Overview/Warrant-Pointer.md` in the vault.
-
-- Record each experiment in this repo first, so teammates see it.
-- Then add a short summary note to the vault (result, decision, link back to the repo file or issue).
-- Never copy an ADR or `CONTEXT.md` into the vault; link to it.
-- After a grilling session ends and the user confirms the shared understanding, offer to write a
-  short summary note in the vault (what was decided, which `CONTEXT.md` terms and ADRs changed,
-  with links back to the repo) under `Raw/03-Design-Docs/Governing-Period/`. Write it only if the
-  user agrees.
-
-## Research notes
-
-Findings that teammates need (API or dataset facts, primary-source investigations) are written
-to this repo under `docs/research/`, with a short summary note plus link in the vault.
-Personal literature reading stays in the vault only (`Raw/01-Research/LLM-Research/`).
+This repo is the source of truth for code, experiments, `CONTEXT.md`, ADRs and issues: record each
+experiment here, so teammates see it. Findings teammates need (API or dataset facts, primary-source
+investigations) go under `docs/research/`.
