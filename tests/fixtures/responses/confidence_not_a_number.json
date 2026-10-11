@@ -1,0 +1,15 @@
+{
+  "id": "msg_recorded_confidence_not_a_number",
+  "type": "message",
+  "role": "assistant",
+  "model": "anthropic.claude-model-placeholder",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"kind\": \"answer\", \"final_sql\": \"SELECT COUNT(*) FROM workorders WHERE status = 'OPEN'\", \"value\": 4, \"confidence\": \"high\"}"
+    }
+  ],
+  "usage": {"input_tokens": 1400, "output_tokens": 85}
+}

@@ -141,6 +141,32 @@ def test_a_misconfiguration_stops_the_run_instead_of_being_recorded_per_question
     assert len(attempts) == 1  # not retried, and no second question is asked
 
 
+def test_an_answer_wrapped_in_a_markdown_fence_is_still_read(replay, request_for, sql_tool):
+    output = ClaudeAgent(CONFIG, replay("answer_fenced")).answer(request_for(), sql_tool)
+
+    assert output.failure == ""
+    assert output.response.kind == ResponseKind.ANSWER
+    assert output.response.final_sql == "SELECT COUNT(*) FROM workorders WHERE status = 'OPEN'"
+    assert output.response.confidence == 0.8
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    ["answer_without_sql", "confidence_not_a_number", "confidence_out_of_range"],
+)
+def test_a_response_the_prompt_asked_for_differently_is_malformed(
+    recorded, replay, request_for, sql_tool
+):
+    """An answer is scored by re-executing its SQL, and the confidence is a number in [0, 1]:
+    a response missing either is no more usable than one that is not JSON at all."""
+    create = replay(recorded, recorded)
+    output = ClaudeAgent(CONFIG, create).answer(request_for(), sql_tool)
+
+    assert len(create.calls) == CONFIG.attempts == 2
+    assert output.response is None
+    assert "malformed" in output.failure
+
+
 def test_a_retry_after_malformed_output_still_answers(replay, request_for, sql_tool):
     create = replay("malformed", "answer")
     output = ClaudeAgent(CONFIG, create).answer(request_for(), sql_tool)

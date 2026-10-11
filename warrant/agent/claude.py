@@ -6,6 +6,7 @@ recorded responses, so nothing but the smoke command reaches the real model.
 """
 
 import json
+import re
 from typing import Any, Callable, Mapping
 
 import anthropic
@@ -17,6 +18,10 @@ from warrant.agent.tools import SCHEMAS
 
 
 TRANSIENT_STATUS = frozenset({408, 409, 429})
+
+# The prompt asks for JSON and no other text, but a model that wraps it in a markdown fence has
+# still answered.
+FENCE = re.compile(r"\A\s*```[a-zA-Z]*\s*(.*?)```\s*\Z", re.DOTALL)
 
 
 class CallFailed(Exception):
@@ -44,21 +49,43 @@ def _transient(error: anthropic.APIError) -> bool:
     return status is not None and (status in TRANSIENT_STATUS or status >= 500)
 
 
+def _unfenced(text: str) -> str:
+    """The JSON inside a markdown fence, when the model wrapped it in one."""
+    fence = FENCE.match(text)
+    return fence.group(1) if fence else text
+
+
+def _confidence(value) -> float | None:
+    """A self-reported confidence between 0 and 1, or none at all."""
+    if value is None:
+        return None
+    confidence = float(value)  # TypeError or ValueError when it is not a number at all
+    if not 0.0 <= confidence <= 1.0:
+        raise ValueError(f"confidence outside [0, 1]: {value!r}")
+    return confidence
+
+
 def _parse(text: str) -> Response:
     try:
-        raw = json.loads(text)
+        raw = json.loads(_unfenced(text))
         kind = ResponseKind(raw["kind"])
+        confidence = _confidence(raw.get("confidence"))
     except (KeyError, TypeError, ValueError) as error:
         raise CallFailed(f"malformed response: {error}") from error
-    confidence = raw.get("confidence")
+
+    # An answer is scored by re-executing its SQL, so an answer without any is not one.
+    final_sql = raw.get("final_sql") if kind == ResponseKind.ANSWER else None
+    if kind == ResponseKind.ANSWER and not final_sql:
+        raise CallFailed("malformed response: an answer with no final SQL")
+
     return Response(
         kind=kind,
-        final_sql=raw.get("final_sql") if kind == ResponseKind.ANSWER else None,
+        final_sql=final_sql,
         value=raw.get("value"),
         missing=raw.get("missing", "") or "",
         alternative=raw.get("alternative", "") or "",
         clarification=raw.get("clarification", "") or "",
-        confidence=None if confidence is None else float(confidence),
+        confidence=confidence,
     )
 
 
