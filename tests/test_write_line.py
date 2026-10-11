@@ -1,0 +1,136 @@
+import dataclasses
+import sqlite3
+
+import pytest
+
+from warrant.agent.fake import ScriptedAgent
+from warrant.agent.interface import AnswerRequest, Response, ResponseKind
+from warrant.store.claims import ClaimKind, Slot, Source, WarrantKind
+from warrant.write_line.config import load_config
+from warrant.write_line.run import run
+
+OPEN_ORDERS_SLOT = Slot(ClaimKind.COVERAGE, "workorders")
+
+# What an agent would write without and with the coverage claim in its knowledge store.
+SQL_WITHOUT_CLAIM = {
+    "open-orders": "SELECT COUNT(*) FROM workorders WHERE status = 'OPEN'",
+    "open-order-hours": "SELECT SUM(t.hours) FROM tasks t JOIN workorders w USING (wonum) WHERE w.status = 'OPEN'",
+    "closed-cost": "SELECT SUM(total_cost) FROM workorders WHERE status = 'CLOSED'",
+}
+SQL_WITH_CLAIM = {
+    "open-orders": "SELECT COUNT(DISTINCT wonum) FROM tasks WHERE wonum NOT IN (SELECT wonum FROM workorders)",
+    "open-order-hours": "SELECT SUM(hours) FROM tasks WHERE wonum NOT IN (SELECT wonum FROM workorders)",
+    "closed-cost": "SELECT SUM(total_cost) FROM workorders WHERE status = 'CLOSED'",
+}
+
+
+def knows_the_claim(request, tools):
+    """Answers with the SQL that matches what the store tells it, after running it through the tool."""
+    knows = any(claim.slot == OPEN_ORDERS_SLOT for claim in request.store.claims)
+    sql = (SQL_WITH_CLAIM if knows else SQL_WITHOUT_CLAIM)[request.question_id]
+    return Response(ResponseKind.ANSWER, final_sql=sql, value=tools["sql"](sql))
+
+
+def rows(path, sql):
+    con = sqlite3.connect(path)
+    try:
+        return con.execute(sql).fetchall()
+    finally:
+        con.close()
+
+
+@pytest.fixture
+def config(write_line_config):
+    return load_config(write_line_config)
+
+
+def test_run_returns_a_results_row_per_question_rule_and_run_and_accuracy_per_rule(config, tmp_path):
+    result = run(config, ScriptedAgent(knows_the_claim), tmp_path / "work")
+    assert len(result.rows) == 3 * 2 * 1
+    assert {(r.question_id, r.rule, r.run) for r in result.rows} == {
+        (q, rule, 0) for q in SQL_WITH_CLAIM for rule in ("empty", "all_person")
+    }
+    assert {r.response_class for r in result.rows} <= {"correct", "wrong"}
+    assert set(result.accuracy) == {"empty", "all_person"}
+
+
+def test_the_reference_claim_raises_accuracy_over_the_empty_store(config, tmp_path):
+    result = run(config, ScriptedAgent(knows_the_claim), tmp_path / "work")
+    assert result.accuracy == {"empty": pytest.approx(1 / 3), "all_person": 1.0}
+
+
+def test_the_clean_database_is_unchanged_and_the_defect_is_injected_into_a_copy(config, tmp_path):
+    clean = config.databases["workorders"]
+    before = clean.read_bytes()
+    result = run(config, ScriptedAgent(knows_the_claim), tmp_path / "work")
+    assert clean.read_bytes() == before
+    injected = result.injected["workorders"]
+    assert injected != clean
+    assert rows(injected, "SELECT COUNT(*) FROM workorders WHERE status = 'OPEN'") == [(0,)]
+    assert rows(clean, "SELECT COUNT(*) FROM workorders WHERE status = 'OPEN'") == [(4,)]
+
+
+def test_gold_answers_are_computed_on_the_injected_copy_and_stored_with_their_sql(config, tmp_path):
+    result = run(config, ScriptedAgent(knows_the_claim), tmp_path / "work")
+    gold = result.gold["open-orders"]
+    assert gold.sql == SQL_WITH_CLAIM["open-orders"]
+    assert gold.rows == [(4,)]
+    assert rows(config.databases["workorders"], gold.sql) == [(0,)]
+    assert result.gold["open-order-hours"].rows == [(16.25,)]
+
+
+def test_the_agent_gets_the_schema_the_store_and_only_a_read_only_sql_tool(config, tmp_path):
+    offered = []
+
+    def script(request, tools):
+        offered.append(tools)
+        return knows_the_claim(request, tools)
+
+    agent = ScriptedAgent(script)
+    run(config, agent, tmp_path / "work")
+    request = agent.requests[0]
+    assert {f.name for f in dataclasses.fields(AnswerRequest)} == {
+        "database", "question_id", "question", "run", "schema", "store", "tools",
+    }
+    assert request.tools == ("sql",)
+    assert "CREATE TABLE workorders" in request.schema
+    assert set(offered[0]) == {"sql"}
+    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+        offered[0]["sql"]("DELETE FROM tasks")
+
+
+def test_the_pipeline_scores_the_re_executed_final_sql_not_the_stated_value(config, tmp_path):
+    def right_value_wrong_sql(request, tools):
+        gold_like = knows_the_claim(request, tools)
+        return Response(ResponseKind.ANSWER, final_sql=SQL_WITHOUT_CLAIM[request.question_id], value=gold_like.value)
+
+    result = run(config, ScriptedAgent(right_value_wrong_sql), tmp_path / "work")
+    assert result.accuracy["all_person"] == pytest.approx(1 / 3)
+
+
+def test_the_person_store_holds_the_reference_claim_and_requests_never_name_the_rule(config, tmp_path):
+    agent = ScriptedAgent(knows_the_claim)
+    result = run(config, agent, tmp_path / "work")
+
+    (claim,) = result.stores["all_person"].claims
+    assert claim.statement == config.defects[0].reference_claim
+    assert claim.slot == OPEN_ORDERS_SLOT
+    assert claim.source == Source.PERSON
+    assert claim.warrant == WarrantKind.NONE
+    assert claim.toulmin.backing == "the person"
+    assert result.stores["empty"].claims == ()
+
+    by_question = {}
+    for request in agent.requests:
+        assert "all_person" not in repr(request)
+        by_question.setdefault(request.question_id, []).append(dataclasses.replace(request, store=None))
+    assert all(a == b for a, b in by_question.values())
+
+
+def test_a_failing_final_sql_is_scored_wrong(config, tmp_path):
+    def broken(request, tools):
+        return Response(ResponseKind.ANSWER, final_sql="SELECT no_such_column FROM workorders")
+
+    result = run(config, ScriptedAgent(broken), tmp_path / "work")
+    assert {r.response_class for r in result.rows} == {"wrong"}
+    assert all(r.executed is None for r in result.rows)
