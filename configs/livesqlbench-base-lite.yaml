@@ -1,0 +1,23 @@
+# The public LiveSQLBench-Base-Lite SQLite release (CC BY-SA 4.0), pinned to one Hugging Face commit.
+# Fetch it with `uv run python -m warrant.data.fetch`; checksums are in livesqlbench-base-lite.sha256.
+dataset: birdsql/livesqlbench-base-lite-sqlite
+revision: "0664a2f28555faa0dd2947c8c23288df79bcc06b"
+databases:
+  - alien
+  - archeology
+  - credit
+  - cross_db
+  - crypto
+  - cybermarket
+  - disaster
+  - fake
+  - gaming
+  - insider
+  - mental
+  - museum
+  - news
+  - polar
+  - robot
+  - solar
+  - vaccine
+  - virtual
