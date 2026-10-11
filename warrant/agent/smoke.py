@@ -33,8 +33,14 @@ def main(argv=None) -> int:
         print(f"{args.config} names no question {args.question!r}")
         return 2
 
+    try:
+        agent = ClaudeAgent(config.model)
+    except ValueError as error:
+        print(f"{args.config}: {error}")
+        return 2
+
     one = dataclasses.replace(config, questions=(question,), rules=(args.rule,), runs=1)
-    (row,) = run(one, ClaudeAgent(one.model), args.work_dir).rows
+    (row,) = run(one, agent, args.work_dir).rows
 
     print(f"question: {row.question_id} (rule {row.rule})")
     print(f"response: {row.response_class}{f' - {row.failure}' if row.failure else ''}")

@@ -19,16 +19,16 @@ MODEL_BLOCK = textwrap.dedent(
     model:
       provider: {provider}
       model: {model}
-      region: region-placeholder
+      region: {region}
       max_tokens: 4096
       attempts: 2
     """
 )
 
 
-def model_config(tmp_path, provider, model):
+def model_config(tmp_path, provider, model, region="us-east-1"):
     path = tmp_path / f"{provider}.yaml"
-    path.write_text(MODEL_BLOCK.format(provider=provider, model=model))
+    path.write_text(MODEL_BLOCK.format(provider=provider, model=model, region=region))
     return load_model_config(yaml.safe_load(path.read_text())["model"])
 
 
@@ -43,8 +43,17 @@ def test_the_same_configuration_shape_names_either_platform(tmp_path):
 
 
 def test_the_bedrock_client_takes_its_region_from_the_configuration(tmp_path):
-    bedrock = model_config(tmp_path, "bedrock", "anthropic.claude-model-placeholder")
-    assert "region-placeholder" in str(client(bedrock).base_url)
+    bedrock = model_config(tmp_path, "bedrock", "anthropic.m", region="eu-west-2")
+    assert "eu-west-2" in str(client(bedrock).base_url)
+
+
+@pytest.mark.parametrize("region", ["", "region-placeholder", "us-east", "US-EAST-1"])
+def test_a_region_that_is_not_a_region_is_refused_before_any_call(region):
+    """A region reaches Bedrock through the host name, so a bad one would only look like a
+    connection failure, on every call of the run. The committed configuration carries a
+    placeholder, so a run refuses to start until the lead's real region is filled in (#26)."""
+    with pytest.raises(ValueError, match="not an AWS region"):
+        client(ModelConfig(provider="bedrock", model="m", region=region))
 
 
 def test_an_unknown_provider_is_rejected():

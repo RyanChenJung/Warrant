@@ -6,11 +6,16 @@ whatever the named platform calls it: Bedrock prefixes the Anthropic identifier,
 does not. Credentials come from a local AWS profile or environment variables, never from the repo.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
 BEDROCK = "bedrock"
 ANTHROPIC = "anthropic"
+
+# A region reaches Bedrock through the host name, so a typo or a leftover placeholder would only
+# show up as a connection failure on every call. Refuse it here instead.
+REGION = re.compile(r"^[a-z]{2}(-[a-z]+)+-\d+$")
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,8 @@ def client(config: ModelConfig):
     if config.provider == BEDROCK:
         from anthropic import AnthropicBedrockMantle
 
+        if not REGION.match(config.region):
+            raise ValueError(f"not an AWS region: {config.region!r}")
         return AnthropicBedrockMantle(aws_region=config.region)
     if config.provider == ANTHROPIC:
         from anthropic import Anthropic

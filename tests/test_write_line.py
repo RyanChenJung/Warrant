@@ -2,6 +2,8 @@ import dataclasses
 import json
 import sqlite3
 
+import anthropic
+import httpx2 as httpx
 import pytest
 
 from warrant.agent.fake import ScriptedAgent
@@ -12,6 +14,13 @@ from warrant.write_line.config import load_config
 from warrant.write_line.run import run
 
 OPEN_ORDERS_SLOT = Slot(ClaimKind.COVERAGE, "workorders")
+
+PROVENANCE = Provenance(
+    config_hash="0" * 64,
+    repo_commit="abc1234",
+    model="anthropic.claude-model-placeholder",
+    prompt_version="1",
+)
 
 # What an agent would write without and with the coverage claim in its knowledge store.
 SQL_WITHOUT_CLAIM = {
@@ -169,15 +178,27 @@ def test_a_rule_whose_every_call_failed_has_no_accuracy_to_report(config, tmp_pa
     assert result.accuracy == {"empty": None, "all_person": None}
 
 
+def test_a_misconfigured_model_stops_the_run_without_storing_a_row(config, tmp_path):
+    """A failure that is wrong for every question is not worth a record per question."""
+    results = tmp_path / "results.jsonl"
+
+    class Misconfigured:
+        def answer(self, request, tools):
+            raise anthropic.AuthenticationError(
+                "unauthorized",
+                response=httpx.Response(401, request=httpx.Request("POST", "http://example.invalid")),
+                body=None,
+            )
+
+    with pytest.raises(anthropic.AuthenticationError):
+        run(config, Misconfigured(), tmp_path / "work", PROVENANCE, results)
+
+    assert not results.exists()
+
+
 def test_every_stored_result_carries_the_provenance_of_its_run(config, tmp_path):
     results = tmp_path / "results.jsonl"
-    provenance = Provenance(
-        config_hash="0" * 64,
-        repo_commit="abc1234",
-        model="anthropic.claude-model-placeholder",
-        prompt_version="1",
-    )
-    result = run(config, ScriptedAgent(knows_the_claim), tmp_path / "work", provenance, results)
+    result = run(config, ScriptedAgent(knows_the_claim), tmp_path / "work", PROVENANCE, results)
 
     records = [json.loads(line) for line in results.read_text().splitlines()]
     assert len(records) == len(result.rows)

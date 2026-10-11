@@ -166,9 +166,13 @@ def main(argv=None) -> int:
     config = load_config(args.config)
     if config.model is None:
         parser.error(f"{args.config} names no model block")
+    try:
+        agent = ClaudeAgent(config.model)
+    except ValueError as error:
+        parser.error(f"{args.config}: {error}")  # a misconfiguration, before any question is asked
     result = run(
         config,
-        ClaudeAgent(config.model),
+        agent,
         args.work_dir,
         provenance_for(args.config, config.model),
         args.results,

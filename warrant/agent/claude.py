@@ -16,16 +16,32 @@ from warrant.agent.prompt import SYSTEM, user_message
 from warrant.agent.tools import SCHEMAS
 
 
+TRANSIENT_STATUS = frozenset({408, 409, 429})
+
+
 class CallFailed(Exception):
-    """One call did not produce a response: malformed output, or the platform would not serve it.
+    """One call did not produce a response: malformed output, or a transient platform error.
 
     Both end the same way, so they share one type: retried, and then recorded as a failure with
-    whatever tokens the attempt spent. The SDK has already retried its own retryable errors.
+    whatever tokens the attempt spent. A misconfiguration is not one of these — see `_transient`.
     """
 
     def __init__(self, reason: str, usage: Usage = Usage()):
         super().__init__(reason)
         self.usage = usage
+
+
+def _transient(error: anthropic.APIError) -> bool:
+    """Whether this error is worth another attempt, by the same rule the SDK retries on.
+
+    Everything else - no credentials, no permission, an unknown model, a rejected request - is
+    wrong for every question in the run, not for this one, so it is raised and stops the run
+    rather than being recorded per question.
+    """
+    if isinstance(error, anthropic.APIConnectionError):
+        return True
+    status = getattr(error, "status_code", None)
+    return status is not None and (status in TRANSIENT_STATUS or status >= 500)
 
 
 def _parse(text: str) -> Response:
@@ -75,6 +91,8 @@ class ClaudeAgent:
             try:
                 message = self._create(**self._request(request, messages))
             except anthropic.APIError as error:
+                if not _transient(error):
+                    raise
                 raise CallFailed(f"{type(error).__name__}: {error}", usage) from error
             usage = _add(usage, Usage(message.usage.input_tokens, message.usage.output_tokens))
             if message.stop_reason != "tool_use":

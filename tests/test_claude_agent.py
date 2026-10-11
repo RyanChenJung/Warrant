@@ -84,18 +84,61 @@ def test_malformed_output_is_retried_and_then_recorded_as_a_failure_with_its_usa
     assert (output.usage.input_tokens, output.usage.output_tokens) == (1400 + 1400, 20 + 20)
 
 
-def test_a_call_the_platform_keeps_refusing_is_recorded_as_a_failure(request_for, sql_tool):
-    attempted = []
+REQUEST = httpx.Request("POST", "http://example.invalid")
 
-    def fails(**kwargs):
-        attempted.append(kwargs)
-        raise anthropic.APIConnectionError(request=httpx.Request("POST", "http://example.invalid"))
 
-    output = ClaudeAgent(CONFIG, fails).answer(request_for(), sql_tool)
+def raising(error):
+    """A `messages.create` that always raises, and counts how often it was asked."""
+    attempts = []
 
-    assert len(attempted) == CONFIG.attempts == 2
+    def create(**kwargs):
+        attempts.append(kwargs)
+        raise error
+
+    return create, attempts
+
+
+def status_error(kind, status):
+    return kind("boom", response=httpx.Response(status, request=REQUEST), body=None)
+
+
+TRANSIENT = [
+    anthropic.APIConnectionError(request=REQUEST),
+    anthropic.APITimeoutError(request=REQUEST),
+    status_error(anthropic.RateLimitError, 429),
+    status_error(anthropic.InternalServerError, 503),
+]
+
+PERMANENT = [
+    status_error(anthropic.AuthenticationError, 401),
+    status_error(anthropic.PermissionDeniedError, 403),
+    status_error(anthropic.NotFoundError, 404),
+    status_error(anthropic.BadRequestError, 400),
+    status_error(anthropic.UnprocessableEntityError, 422),
+]
+
+
+@pytest.mark.parametrize("error", TRANSIENT, ids=lambda e: type(e).__name__)
+def test_a_transient_error_is_retried_and_then_recorded_as_a_failure(error, request_for, sql_tool):
+    create, attempts = raising(error)
+    output = ClaudeAgent(CONFIG, create).answer(request_for(), sql_tool)
+
+    assert len(attempts) == CONFIG.attempts == 2
     assert output.response is None
-    assert "APIConnectionError" in output.failure
+    assert type(error).__name__ in output.failure
+
+
+@pytest.mark.parametrize("error", PERMANENT, ids=lambda e: type(e).__name__)
+def test_a_misconfiguration_stops_the_run_instead_of_being_recorded_per_question(
+    error, request_for, sql_tool
+):
+    """Bad credentials, an unknown model or a bad region are wrong for every question, not one."""
+    create, attempts = raising(error)
+
+    with pytest.raises(type(error)):
+        ClaudeAgent(CONFIG, create).answer(request_for(), sql_tool)
+
+    assert len(attempts) == 1  # not retried, and no second question is asked
 
 
 def test_a_retry_after_malformed_output_still_answers(replay, request_for, sql_tool):

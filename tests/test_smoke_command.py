@@ -5,6 +5,7 @@ response, so the command makes no call.
 """
 
 from warrant.agent import smoke
+from warrant.agent.config import client as real_client
 
 
 class FakeClient:
@@ -33,3 +34,19 @@ def test_the_smoke_command_answers_one_question_and_reports_its_usage(
 def test_the_smoke_command_rejects_a_question_the_configuration_does_not_name(write_line_config):
     exit_code = smoke.main(["--config", str(write_line_config), "--question", "no-such-question"])
     assert exit_code == 2
+
+
+def test_the_smoke_command_reports_a_misconfigured_model_without_calling_it(
+    write_line_config, monkeypatch, capsys
+):
+    """The committed configuration still carries a placeholder region, so this is the real path.
+
+    The real client factory is put back: it refuses the region before building anything, so this
+    still reaches no network.
+    """
+    monkeypatch.setattr("warrant.agent.claude.client", real_client)
+
+    exit_code = smoke.main(["--config", str(write_line_config), "--question", "open-orders"])
+
+    assert exit_code == 2
+    assert "not an AWS region" in capsys.readouterr().out
