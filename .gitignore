@@ -21,3 +21,6 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 # uv.lock IS committed: it pins the dependency set for reproducibility.
+
+# Local agent worktrees
+.claude/worktrees/
