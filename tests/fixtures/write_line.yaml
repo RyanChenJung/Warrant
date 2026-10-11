@@ -1,0 +1,31 @@
+# Write-line configuration for the tracer bullet (#27): one coverage defect on the work-order
+# fixture, answered under two allocation rules. Paths are relative to this file.
+databases:
+  workorders: workorders.sqlite
+rules: [empty, all_person]
+runs: 1
+defects:
+  - id: open-orders-cut
+    database: workorders
+    slot: {claim_kind: coverage, subject: workorders}
+    transformation:
+      - DELETE FROM workorders WHERE status = 'OPEN'
+    reference_claim: >-
+      The work-order table only holds closed work orders. Open work orders are missing from it,
+      but their tasks are still in the tasks table.
+questions:
+  - id: open-orders
+    database: workorders
+    defect: open-orders-cut
+    text: How many open work orders are there?
+    gold_sql: SELECT COUNT(DISTINCT wonum) FROM tasks WHERE wonum NOT IN (SELECT wonum FROM workorders)
+  - id: open-order-hours
+    database: workorders
+    defect: open-orders-cut
+    text: How many task hours have been logged on open work orders?
+    gold_sql: SELECT SUM(hours) FROM tasks WHERE wonum NOT IN (SELECT wonum FROM workorders)
+  - id: closed-cost
+    database: workorders
+    defect: null
+    text: What is the total cost of closed work orders?
+    gold_sql: SELECT SUM(total_cost) FROM workorders WHERE status = 'CLOSED'
