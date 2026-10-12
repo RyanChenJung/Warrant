@@ -109,15 +109,20 @@ def paired_difference(
 
 
 def flip_rate(records: Iterable[Record], *, item: str = "question_id", condition: str = "rule") -> float | None:
-    """The share of items that flip under at least one condition (`flips`).
+    """The share of items that flip under at least one condition (`flips`), over the items whose
+    flip is measured under every condition in the records.
 
-    An item is left out when that cannot be measured: it flips under no condition, and under some
-    condition it had fewer than two scored runs. None when no item is left.
+    An item with fewer than two scored runs under some condition, or no record at all, is left out
+    whatever it did under the others, so whether an item counts does not depend on whether it
+    flips. None when no item is left.
     """
-    by_item = defaultdict(list)
-    for (i, _), classes in _classes(records, item, condition).items():
-        by_item[i].append(flips(classes))
-    measured = [True in f for f in by_item.values() if True in f or None not in f]
+    classes = _classes(records, item, condition)
+    conditions = {c for _, c in classes}
+    measured = []
+    for i in {i for i, _ in classes}:
+        under = [flips(classes.get((i, c), [])) for c in conditions]
+        if None not in under:
+            measured.append(any(under))
     return sum(measured) / len(measured) if measured else None
 
 
@@ -148,30 +153,44 @@ def _scored(runs: Iterable[Record]) -> list[Record]:
     return [run for run in runs if run["response_class"] != ResponseClass.FAILED]
 
 
-def silent_error_rate(runs: Iterable[Record]) -> float | None:
-    """The share of scored runs that are silent errors, each run's `silent_error` as the scorer
-    decided it (`is_silent_error`). None when no run was scored."""
-    scored = _scored(runs)
-    return sum(bool(run["silent_error"]) for run in scored) / len(scored) if scored else None
+def _by_task(runs: Iterable[Record], item: str) -> dict[str, list[Record]]:
+    by_task = defaultdict(list)
+    for run in runs:
+        by_task[run[item]].append(run)
+    return by_task
 
 
-def questions_per_100_tasks(runs: Iterable[Record]) -> float | None:
-    """Escalation calls per 100 scored runs, each call one question to a person: per 100 tasks,
-    averaged over runs when each task has as many. None when no run was scored."""
-    scored = _scored(runs)
-    return 100 * sum(run["escalations"] for run in scored) / len(scored) if scored else None
+def _silent_error_rate(by_task: Mapping[str, Sequence[Record]]) -> float | None:
+    scored = {task: _scored(runs) for task, runs in by_task.items()}
+    unscored = sorted(task for task, runs in scored.items() if not runs)
+    if unscored:
+        raise ValueError(f"tasks with no scored run: {', '.join(unscored)}")
+    shares = [sum(bool(run["silent_error"]) for run in runs) / len(runs) for runs in scored.values()]
+    return sum(shares) / len(shares) if shares else None
 
 
-def least_confident(confidence: Mapping[str, float], k: int, *, seed: int) -> list[str]:
-    """The k items of lowest confidence, least confident first, ties broken by `seed`.
+def _questions_per_100_tasks(by_task: Mapping[str, Sequence[Record]]) -> float | None:
+    per_task = [sum(run["escalations"] for run in runs) / len(runs) for runs in by_task.values()]
+    return 100 * sum(per_task) / len(per_task) if per_task else None
 
-    Confidence may be anything that sorts, such as an agreement and then a mean self-reported
-    confidence. Items are put in a seeded random order before the stable sort by confidence, so the
-    tie-break does not depend on the order they come in.
+
+def silent_error_rate(runs: Iterable[Record], *, item: str = "task") -> float | None:
+    """The silent-error rate per task: each task's share of scored runs that are silent errors (its
+    runs' `silent_error`, as the scorer decided it with `is_silent_error`), averaged over tasks.
+
+    Failed runs are left out, as accuracy leaves them out, and each task weighs the same whatever
+    number of its runs failed, so the rate is the mean that a task-level bootstrap interval of the
+    per-task rates is around. A task with no scored run raises rather than dropping out unseen.
+    None when there are no runs.
     """
-    items = sorted(confidence)
-    random.Random(seed).shuffle(items)
-    return sorted(items, key=confidence.__getitem__)[:k]
+    return _silent_error_rate(_by_task(runs, item))
+
+
+def questions_per_100_tasks(runs: Iterable[Record], *, item: str = "task") -> float | None:
+    """Questions to a person per 100 tasks: each task's escalation calls per run, averaged over
+    tasks, times 100. Each call is one question, a failed run's included, since the person was
+    asked. None when there are no runs."""
+    return _questions_per_100_tasks(_by_task(runs, item))
 
 
 @dataclass(frozen=True)
@@ -182,24 +201,23 @@ class FrontierPoint:
 
 
 def frontier(
-    base: Mapping[str, Sequence[Record]],
-    asked: Mapping[str, Sequence[Record]],
-    confidence: Mapping[str, float],
-    *,
-    seed: int,
+    base: Mapping[str, Sequence[Record]], asked: Mapping[str, Sequence[Record]], order: Sequence[str]
 ) -> list[FrontierPoint]:
-    """Silent errors against questions to a person when the k least confident tasks take their
-    asked runs and the rest their base runs, for every k from none to all.
+    """Silent errors against questions to a person, both per task, when the first k tasks of
+    `order` take their asked runs and the rest their base runs, for every k from none to all.
 
-    `base` and `asked` hold each task's runs, all of which enter the two rates; `confidence` ranks
-    the tasks, ties broken by `seed`.
+    `base` and `asked` hold each task's runs. `order` is the escalation order, first to escalate
+    first: for confidence-escalate, the matched-asks selector's ranking (#51), least confident
+    first. It must hold every task of `base` and `asked` once, so that no task drops out unseen.
     """
-    order = least_confident(confidence, len(confidence), seed=seed)
+    tasks = base.keys() | asked.keys() | set(order)
+    mismatched = sorted(t for t in tasks if t not in base or t not in asked or order.count(t) != 1)
+    if mismatched:
+        raise ValueError(f"tasks not once in each of base, asked and the order: {', '.join(mismatched)}")
     points = []
     for k in range(len(order) + 1):
-        runs = [run for task in order[:k] for run in asked[task]]
-        runs += [run for task in order[k:] for run in base[task]]
-        points.append(FrontierPoint(k, questions_per_100_tasks(runs), silent_error_rate(runs)))
+        runs = {task: asked[task] for task in order[:k]} | {task: base[task] for task in order[k:]}
+        points.append(FrontierPoint(k, _questions_per_100_tasks(runs), _silent_error_rate(runs)))
     return points
 
 
