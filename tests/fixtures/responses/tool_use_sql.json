@@ -1,0 +1,17 @@
+{
+  "id": "msg_recorded_tool_use_sql",
+  "type": "message",
+  "role": "assistant",
+  "model": "anthropic.claude-model-placeholder",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_recorded_sql",
+      "name": "sql",
+      "input": {"sql": "SELECT COUNT(*) FROM workorders WHERE status = 'OPEN'"}
+    }
+  ],
+  "usage": {"input_tokens": 1200, "output_tokens": 40}
+}

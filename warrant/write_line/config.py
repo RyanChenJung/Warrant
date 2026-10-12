@@ -5,6 +5,7 @@ from pathlib import Path
 
 import yaml
 
+from warrant.agent.config import ModelConfig, load_model_config
 from warrant.defects.inject import Defect
 from warrant.store.claims import ClaimKind, Slot
 
@@ -25,6 +26,7 @@ class Config:
     questions: tuple[Question, ...]
     rules: tuple[str, ...]
     runs: int
+    model: ModelConfig | None = None
 
 
 def load_config(path: Path) -> Config:
@@ -49,4 +51,5 @@ def load_config(path: Path) -> Config:
         ),
         rules=tuple(raw["rules"]),
         runs=int(raw["runs"]),
+        model=load_model_config(raw["model"]) if raw.get("model") else None,
     )

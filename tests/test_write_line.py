@@ -1,15 +1,26 @@
 import dataclasses
+import json
 import sqlite3
 
+import anthropic
+import httpx2 as httpx
 import pytest
 
 from warrant.agent.fake import ScriptedAgent
-from warrant.agent.interface import AnswerRequest, Response, ResponseKind
+from warrant.agent.interface import AgentOutput, AnswerRequest, Response, ResponseKind, Usage
 from warrant.store.claims import ClaimKind, Slot, Source, WarrantKind
+from warrant.store.results import Provenance
 from warrant.write_line.config import load_config
 from warrant.write_line.run import run
 
 OPEN_ORDERS_SLOT = Slot(ClaimKind.COVERAGE, "workorders")
+
+PROVENANCE = Provenance(
+    config_hash="0" * 64,
+    repo_commit="abc1234",
+    model="anthropic.claude-model-placeholder",
+    prompt_version="1",
+)
 
 # What an agent would write without and with the coverage claim in its knowledge store.
 SQL_WITHOUT_CLAIM = {
@@ -134,3 +145,65 @@ def test_a_failing_final_sql_is_scored_wrong(config, tmp_path):
     result = run(config, ScriptedAgent(broken), tmp_path / "work")
     assert {r.response_class for r in result.rows} == {"wrong"}
     assert all(r.executed is None for r in result.rows)
+
+
+class FailsOneQuestion:
+    """An agent whose call fails on one question: recorded as a failure, never scored."""
+
+    def answer(self, request, tools):
+        if request.question_id == "closed-cost":
+            return AgentOutput(None, Usage(1200, 20), failure="malformed output after 2 attempts")
+        return AgentOutput(knows_the_claim(request, tools), Usage(1200, 90))
+
+
+def test_a_failed_call_is_recorded_as_a_failure_and_left_out_of_the_accuracy(config, tmp_path):
+    result = run(config, FailsOneQuestion(), tmp_path / "work")
+
+    failed = [r for r in result.rows if r.response_class == "failed"]
+    assert [r.question_id for r in failed] == ["closed-cost", "closed-cost"]
+    assert all(r.final_sql is None and r.executed is None for r in failed)
+    assert all(r.usage.input_tokens == 1200 for r in result.rows)
+    # Two scored rows per rule. The failure is left out of both numerator and denominator, so the
+    # empty store drops from 1/3 to 0/2: its one correct answer was the question that failed.
+    assert result.accuracy == {"empty": 0.0, "all_person": 1.0}
+
+
+def test_a_rule_whose_every_call_failed_has_no_accuracy_to_report(config, tmp_path):
+    class AlwaysFails:
+        def answer(self, request, tools):
+            return AgentOutput(None, Usage(), failure="malformed output after 2 attempts")
+
+    result = run(config, AlwaysFails(), tmp_path / "work")
+    assert {r.response_class for r in result.rows} == {"failed"}
+    assert result.accuracy == {"empty": None, "all_person": None}
+
+
+def test_a_misconfigured_model_stops_the_run_without_storing_a_row(config, tmp_path):
+    """A failure that is wrong for every question is not worth a record per question."""
+    results = tmp_path / "results.jsonl"
+
+    class Misconfigured:
+        def answer(self, request, tools):
+            raise anthropic.AuthenticationError(
+                "unauthorized",
+                response=httpx.Response(401, request=httpx.Request("POST", "http://example.invalid")),
+                body=None,
+            )
+
+    with pytest.raises(anthropic.AuthenticationError):
+        run(config, Misconfigured(), tmp_path / "work", PROVENANCE, results)
+
+    assert not results.exists()
+
+
+def test_every_stored_result_carries_the_provenance_of_its_run(config, tmp_path):
+    results = tmp_path / "results.jsonl"
+    result = run(config, ScriptedAgent(knows_the_claim), tmp_path / "work", PROVENANCE, results)
+
+    records = [json.loads(line) for line in results.read_text().splitlines()]
+    assert len(records) == len(result.rows)
+    assert {r["model"] for r in records} == {"anthropic.claude-model-placeholder"}
+    assert {r["prompt_version"] for r in records} == {"1"}
+    assert {r["repo_commit"] for r in records} == {"abc1234"}
+    assert records[0]["question_id"] and records[0]["rule"] and records[0]["response_class"]
+    assert records[0]["input_tokens"] == 0 and records[0]["output_tokens"] == 0

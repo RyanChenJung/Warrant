@@ -4,6 +4,15 @@ databases:
   workorders: workorders.sqlite
 rules: [empty, all_person]
 runs: 1
+# Which model answers, and how to reach it. The identifier and region are placeholders until the
+# project lead's Bedrock account is wired up (#26); switching to the Anthropic API means
+# `provider: anthropic` and the unprefixed identifier.
+model:
+  provider: bedrock
+  model: anthropic.claude-model-placeholder
+  region: region-placeholder
+  max_tokens: 4096
+  attempts: 2
 defects:
   - id: open-orders-cut
     database: workorders

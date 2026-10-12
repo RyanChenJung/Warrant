@@ -1,0 +1,15 @@
+{
+  "id": "msg_recorded_answer_fenced",
+  "type": "message",
+  "role": "assistant",
+  "model": "anthropic.claude-model-placeholder",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "```json\n{\"kind\": \"answer\", \"final_sql\": \"SELECT COUNT(*) FROM workorders WHERE status = 'OPEN'\", \"value\": 4, \"confidence\": 0.8}\n```"
+    }
+  ],
+  "usage": {"input_tokens": 1400, "output_tokens": 95}
+}
