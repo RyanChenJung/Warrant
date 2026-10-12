@@ -4,6 +4,7 @@ The numeric tolerance and the refusal check belong to the global part of the fre
 is wired in they are parameters, with the spec's values as defaults.
 """
 
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -12,6 +13,9 @@ from warrant.agent.interface import Response, ResponseKind
 
 # A numeric answer is correct when its relative error is below this.
 TOLERANCE = 0.05
+# Numbers closer than this are equal: two formulations of the same value differ by floating-point
+# noise, which around zero no relative tolerance absorbs.
+FLOAT_NOISE = 1e-9
 
 
 class ResponseClass(StrEnum):
@@ -55,14 +59,18 @@ RefusalCheck = Callable[[Response, tuple[str, ...]], bool]
 
 
 def rule_based_refusal_check(response: Response, missing_terms: tuple[str, ...]) -> bool:
-    """The missing-piece field contains at least one recorded term, and the alternative is not empty."""
+    """The missing-piece field contains at least one recorded term, and the alternative is not empty.
+
+    A term counts where a word starts: "rates" names "rate", "generate" does not.
+    """
     missing = response.missing.casefold()
-    return any(term.casefold() in missing for term in missing_terms) and bool(response.alternative.strip())
+    named = any(re.search(rf"\b{re.escape(term.casefold())}", missing) for term in missing_terms)
+    return named and bool(response.alternative.strip())
 
 
 def _close(a, g, tolerance: float) -> bool:
     if isinstance(a, (int, float)) and isinstance(g, (int, float)):
-        return a == g or abs(a - g) < tolerance * abs(g)
+        return a == g or abs(a - g) < max(tolerance * abs(g), FLOAT_NOISE)
     return a == g
 
 
@@ -70,33 +78,55 @@ def _rows_close(a: tuple, b: tuple, tolerance: float) -> bool:
     return len(a) == len(b) and all(_close(x, y, tolerance) for x, y in zip(a, b))
 
 
-def _key_values(result: Result, key: tuple[str, ...]) -> set[tuple]:
-    """The set of key-value tuples; ValueError when the result has no column of that name."""
+def _key_positions(result: Result, key: tuple[str, ...]) -> list[int]:
+    """Where the key columns are; ValueError when the result has no column of that name."""
     names = [column.casefold() for column in result.columns]
-    positions = [names.index(column.casefold()) for column in key]
-    return {tuple(row[i] for i in positions) for row in result.rows}
+    return [names.index(column.casefold()) for column in key]
+
+
+def _key_values(rows: list[tuple], positions: list[int]) -> set[tuple]:
+    return {tuple(row[i] for i in positions) for row in rows}
+
+
+def _pair_off(executed: set[tuple], gold: set[tuple], tolerance: float) -> bool:
+    """Whether each row pairs with a gold row of its own within tolerance (a perfect bipartite
+    matching, found by augmenting paths), so the outcome does not depend on the order rows are tried.
+
+    Equal rows start out paired, so identical results need no search; a path can still re-pair them.
+    """
+    if len(executed) != len(gold):
+        return False
+    partner = {row: row for row in executed & gold}  # gold row -> the executed row paired with it
+
+    def augment(row: tuple, seen: set[tuple]) -> bool:
+        for g in gold:
+            if g not in seen and _rows_close(row, g, tolerance):
+                seen.add(g)
+                if g not in partner or augment(partner[g], seen):
+                    partner[g] = row
+                    return True
+        return False
+
+    return all(augment(row, set()) for row in executed - gold)
 
 
 def results_match(executed: Result, gold: Result, key: tuple[str, ...] = (), tolerance: float = TOLERANCE) -> bool:
     """The same set of key values when a key is given, otherwise the same set of rows within tolerance.
 
     Row order and repeated rows never matter. Key values are compared exactly, since they identify.
+    Key columns are found by name; an answer that renamed one, with as many columns as the gold
+    result, is read at the gold result's positions.
     """
     if key:
-        gold_keys = _key_values(gold, key)
+        gold_positions = _key_positions(gold, key)
         try:
-            return _key_values(executed, key) == gold_keys
+            positions = _key_positions(executed, key)
         except ValueError:  # the answer does not name a key column
-            return False
-    executed_rows, unmatched = set(executed.rows), list(set(gold.rows))
-    if len(executed_rows) != len(unmatched):
-        return False
-    for row in executed_rows:
-        match = next((g for g in unmatched if _rows_close(row, g, tolerance)), None)
-        if match is None:
-            return False
-        unmatched.remove(match)
-    return True
+            if len(executed.columns) != len(gold.columns):
+                return False
+            positions = gold_positions
+        return _key_values(executed.rows, positions) == _key_values(gold.rows, gold_positions)
+    return _pair_off(set(executed.rows), set(gold.rows), tolerance)
 
 
 def _single_number(result: Result):
@@ -111,7 +141,7 @@ def _size_bucket(executed: Result, gold: Result) -> Bucket | None:
     a, g = _single_number(executed), _single_number(gold)
     if a is None or g is None:
         return None
-    if g == 0 or a * g <= 0:  # a zero gold answer, a zero answer, or opposite signs
+    if abs(g) < FLOAT_NOISE or abs(a) < FLOAT_NOISE or a * g < 0:  # a zero on either side, or opposite signs
         return Bucket.SIGN_OR_ZERO_MISMATCH
     if abs(a - g) <= 0.05 * abs(g):
         return Bucket.WITHIN_5_PERCENT
@@ -162,14 +192,25 @@ def accuracy(classes: Iterable[str]) -> float | None:
     return sum(c in (ResponseClass.CORRECT_ANSWER, ResponseClass.CORRECT_REFUSAL) for c in counted) / len(counted)
 
 
-def flips(classes: Iterable[str]) -> bool:
-    """Whether a question's scored runs in one condition do not all share one response class."""
-    return len({c for c in classes if c != ResponseClass.FAILED}) > 1
+def flips(classes: Iterable[str]) -> bool | None:
+    """Whether a question's scored runs in one condition do not all share one response class; None
+    when fewer than two runs were scored, so there is nothing to compare."""
+    scored = [c for c in classes if c != ResponseClass.FAILED]
+    if len(scored) < 2:
+        return None
+    return len(set(scored)) > 1
 
 
-def is_stale_value(executed: Result | None, pre_drift_gold: Result, tolerance: float = TOLERANCE) -> bool:
-    """Whether a post-drift answer's result matches the pre-drift gold result."""
-    return executed is not None and results_match(executed, pre_drift_gold, tolerance=tolerance)
+def is_stale_value(
+    executed: Result | None, pre_drift_gold: Result, post_drift_gold: Result, tolerance: float = TOLERANCE
+) -> bool:
+    """Whether a post-drift answer's result matches the pre-drift gold result and not the post-drift
+    one: a drift smaller than the tolerance leaves the right answer matching both."""
+    return (
+        executed is not None
+        and results_match(executed, pre_drift_gold, tolerance=tolerance)
+        and not results_match(executed, post_drift_gold, tolerance=tolerance)
+    )
 
 
 def is_silent_error(scored: Score, executed: Result | None, escalations: int) -> bool:

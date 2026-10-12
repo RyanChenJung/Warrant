@@ -27,6 +27,14 @@ class Question:
     key: tuple[str, ...] = ()
 
 
+def _names(raw: dict, field: str) -> tuple[str, ...]:
+    """A list of non-empty strings. A bare string would otherwise be read as its characters."""
+    value = raw.get(field, [])
+    if not isinstance(value, list) or not all(isinstance(name, str) and name.strip() for name in value):
+        raise ValueError(f"question {raw['id']!r}: {field} must be a list of non-empty strings")
+    return tuple(value)
+
+
 def _question(raw: dict) -> Question:
     if (raw.get("gold_sql") is None) == (not raw.get("missing_terms")):
         raise ValueError(f"question {raw['id']!r} needs exactly one of gold_sql and missing_terms")
@@ -36,8 +44,8 @@ def _question(raw: dict) -> Question:
         text=raw["text"],
         gold_sql=raw.get("gold_sql"),
         defect=raw.get("defect"),
-        missing_terms=tuple(raw.get("missing_terms", ())),
-        key=tuple(raw.get("key", ())),
+        missing_terms=_names(raw, "missing_terms"),
+        key=_names(raw, "key"),
     )
 
 

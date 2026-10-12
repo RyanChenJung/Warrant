@@ -65,11 +65,20 @@ def _confidence(value) -> float | None:
     return confidence
 
 
+def _text(raw: dict, field: str) -> str:
+    """A text field, empty when absent. The scorer reads a refusal's fields as text."""
+    value = raw.get(field) or ""
+    if not isinstance(value, str):
+        raise TypeError(f"{field} is not text: {value!r}")
+    return value
+
+
 def _parse(text: str) -> Response:
     try:
         raw = json.loads(_unfenced(text))
         kind = ResponseKind(raw["kind"])
         confidence = _confidence(raw.get("confidence"))
+        missing, alternative, clarification = (_text(raw, f) for f in ("missing", "alternative", "clarification"))
     except (KeyError, TypeError, ValueError) as error:
         raise CallFailed(f"malformed response: {error}") from error
 
@@ -82,9 +91,9 @@ def _parse(text: str) -> Response:
         kind=kind,
         final_sql=final_sql,
         value=raw.get("value"),
-        missing=raw.get("missing", "") or "",
-        alternative=raw.get("alternative", "") or "",
-        clarification=raw.get("clarification", "") or "",
+        missing=missing,
+        alternative=alternative,
+        clarification=clarification,
         confidence=confidence,
     )
 

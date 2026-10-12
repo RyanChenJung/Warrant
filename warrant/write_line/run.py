@@ -61,8 +61,9 @@ class WriteLineResult:
     # Per rule, how many responses fell in each response class, clarification requests and
     # failures included.
     counts: dict[str, Counter[str]]
-    # Per question and rule, whether its scored runs do not all share one response class.
-    flips: dict[tuple[str, str], bool]
+    # Per question and rule, whether its scored runs do not all share one response class; None
+    # when fewer than two runs were scored.
+    flips: dict[tuple[str, str], bool | None]
     gold: dict[str, GoldAnswer]
     stores: dict[str, KnowledgeStore]
     injected: dict[str, Path]
@@ -101,6 +102,24 @@ def _record(row: ResultRow) -> dict:
     }
 
 
+def _rejected(config: Config, gold: dict[str, GoldAnswer]) -> list[str]:
+    """Each question the run could not score as configured, and why; checked before any agent call."""
+    rejected = []
+    for q in config.questions:
+        if q.id not in gold:  # its correct response is a refusal
+            continue
+        g = gold[q.id]
+        if q.defect is None and Counter(query(config.databases[q.database], q.gold_sql)) != Counter(g.rows):
+            rejected.append(f"{q.id} (a control question whose gold answer differs between clean and injected copy)")
+        # A set answer is compared on its key values, so it needs a key its gold result has.
+        if len(g.rows) > 1 and not q.key:
+            rejected.append(f"{q.id} (a set answer with no key)")
+        columns = {column.casefold() for column in g.columns}
+        if any(column.casefold() not in columns for column in q.key):
+            rejected.append(f"{q.id} (a key column its gold result does not have)")
+    return rejected
+
+
 def _execute(path: Path, sql: str | None) -> Result | None:
     if sql is None:
         return None
@@ -135,18 +154,9 @@ def run(
         for q in config.questions
         if q.gold_sql is not None
     }
-    rejected = [
-        q.id
-        for q in config.questions
-        if q.defect is None
-        and q.gold_sql is not None
-        and Counter(query(config.databases[q.database], q.gold_sql)) != Counter(gold[q.id].rows)
-    ]
+    rejected = _rejected(config, gold)
     if rejected:
-        raise ValueError(
-            "control questions whose gold answer differs between the clean and the injected copy: "
-            + ", ".join(rejected)
-        )
+        raise ValueError("questions the run cannot score: " + "; ".join(rejected))
     expected = {question_id: Result(g.columns, g.rows) for question_id, g in gold.items()}
     stores = {rule: compose(rule, config.defects) for rule in config.rules}
 

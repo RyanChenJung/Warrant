@@ -7,6 +7,7 @@ are tested on the scorer itself until #42 can run them end to end.
 """
 
 import dataclasses
+import json
 
 import pytest
 import yaml
@@ -15,6 +16,7 @@ from warrant.agent.fake import ScriptedAgent
 from warrant.agent.interface import AgentOutput, Response, ResponseKind, Usage
 from warrant.data.sqlite import query_with_columns
 from warrant.scoring.classify import Result, is_silent_error, is_stale_value, score
+from warrant.store.results import Provenance
 from warrant.write_line.config import Question, load_config
 from warrant.write_line.run import run
 
@@ -58,6 +60,14 @@ def scored(result, question_id, rule="empty"):
     return row.response_class, row.bucket
 
 
+def with_question(config, question_id, **fields):
+    """The configuration with some fields of one question changed."""
+    return dataclasses.replace(
+        config,
+        questions=tuple(dataclasses.replace(q, **fields) if q.id == question_id else q for q in config.questions),
+    )
+
+
 @pytest.fixture
 def config(scoring_config):
     return load_config(scoring_config)
@@ -91,6 +101,25 @@ def test_a_refusal_without_a_recorded_missing_piece_term_and_an_alternative_is_a
     config, tmp_path, missing, alternative
 ):
     result = run(config, answering({"open-order-cost": refusal(missing, alternative)}), tmp_path / "work")
+    assert scored(result, "open-order-cost") == ("wrong_answer", "inadequate_refusal")
+
+
+@pytest.mark.parametrize(
+    "term, missing",
+    [
+        ("rate", "I cannot generate an accurate figure from this data."),
+        ("date", "The database cannot be updated by me."),
+    ],
+)
+def test_a_recorded_term_inside_another_word_does_not_name_the_missing_piece(config, tmp_path, term, missing):
+    # A term still counts where a word starts: "open work orders" names "open work order" (RIGHT).
+    agent = answering({"open-order-cost": refusal(missing, "The task hours logged on open work orders.")})
+    result = run(with_question(config, "open-order-cost", missing_terms=(term,)), agent, tmp_path / "work")
+    assert scored(result, "open-order-cost") == ("wrong_answer", "inadequate_refusal")
+
+
+def test_the_refusal_check_the_run_is_given_decides_which_refusals_are_correct(config, tmp_path):
+    result = run(config, answering(), tmp_path / "work", refusal_check=lambda response, terms: False)
     assert scored(result, "open-order-cost") == ("wrong_answer", "inadequate_refusal")
 
 
@@ -170,6 +199,37 @@ def test_a_gold_answer_of_zero_gives_a_sign_or_zero_mismatch(config, tmp_path):
     assert scored(result, "costly-closed-orders") == ("wrong_answer", "sign_or_zero_mismatch")
 
 
+# A control question whose gold answer is zero up to floating-point noise: the net of a ledger
+# whose debits and credits cancel out.
+LEDGER = "(VALUES (0.1, 0), (0.2, 0), (0, 0.3))"
+NET_BALANCE = Question(
+    id="net-balance",
+    database="workorders",
+    text="What is the net balance of the ledger?",
+    gold_sql=f"SELECT SUM(column1 - column2) FROM {LEDGER}",
+    defect=None,
+)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [f"SELECT SUM(column1) - SUM(column2) FROM {LEDGER}", "SELECT 0"],
+    ids=["another-formulation", "exactly-zero"],
+)
+def test_an_answer_off_by_floating_point_noise_around_zero_is_correct(config, tmp_path, sql):
+    config = dataclasses.replace(config, questions=config.questions + (NET_BALANCE,))
+    result = run(config, answering({"net-balance": answer(sql)}), tmp_path / "work")
+
+    assert result.gold["net-balance"].rows != [(0,)]  # the noise is there
+    assert scored(result, "net-balance") == ("correct_answer", None)
+
+
+def test_a_gold_answer_of_zero_up_to_floating_point_noise_gives_a_sign_or_zero_mismatch(config, tmp_path):
+    config = dataclasses.replace(config, questions=config.questions + (NET_BALANCE,))
+    result = run(config, answering({"net-balance": answer("SELECT 0.3")}), tmp_path / "work")
+    assert scored(result, "net-balance") == ("wrong_answer", "sign_or_zero_mismatch")
+
+
 # Set answers
 
 
@@ -182,8 +242,9 @@ def test_a_gold_answer_of_zero_gives_a_sign_or_zero_mismatch(config, tmp_path):
             "SELECT t.wonum, SUM(t.hours) FROM tasks t LEFT JOIN workorders w USING (wonum) "
             "WHERE w.wonum IS NULL GROUP BY t.wonum"
         ),
+        "SELECT DISTINCT wonum AS work_order FROM tasks WHERE wonum NOT IN (SELECT wonum FROM workorders)",
     ],
-    ids=["another-row-order", "a-row-per-task", "an-extra-column"],
+    ids=["another-row-order", "a-row-per-task", "an-extra-column", "an-aliased-key-column"],
 )
 def test_a_set_answer_is_compared_as_a_set_of_its_key_values(config, tmp_path, sql):
     result = run(config, answering({"open-order-numbers": answer(sql)}), tmp_path / "work")
@@ -218,6 +279,46 @@ def test_a_question_flips_under_a_rule_when_its_scored_runs_do_not_share_one_res
     assert result.flips == {
         (q, rule): (q, rule) == ("open-order-hours", "empty") for q in QUESTIONS for rule in RULES
     }
+
+
+class FailingAgent:
+    """Right in every run, except that under the empty store every call on one question fails, and
+    two of the three on another."""
+
+    def answer(self, request, tools):
+        if not request.store.claims and (
+            request.question_id == "costly-closed-orders"
+            or (request.question_id == "open-order-hours" and request.run < 2)
+        ):
+            return AgentOutput(None, Usage(), failure="malformed output after 2 attempts")
+        return AgentOutput(RIGHT[request.question_id], Usage())
+
+
+def test_a_question_with_fewer_than_two_scored_runs_under_a_rule_has_no_flip_to_report(config, tmp_path):
+    result = run(dataclasses.replace(config, runs=3), FailingAgent(), tmp_path / "work")
+
+    unmeasured = {("costly-closed-orders", "empty"), ("open-order-hours", "empty")}
+    assert result.flips == {(q, rule): None if (q, rule) in unmeasured else False for q in QUESTIONS for rule in RULES}
+
+
+# Stored results
+
+PROVENANCE = Provenance(
+    config_hash="0" * 64,
+    repo_commit="abc1234",
+    model="anthropic.claude-model-placeholder",
+    prompt_version="1",
+)
+
+
+def test_every_stored_result_carries_its_response_class_and_bucket(config, tmp_path):
+    results = tmp_path / "results.jsonl"
+    run(config, answering({"open-order-hours": answer("SELECT 16.25 * 1.5")}), tmp_path / "work", PROVENANCE, results)
+
+    records = [json.loads(line) for line in results.read_text().splitlines()]
+    stored = {(r["question_id"], r["rule"]): (r["response_class"], r["bucket"]) for r in records}
+    assert stored[("open-order-hours", "empty")] == ("wrong_answer", "within_factor_2")
+    assert stored[("open-order-numbers", "empty")] == ("correct_answer", None)
 
 
 # Validation before any agent call
@@ -255,6 +356,34 @@ def test_a_question_has_either_a_gold_sql_or_missing_piece_terms(scoring_config,
         load_config(scoring_config)
 
 
+@pytest.mark.parametrize(
+    "question_id, field, value",
+    [
+        ("open-order-cost", "missing_terms", "open work order"),
+        ("open-order-cost", "missing_terms", ["open work order", ""]),
+        ("open-order-numbers", "key", "wonum"),
+    ],
+    ids=["terms-not-a-list", "a-blank-term", "key-not-a-list"],
+)
+def test_missing_piece_terms_and_key_columns_are_lists_of_names(scoring_config, question_id, field, value):
+    raw = yaml.safe_load(scoring_config.read_text())
+    (question,) = [q for q in raw["questions"] if q["id"] == question_id]
+    question[field] = value
+    scoring_config.write_text(yaml.safe_dump(raw))
+
+    with pytest.raises(ValueError, match=question_id):
+        load_config(scoring_config)
+
+
+@pytest.mark.parametrize("key", [(), ("work_order",)], ids=["no-key", "a-column-the-gold-result-lacks"])
+def test_a_set_question_without_a_key_its_gold_result_has_is_rejected_before_any_agent_call(config, tmp_path, key):
+    agent = answering()
+
+    with pytest.raises(ValueError, match="open-order-numbers"):
+        run(with_question(config, "open-order-numbers", key=key), agent, tmp_path / "work")
+    assert agent.requests == []
+
+
 # The maintenance line's rules, on the scorer until the maintenance run (#42) exists.
 #
 # A constant-change drift task on the work-order fixture: large work orders cost more than 500
@@ -284,23 +413,67 @@ def test_an_answer_is_scored_against_the_gold_result_of_its_task_state(workorder
 
 def test_a_post_drift_answer_matching_the_pre_drift_gold_result_is_a_stale_value_and_a_silent_error(workorders_db):
     executed = result_of(workorders_db, STALE_SQL)
-    after_drift = score(answer(STALE_SQL), executed, result_of(workorders_db, POST_DRIFT_GOLD))
+    post_drift = result_of(workorders_db, POST_DRIFT_GOLD)
+    after_drift = score(answer(STALE_SQL), executed, post_drift)
 
-    assert is_stale_value(executed, result_of(workorders_db, PRE_DRIFT_GOLD))
+    assert is_stale_value(executed, result_of(workorders_db, PRE_DRIFT_GOLD), post_drift)
     assert is_silent_error(after_drift, executed, escalations=0)
 
 
 def test_the_same_stale_answer_in_a_run_with_an_escalation_is_not_a_silent_error(workorders_db):
     executed = result_of(workorders_db, STALE_SQL)
-    after_drift = score(answer(STALE_SQL), executed, result_of(workorders_db, POST_DRIFT_GOLD))
+    post_drift = result_of(workorders_db, POST_DRIFT_GOLD)
+    after_drift = score(answer(STALE_SQL), executed, post_drift)
 
-    assert is_stale_value(executed, result_of(workorders_db, PRE_DRIFT_GOLD))
+    assert is_stale_value(executed, result_of(workorders_db, PRE_DRIFT_GOLD), post_drift)
     assert not is_silent_error(after_drift, executed, escalations=1)
 
 
 def test_the_right_post_drift_answer_is_not_a_stale_value(workorders_db):
-    executed = result_of(workorders_db, POST_DRIFT_GOLD)
-    assert not is_stale_value(executed, result_of(workorders_db, PRE_DRIFT_GOLD))
+    executed = post_drift = result_of(workorders_db, POST_DRIFT_GOLD)
+    assert not is_stale_value(executed, result_of(workorders_db, PRE_DRIFT_GOLD), post_drift)
+
+
+def test_the_right_post_drift_answer_is_not_a_stale_value_even_when_the_drift_is_within_the_tolerance(
+    workorders_db,
+):
+    # The smallest cost counted goes from 60 to 70, which drops one order of 64.25 out of a total
+    # of 5,440.50: the gold results differ, so the task is valid, but by 1.2 percent.
+    pre_drift = result_of(workorders_db, "SELECT SUM(total_cost) FROM workorders WHERE total_cost > 60")
+    post_drift_sql = "SELECT SUM(total_cost) FROM workorders WHERE total_cost > 70"
+    executed = post_drift = result_of(workorders_db, post_drift_sql)
+
+    assert pre_drift.rows != post_drift.rows
+    assert score(answer(post_drift_sql), executed, post_drift).response_class == "correct_answer"
+    assert not is_stale_value(executed, pre_drift, post_drift)
+
+
+# Without a key, as the maintenance line compares them, results match as sets of rows within the
+# tolerance.
+
+
+def table(rows):
+    return Result(tuple(f"c{i}" for i in range(len(rows[0]))), rows)
+
+
+@pytest.mark.parametrize(
+    "executed_rows, gold_rows",
+    [
+        ([(116,), (117,), (111,)], [(111,), (116,), (117,)]),
+        ([(86.0,), (90.0,)], [(90.0,), (91.0,)]),  # 86 pairs with 90, and 90 with 91
+        ([("NORTH", 103.0), ("NORTH", 97.0)], [("NORTH", 100.0), ("NORTH", 106.0)]),
+    ],
+    ids=["the-same-rows-in-another-order", "a-pairing-a-greedy-match-misses", "a-repeated-label"],
+)
+def test_rows_compared_without_a_key_match_when_they_pair_off_one_to_one_within_the_tolerance(
+    executed_rows, gold_rows
+):
+    # Each gold value lies within 5 percent of another, so a row could pair with the wrong twin.
+    executed, gold = table(executed_rows), table(gold_rows)
+    unrelated = table([("a result the answer does not match",)])
+
+    assert score(answer("SELECT ..."), executed, gold).response_class == "correct_answer"
+    assert is_stale_value(executed, gold, unrelated)
 
 
 @pytest.mark.parametrize(
