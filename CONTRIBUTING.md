@@ -33,7 +33,10 @@ pinned in `uv.lock`. Add a dependency with `uv add <package>` and commit `uv.loc
 ## Hard rules
 
 - **No defect is injected into any database before the freeze commit is pushed to the public repo**
-  (ADR 0007). The injection command refuses to run otherwise; do not work around it.
+  (ADR 0007). The injection command refuses to run otherwise; do not work around it. While
+  designing the freeze, a candidate defect may be tried on a scratch copy outside the data
+  directory and run through the battery, never through a model; every such trial is disclosed in
+  the freeze note. No model call touches a defect before the freeze commit is pushed.
 - **No database file is committed.** The release and every rebuilt database live in the data
   directory, `$WARRANT_DATA_DIR` (default `~/.cache/warrant`, see `warrant/config.py`). Only tiny
   fixture databases under `tests/fixtures/` are committed.
