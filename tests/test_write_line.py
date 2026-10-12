@@ -61,7 +61,7 @@ def test_run_returns_a_results_row_per_question_rule_and_run_and_accuracy_per_ru
     assert {(r.question_id, r.rule, r.run) for r in result.rows} == {
         (q, rule, 0) for q in SQL_WITH_CLAIM for rule in ("empty", "all_person")
     }
-    assert {r.response_class for r in result.rows} <= {"correct", "wrong"}
+    assert {r.response_class for r in result.rows} <= {"correct_answer", "wrong_answer"}
     assert set(result.accuracy) == {"empty", "all_person"}
 
 
@@ -143,7 +143,7 @@ def test_a_failing_final_sql_is_scored_wrong(config, tmp_path):
         return Response(ResponseKind.ANSWER, final_sql="SELECT no_such_column FROM workorders")
 
     result = run(config, ScriptedAgent(broken), tmp_path / "work")
-    assert {r.response_class for r in result.rows} == {"wrong"}
+    assert {r.response_class for r in result.rows} == {"wrong_answer"}
     assert all(r.executed is None for r in result.rows)
 
 

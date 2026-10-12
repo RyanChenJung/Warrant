@@ -61,3 +61,9 @@ def workorders_db(tmp_path):
 def write_line_config(workorders_db):
     """The tracer-bullet configuration next to a freshly built clean work-order database."""
     return Path(shutil.copy(FIXTURES / "write_line.yaml", workorders_db.parent))
+
+
+@pytest.fixture
+def scoring_config(workorders_db):
+    """The scoring configuration (#40) next to a freshly built clean work-order database."""
+    return Path(shutil.copy(FIXTURES / "write_line_scoring.yaml", workorders_db.parent))

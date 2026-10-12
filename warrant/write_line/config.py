@@ -12,11 +12,33 @@ from warrant.store.claims import ClaimKind, Slot
 
 @dataclass(frozen=True)
 class Question:
+    """A probe question (`defect` names its defect) or a control question (`defect` is None).
+
+    A question has a gold SQL, or, when its correct response is a refusal, the terms that name its
+    missing piece. `key` names the columns a set answer is compared on.
+    """
+
     id: str
     database: str
     text: str
-    gold_sql: str
+    gold_sql: str | None
     defect: str | None
+    missing_terms: tuple[str, ...] = ()
+    key: tuple[str, ...] = ()
+
+
+def _question(raw: dict) -> Question:
+    if (raw.get("gold_sql") is None) == (not raw.get("missing_terms")):
+        raise ValueError(f"question {raw['id']!r} needs exactly one of gold_sql and missing_terms")
+    return Question(
+        id=raw["id"],
+        database=raw["database"],
+        text=raw["text"],
+        gold_sql=raw.get("gold_sql"),
+        defect=raw.get("defect"),
+        missing_terms=tuple(raw.get("missing_terms", ())),
+        key=tuple(raw.get("key", ())),
+    )
 
 
 @dataclass(frozen=True)
@@ -45,10 +67,7 @@ def load_config(path: Path) -> Config:
             )
             for d in raw["defects"]
         ),
-        questions=tuple(
-            Question(id=q["id"], database=q["database"], text=q["text"], gold_sql=q["gold_sql"], defect=q.get("defect"))
-            for q in raw["questions"]
-        ),
+        questions=tuple(_question(q) for q in raw["questions"]),
         rules=tuple(raw["rules"]),
         runs=int(raw["runs"]),
         model=load_model_config(raw["model"]) if raw.get("model") else None,

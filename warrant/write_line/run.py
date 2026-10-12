@@ -6,6 +6,7 @@ person; #50 and #51 add the others.
 
 import argparse
 import sqlite3
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,20 +14,30 @@ from warrant.agent.claude import ClaudeAgent
 from warrant.agent.interface import Agent, AnswerRequest, ResponseKind, Usage
 from warrant.agent.tools import ReadOnlySQL
 from warrant.config import data_dir
-from warrant.data.sqlite import query, schema
+from warrant.data.sqlite import query, query_with_columns, schema
 from warrant.defects.inject import Defect, inject
-from warrant.scoring.classify import classify
+from warrant.scoring.classify import (
+    TOLERANCE,
+    Bucket,
+    RefusalCheck,
+    ResponseClass,
+    Result,
+    Score,
+    accuracy,
+    flips,
+    rule_based_refusal_check,
+    score,
+)
 from warrant.store.claims import Claim, KnowledgeStore, Source, Toulmin, WarrantKind
 from warrant.store.results import Provenance, append, provenance_for
 from warrant.write_line.config import Config, load_config
-
-FAILED = "failed"
 
 
 @dataclass(frozen=True)
 class GoldAnswer:
     question_id: str
     sql: str
+    columns: tuple[str, ...]
     rows: list[tuple]
 
 
@@ -40,12 +51,18 @@ class ResultRow:
     executed: list[tuple] | None
     usage: Usage
     failure: str = ""
+    bucket: Bucket | None = None
 
 
 @dataclass(frozen=True)
 class WriteLineResult:
     rows: list[ResultRow]
     accuracy: dict[str, float | None]
+    # Per rule, how many responses fell in each response class, clarification requests and
+    # failures included.
+    counts: dict[str, Counter[str]]
+    # Per question and rule, whether its scored runs do not all share one response class.
+    flips: dict[tuple[str, str], bool]
     gold: dict[str, GoldAnswer]
     stores: dict[str, KnowledgeStore]
     injected: dict[str, Path]
@@ -70,20 +87,13 @@ def compose(rule: str, defects: tuple[Defect, ...]) -> KnowledgeStore:
     raise ValueError(f"unknown allocation rule: {rule!r}")
 
 
-def _accuracy(rows: list[ResultRow]) -> float | None:
-    """Correct answers over the rows that were scored. None when every call failed."""
-    scored = [r for r in rows if r.response_class != FAILED]
-    if not scored:
-        return None
-    return sum(r.response_class == "correct" for r in scored) / len(scored)
-
-
 def _record(row: ResultRow) -> dict:
     return {
         "question_id": row.question_id,
         "rule": row.rule,
         "run": row.run,
         "response_class": row.response_class,
+        "bucket": row.bucket,
         "final_sql": row.final_sql,
         "input_tokens": row.usage.input_tokens,
         "output_tokens": row.usage.output_tokens,
@@ -91,11 +101,11 @@ def _record(row: ResultRow) -> dict:
     }
 
 
-def _execute(path: Path, sql: str | None) -> list[tuple] | None:
+def _execute(path: Path, sql: str | None) -> Result | None:
     if sql is None:
         return None
     try:
-        return query(path, sql)
+        return Result(*query_with_columns(path, sql))
     except sqlite3.Error:
         return None
 
@@ -106,12 +116,38 @@ def run(
     work_dir: Path,
     provenance: Provenance | None = None,
     results: Path | None = None,
+    *,
+    tolerance: float = TOLERANCE,
+    refusal_check: RefusalCheck = rule_based_refusal_check,
 ) -> WriteLineResult:
+    """Ask every question under every rule `config.runs` times and score the responses.
+
+    The tolerance and the refusal check belong to the global part of the freeze (#33), which will
+    supply them; until then the defaults are the spec's.
+    """
     injected = {
         name: inject(clean, work_dir / f"{name}.sqlite", [d for d in config.defects if d.database == name])
         for name, clean in config.databases.items()
     }
-    gold = {q.id: GoldAnswer(q.id, q.gold_sql, query(injected[q.database], q.gold_sql)) for q in config.questions}
+    # A question whose correct response is a refusal has no gold answer.
+    gold = {
+        q.id: GoldAnswer(q.id, q.gold_sql, *query_with_columns(injected[q.database], q.gold_sql))
+        for q in config.questions
+        if q.gold_sql is not None
+    }
+    rejected = [
+        q.id
+        for q in config.questions
+        if q.defect is None
+        and q.gold_sql is not None
+        and Counter(query(config.databases[q.database], q.gold_sql)) != Counter(gold[q.id].rows)
+    ]
+    if rejected:
+        raise ValueError(
+            "control questions whose gold answer differs between the clean and the injected copy: "
+            + ", ".join(rejected)
+        )
+    expected = {question_id: Result(g.columns, g.rows) for question_id, g in gold.items()}
     stores = {rule: compose(rule, config.defects) for rule in config.rules}
 
     rows = []
@@ -135,24 +171,50 @@ def run(
                     if response is not None and response.kind == ResponseKind.ANSWER
                     else None
                 )
+                # A failed call is recorded, not scored: it is neither a correct nor a wrong
+                # answer, and it stays out of the accuracy below.
+                scored = (
+                    Score(ResponseClass.FAILED)
+                    if output.failure
+                    else score(
+                        response,
+                        executed,
+                        expected.get(q.id),
+                        key=q.key,
+                        missing_terms=q.missing_terms,
+                        tolerance=tolerance,
+                        refusal_check=refusal_check,
+                    )
+                )
                 row = ResultRow(
                     question_id=q.id,
                     rule=rule,
                     run=run_index,
-                    # A failed call is recorded, not scored: it is neither a correct nor a wrong
-                    # answer, and it stays out of the accuracy below.
-                    response_class=FAILED if output.failure else classify(response, executed, gold[q.id].rows),
+                    response_class=scored.response_class,
                     final_sql=None if response is None else response.final_sql,
-                    executed=executed,
+                    executed=None if executed is None else executed.rows,
                     usage=output.usage,
                     failure=output.failure,
+                    bucket=scored.bucket,
                 )
                 rows.append(row)
                 if results is not None and provenance is not None:
                     append(results, provenance, _record(row))
 
-    accuracy = {rule: _accuracy([r for r in rows if r.rule == rule]) for rule in config.rules}
-    return WriteLineResult(rows=rows, accuracy=accuracy, gold=gold, stores=stores, injected=injected)
+    by_rule = {rule: [r for r in rows if r.rule == rule] for rule in config.rules}
+    return WriteLineResult(
+        rows=rows,
+        accuracy={rule: accuracy(r.response_class for r in by_rule[rule]) for rule in config.rules},
+        counts={rule: Counter(r.response_class for r in by_rule[rule]) for rule in config.rules},
+        flips={
+            (q.id, rule): flips(r.response_class for r in by_rule[rule] if r.question_id == q.id)
+            for q in config.questions
+            for rule in config.rules
+        },
+        gold=gold,
+        stores=stores,
+        injected=injected,
+    )
 
 
 def main(argv=None) -> int:
@@ -177,10 +239,15 @@ def main(argv=None) -> int:
         provenance_for(args.config, config.model),
         args.results,
     )
-    failed = sum(row.response_class == FAILED for row in result.rows)
+    failed = sum(row.response_class == ResponseClass.FAILED for row in result.rows)
     print(f"{len(result.rows)} results, {failed} failed calls, written to {args.results}")
-    for rule, accuracy in result.accuracy.items():
-        print(f"  {rule}: {'no scored call' if accuracy is None else f'{accuracy:.3f}'}")
+    for rule, rule_accuracy in result.accuracy.items():
+        counts = result.counts[rule]
+        print(
+            f"  {rule}: {'no counted response' if rule_accuracy is None else f'{rule_accuracy:.3f}'}, "
+            f"{counts[ResponseClass.CLARIFICATION_REQUEST]} clarification requests, "
+            f"{counts[ResponseClass.FAILED]} failed calls"
+        )
     return 0
 
 
