@@ -24,3 +24,6 @@ __pycache__/
 
 # Local agent worktrees
 .claude/worktrees/
+
+# Thesis figures stay local, like docs/thesis/
+docs/figures/
