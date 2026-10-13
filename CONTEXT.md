@@ -23,8 +23,9 @@ _Avoid_: documented, sourced
 
 **Testimony warrant**:
 The warrant a claim has when the check battery leaves more than one of its readings and a person
-reports which is true, where those readings would produce different databases, so a stronger
-battery could settle the claim later.
+reports which is true, where the readings differ on a fact rather than a convention: a data part the
+battery cannot see, or a provenance part. A stronger battery, or a record of how the data came to
+be, could settle the claim later.
 _Avoid_: human confirmation, partial settlement
 
 **Declaration warrant**:
@@ -74,9 +75,16 @@ The part of a claim whose competing readings would produce different databases, 
 can in principle tell them apart.
 _Avoid_: empirical part, factual part
 
+**Provenance part**:
+The part of a claim whose competing readings leave the database identical but differ on a fact about
+how the data came to be, such as why rows are missing, so no check battery on that database can tell
+them apart and only someone who knows that history, or a record of it, can settle it.
+_Avoid_: lineage, hidden fact, metadata
+
 **Convention part**:
-The part of a claim whose competing readings leave the database identical, so only a person's
-declaration or an authoritative record can fix it.
+The part of a claim whose competing readings leave the database identical and differ only on what a
+term, code or quantity is taken to mean, so only a person's declaration or an authoritative record
+can fix it.
 _Avoid_: institutional part, convention claim
 
 **Reference claim**:
