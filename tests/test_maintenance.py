@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 from warrant.agent.fake import ScriptedAgent
-from warrant.agent.interface import AnswerRequest, Response, ResponseKind
+from warrant.agent.interface import AgentOutput, AnswerRequest, Response, ResponseKind, Usage
 from warrant.data.sqlite import query
 from warrant.maintenance import validate
 from warrant.maintenance.config import load_config
@@ -58,6 +58,39 @@ def answers(sql):
 
 def rows_of(result, condition, state):
     return [r for r in result.rows if r.condition == condition and r.state == state]
+
+
+class FailsSome:
+    """Fails the calls `fails` picks, as a timed-out model call would, and answers the rest by the
+    script."""
+
+    def __init__(self, script, fails):
+        self._script, self._fails = script, fails
+
+    def answer(self, request, tools):
+        if self._fails(request):
+            return AgentOutput(None, Usage(), failure="timed out")
+        return AgentOutput(self._script(request, tools), Usage())
+
+
+def edit_task(config_path, change, name=f"{TASK}.yaml"):
+    """Apply `change` to the raw contents of a copied task file."""
+    task = config_path.parent / name
+    raw = yaml.safe_load(task.read_text())
+    change(raw)
+    task.write_text(yaml.safe_dump(raw))
+    return config_path
+
+
+def with_second_task(config_path, change):
+    """Add a second task file to the configuration: a copy of the fixture task with `change` applied."""
+    second = config_path.parent / "second.yaml"
+    second.write_text((config_path.parent / f"{TASK}.yaml").read_text())
+    edit_task(config_path, change, second.name)
+    raw = yaml.safe_load(config_path.read_text())
+    raw["tasks"].append(second.name)
+    config_path.write_text(yaml.safe_dump(raw))
+    return config_path
 
 
 @pytest.fixture
@@ -175,17 +208,67 @@ def test_every_stored_result_carries_its_provenance_and_its_stale_value_and_sile
     assert {r["escalations"] for r in records} == {0}
 
 
+def test_every_stored_result_carries_its_executed_result_and_the_self_reported_confidence(config, tmp_path):
+    def confident(request, tools):
+        return dataclasses.replace(follows_the_store(request, tools), confidence=0.7)
+
+    results = tmp_path / "results.jsonl"
+    run(config, ScriptedAgent(confident), PROVENANCE, results)
+
+    records = [json.loads(line) for line in results.read_text().splitlines()]
+    assert {r["confidence"] for r in records} == {0.7}
+    (stale,) = [r for r in records if (r["condition"], r["state"]) == (STORED, AFTER)]
+    assert sorted(map(tuple, stale["executed"])) == [("NORTH", 1815.75), ("SOUTH", 2375.5)]
+
+
+@pytest.mark.parametrize("sql", ["-- no query", "CREATE TEMP TABLE large AS SELECT 1"])
+def test_an_answer_whose_final_sql_returns_no_result_is_wrong_but_came_with_an_error_so_it_is_not_a_silent_error(
+    config, sql
+):
+    result = run(config, answers(sql))
+    assert {(r.response_class, r.executed, r.stale_value, r.silent_error) for r in result.rows} == {
+        ("wrong_answer", None, False, False)
+    }
+
+
+def test_the_stale_value_rate_weighs_each_task_the_same_whatever_number_of_its_runs_failed(maintenance_config):
+    # A second task, the same as the fixture task under another id.
+    config = dataclasses.replace(
+        load_config(with_second_task(maintenance_config, lambda raw: raw.update(id="other"))), runs=3
+    )
+
+    def script(request, tools):
+        # The fixture task follows its store; the other task misses both gold results.
+        if request.question_id == TASK:
+            return follows_the_store(request, tools)
+        return Response(ResponseKind.ANSWER, final_sql=spend_over(1000))
+
+    # Two of the fixture task's three runs fail, in both states and under both conditions.
+    agent = FailsSome(script, lambda request: request.question_id == TASK and request.run < 2)
+    result = run(config, agent)
+
+    # After drift, the fixture task's one scored run is a stale value and none of the other task's
+    # three is: 1.0 and 0.0, so 0.5, where pooling the four runs would give 0.25.
+    assert result.stale_value_rate[(STORED, AFTER)] == 0.5
+    assert result.stale_value_rate[(STORED, BEFORE)] == 0.0
+
+
 # The validation command, on copies of the fixture task with other gold SQL.
 
 
-def with_gold_sql(config_path, **gold_sql):
+def gold_sql(**sql_per_state):
+    """A change to a task file that gives the states named other gold SQL."""
+
+    def change(raw):
+        for state, sql in sql_per_state.items():
+            raw[state]["gold_sql"] = sql
+
+    return change
+
+
+def with_gold_sql(config_path, **sql_per_state):
     """Rewrite the copied task file with other gold SQL for the states named."""
-    task = config_path.parent / f"{TASK}.yaml"
-    raw = yaml.safe_load(task.read_text())
-    for state, sql in gold_sql.items():
-        raw[state]["gold_sql"] = sql
-    task.write_text(yaml.safe_dump(raw))
-    return config_path
+    return edit_task(config_path, gold_sql(**sql_per_state))
 
 
 def test_the_validator_accepts_the_fixture_task(maintenance_config, capsys):
@@ -208,10 +291,16 @@ def test_the_validator_accepts_the_fixture_task(maintenance_config, capsys):
             "SELECT SUM(total_cost) FROM workorders WHERE total_cost > 5000",
             "its post-drift result is empty",
         ),
+        # Per site, a sum over no rows keeps the site and is NULL.
+        (
+            spend_over(500),
+            "SELECT site, SUM(CASE WHEN total_cost > 5000 THEN total_cost END) FROM workorders GROUP BY site",
+            "its post-drift result is empty",
+        ),
         (spend_over(500), "DELETE FROM workorders WHERE total_cost > 800", "post_drift gold SQL is not a read-only query"),
         (spend_over(500), "CREATE TEMP TABLE large AS SELECT 1", "post_drift gold SQL is not a read-only query"),
     ],
-    ids=["equal", "equal-within-the-tolerance", "empty", "only-null", "a-write", "no-result"],
+    ids=["equal", "equal-within-the-tolerance", "empty", "only-null", "null-per-group", "a-write", "no-result"],
 )
 def test_the_validator_rejects_an_invalid_task_and_leaves_the_database_unchanged(
     maintenance_config, workorders_db, capsys, pre_drift, post_drift, reason
@@ -232,3 +321,107 @@ def test_the_run_refuses_an_invalid_task_before_any_agent_call(maintenance_confi
     with pytest.raises(ValueError, match=f"{TASK}.*two gold results are equal"):
         run(config, agent)
     assert agent.requests == []
+
+
+def test_the_validator_judges_equal_gold_results_within_the_tolerance_the_run_is_given(maintenance_config, capsys):
+    # One site total moves 2.6 percent: equal within the default 5 percent, not within 1 percent.
+    with_gold_sql(maintenance_config, pre_drift=spend_over(60), post_drift=spend_over(70))
+
+    assert validate.main(["--config", str(maintenance_config)]) == 1
+    assert validate.main(["--config", str(maintenance_config), "--tolerance", "0.01"]) == 0
+    assert "1 of 1 tasks valid" in capsys.readouterr().out
+    assert len(run(load_config(maintenance_config), ScriptedAgent(follows_the_store), tolerance=0.01).rows) == 4
+
+
+def large_order(version, threshold, id=0):
+    return {
+        "id": id,
+        "version": version,
+        "knowledge": LARGE,
+        "description": "Which work orders count as large.",
+        "definition": f"A work order is large when its total cost is over {threshold}.",
+        "type": "domain_knowledge",
+        "children_knowledge": -1,
+    }
+
+
+def view(state, *entries):
+    """A change to a task file that gives a state's knowledge-base view these entries."""
+
+    def change(raw):
+        raw[state]["knowledge_base"] = list(entries)
+
+    return change
+
+
+def entry_id(new_id):
+    """A change to a task file that gives its one entry another id, in its views too."""
+
+    def change(raw):
+        raw["entries"][0]["id"] = new_id
+        raw[BEFORE]["knowledge_base"][0]["id"] = raw[AFTER]["knowledge_base"][0]["id"] = new_id
+
+    return change
+
+
+@pytest.mark.parametrize(
+    "change, reason",
+    [
+        # Left out of a view, the entry would show its release text instead.
+        (view(BEFORE), "its pre_drift knowledge-base view lists entries [], not its entries [0]"),
+        (view(AFTER), "its post_drift knowledge-base view lists entries [], not its entries [0]"),
+        # A wrong id would put a second claim in the entry's slot.
+        (view(AFTER, large_order(2, 800, id=9)), "its post_drift knowledge-base view lists entries [9], not"),
+        (entry_id(9), "entry 9 is not in the workorders knowledge base"),
+    ],
+    ids=["no-pre-drift-entry", "no-post-drift-entry", "another-post-drift-entry", "an-unknown-entry"],
+)
+def test_the_validator_rejects_a_task_whose_knowledge_base_views_do_not_hold_exactly_its_entries(
+    maintenance_config, capsys, change, reason
+):
+    edit_task(maintenance_config, change)
+
+    assert validate.main(["--config", str(maintenance_config)]) == 1
+    out = capsys.readouterr().out
+    assert f"{TASK}: " in out and reason in out
+
+
+def test_the_validator_rejects_a_task_that_leaves_out_another_entry_in_the_slot_of_one_of_its_entries(
+    maintenance_config, capsys
+):
+    # After drift the full knowledge base would hold entry 0's new threshold and this entry's old one.
+    kb = maintenance_config.parent / "workorders_kb.jsonl"
+    same_slot = {k: v for k, v in large_order(1, 500, id=3).items() if k != "version"}
+    kb.write_text(kb.read_text() + json.dumps(same_slot) + "\n")
+
+    assert validate.main(["--config", str(maintenance_config)]) == 1
+    out = capsys.readouterr().out
+    assert f"{TASK}: knowledge-base entry 3 is in the slot of entry 0 but is not one of its entries" in out
+
+
+def test_the_run_refuses_an_undocumented_task_while_a_view_cannot_mark_an_entry_removed_or_under_revision(
+    maintenance_config,
+):
+    # Left out of the post-drift view, the entry would come back with its pre-drift release text.
+    def undocumented(raw):
+        raw["drift_type"] = "undocumented"
+        raw[AFTER]["knowledge_base"] = []
+
+    config = load_config(edit_task(maintenance_config, undocumented))
+    agent = ScriptedAgent(follows_the_store)
+
+    with pytest.raises(ValueError, match=f"{TASK}.*undocumented drift is not supported yet"):
+        run(config, agent)
+    assert agent.requests == []
+
+
+def test_two_task_files_with_one_id_are_refused_before_any_task_is_validated_or_run(maintenance_config, capsys):
+    # A copy of the fixture task kept as a template for another task, its id left unchanged.
+    with_second_task(maintenance_config, gold_sql(pre_drift=spend_over(900), post_drift=spend_over(1000)))
+
+    with pytest.raises(SystemExit) as exited:
+        validate.main(["--config", str(maintenance_config)])
+    assert exited.value.code == 2
+    assert f"task ids used more than once: {TASK}" in capsys.readouterr().err
+    with pytest.raises(ValueError, match=f"task ids used more than once: {TASK}"):
+        load_config(maintenance_config)

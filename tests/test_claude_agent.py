@@ -152,7 +152,14 @@ def test_an_answer_wrapped_in_a_markdown_fence_is_still_read(replay, request_for
 
 @pytest.mark.parametrize(
     "recorded",
-    ["answer_without_sql", "confidence_not_a_number", "confidence_out_of_range", "refusal_missing_not_text"],
+    [
+        "answer_without_sql",
+        "answer_blank_sql",
+        "answer_sql_not_text",
+        "confidence_not_a_number",
+        "confidence_out_of_range",
+        "refusal_missing_not_text",
+    ],
 )
 def test_a_response_the_prompt_asked_for_differently_is_malformed(
     recorded, replay, request_for, sql_tool

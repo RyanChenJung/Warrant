@@ -54,13 +54,15 @@ class Result:
 
 def execute(path: Path, sql: str | None) -> Result | None:
     """The result of re-executing an answer's final SQL on the database it named, read-only; None
-    when there is no SQL or it fails."""
+    when there is no SQL, it fails, or it is not a query (it returns no result, as a comment or a
+    temporary table does)."""
     if sql is None:
         return None
     try:
-        return Result(*query_with_columns(path, sql))
+        columns, rows = query_with_columns(path, sql)
     except sqlite3.Error:
         return None
+    return Result(columns, rows) if columns else None
 
 
 @dataclass(frozen=True)

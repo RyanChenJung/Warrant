@@ -6,7 +6,8 @@ id: large-order-spend
 database: workorders
 question: What is the total cost of large work orders at each site?
 # documented: the entry gets a new version. undocumented (#44): it is removed or marked under
-# revision, so only the oracle person knows the new rule.
+# revision, so only the oracle person knows the new rule. A view cannot mark an entry removed or
+# under revision yet, so the validator refuses undocumented tasks for now.
 drift_type: documented
 # The knowledge-base entries the task depends on, by their id in the database's knowledge base.
 entries:
@@ -16,8 +17,8 @@ entries:
     # The stored answer: the pre-drift value copied from the old entry, without its source or
     # version. The fixture supplies it until #45 builds stored answers.
     stored_answer: A large work order is one whose total cost is over 500.
-# Each state's knowledge-base view and gold SQL. The view holds the task's entries in the release's
-# knowledge-base format, each with its version; every other entry stays as released.
+# Each state's knowledge-base view and gold SQL. The view holds exactly the task's entries in the
+# release's knowledge-base format, each with its version; every other entry stays as released.
 pre_drift:
   knowledge_base:
     - id: 0

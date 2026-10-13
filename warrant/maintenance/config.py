@@ -82,17 +82,25 @@ class Config:
 
 
 def load_config(path: Path) -> Config:
-    """Read a configuration and the task files it lists; paths are relative to the configuration."""
+    """Read a configuration and the task files it lists; paths are relative to the configuration.
+
+    A task is known by its id, so two task files with one id are refused.
+    """
     path = Path(path)
     raw = yaml.safe_load(path.read_text())
 
     def resolve(relative: str) -> Path:
         return (path.parent / relative).resolve()
 
+    tasks = tuple(load_task(resolve(task)) for task in raw["tasks"])
+    ids = [task.id for task in tasks]
+    repeated = sorted({i for i in ids if ids.count(i) > 1})
+    if repeated:
+        raise ValueError(f"{path}: task ids used more than once: {', '.join(repeated)}")
     return Config(
         databases={name: resolve(db) for name, db in raw["databases"].items()},
         knowledge_bases={name: resolve(kb) for name, kb in raw["knowledge_bases"].items()},
-        tasks=tuple(load_task(resolve(task)) for task in raw["tasks"]),
+        tasks=tasks,
         conditions=tuple(raw["conditions"]),
         runs=int(raw["runs"]),
     )

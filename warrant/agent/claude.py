@@ -84,7 +84,7 @@ def _parse(text: str) -> Response:
 
     # An answer is scored by re-executing its SQL, so an answer without any is not one.
     final_sql = raw.get("final_sql") if kind == ResponseKind.ANSWER else None
-    if kind == ResponseKind.ANSWER and not final_sql:
+    if kind == ResponseKind.ANSWER and not (isinstance(final_sql, str) and final_sql.strip()):
         raise CallFailed("malformed response: an answer with no final SQL")
 
     return Response(

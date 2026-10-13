@@ -29,6 +29,7 @@ from warrant.scoring.classify import (
     is_stale_value,
     score,
 )
+from warrant.scoring.stats import stale_value_rate
 from warrant.store.claims import Claim, ClaimKind, KnowledgeStore, Slot, Source, Toulmin, WarrantKind
 from warrant.store.results import Provenance, append
 
@@ -61,6 +62,8 @@ class ResultRow:
     response_class: str
     final_sql: str | None
     executed: list[tuple] | None
+    # The answer's self-reported confidence; None for a failed call.
+    confidence: float | None
     usage: Usage
     stale_value: bool
     silent_error: bool
@@ -73,8 +76,8 @@ class MaintenanceResult:
     rows: list[ResultRow]
     # Per condition and state.
     accuracy: dict[tuple[str, State], float | None]
-    # Per condition and state, the share of scored runs whose answer is a stale value, failed calls
-    # left out; before drift no answer is one. None when no run was scored.
+    # Per condition and state, each task's share of scored runs whose answer is a stale value,
+    # averaged over tasks (`stats.stale_value_rate`); before drift no answer is one.
     stale_value_rate: dict[tuple[str, State], float | None]
 
 
@@ -122,10 +125,6 @@ def compose(condition: str, task: Task, state: State, released: list[Entry]) -> 
     raise ValueError(f"unknown condition: {condition!r}")
 
 
-def _share(flags: list[bool]) -> float | None:
-    return sum(flags) / len(flags) if flags else None
-
-
 def _record(row: ResultRow) -> dict:
     return {
         "task": row.task,
@@ -135,6 +134,10 @@ def _record(row: ResultRow) -> dict:
         "response_class": row.response_class,
         "bucket": row.bucket,
         "final_sql": row.final_sql,
+        # The executed result is stored with its score; confidence-escalate (#46) breaks ties in the
+        # agreement of executed results by the mean self-reported confidence.
+        "executed": row.executed,
+        "confidence": row.confidence,
         "stale_value": row.stale_value,
         "silent_error": row.silent_error,
         # The statistics (#41) read each run's escalation calls; none until #39 adds the tool.
@@ -156,16 +159,17 @@ def run(
     """Ask every task in both states under every condition `config.runs` times and score the answers.
 
     The tolerance belongs to the global part of the freeze (#33); until it is wired in, the default
-    is the spec's.
+    is the spec's. The stale-value rate is computed as the statistics (#41) compute it, so a task
+    with no scored run under a condition in a state raises once every result is stored.
     """
+    released = {name: read_knowledge_base(path) for name, path in config.knowledge_bases.items()}
     rejected = [
         f"{task.id} ({problem})"
         for task in config.tasks
-        for problem in problems(task, config.databases[task.database], tolerance)
+        for problem in problems(task, config.databases[task.database], released[task.database], tolerance)
     ]
     if rejected:
         raise ValueError("tasks the run cannot score: " + "; ".join(rejected))
-    released = {name: read_knowledge_base(path) for name, path in config.knowledge_bases.items()}
     stores = {
         (task.id, condition, state): compose(condition, task, state, released[task.database])
         for task in config.tasks
@@ -216,6 +220,7 @@ def run(
                         response_class=scored.response_class,
                         final_sql=None if response is None else response.final_sql,
                         executed=None if executed is None else executed.rows,
+                        confidence=None if response is None else response.confidence,
                         usage=output.usage,
                         stale_value=state == State.POST_DRIFT
                         and is_stale_value(executed, gold[(task.id, State.PRE_DRIFT)], expected, tolerance),
@@ -234,8 +239,5 @@ def run(
     return MaintenanceResult(
         rows=rows,
         accuracy={cell: accuracy(r.response_class for r in in_cell) for cell, in_cell in cells.items()},
-        stale_value_rate={
-            cell: _share([r.stale_value for r in in_cell if r.response_class != ResponseClass.FAILED])
-            for cell, in_cell in cells.items()
-        },
+        stale_value_rate={cell: stale_value_rate(_record(r) for r in in_cell) for cell, in_cell in cells.items()},
     )

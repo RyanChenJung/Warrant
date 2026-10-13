@@ -1,0 +1,15 @@
+{
+  "id": "msg_recorded_answer_blank_sql",
+  "type": "message",
+  "role": "assistant",
+  "model": "anthropic.claude-model-placeholder",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"kind\": \"answer\", \"final_sql\": \"   \", \"value\": 4, \"confidence\": 0.8}"
+    }
+  ],
+  "usage": {"input_tokens": 1400, "output_tokens": 30}
+}
