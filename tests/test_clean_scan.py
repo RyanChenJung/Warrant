@@ -2,6 +2,7 @@ import ast
 import inspect
 import json
 import shutil
+import sqlite3
 
 import pytest
 import yaml
@@ -153,3 +154,67 @@ def test_kept_exports_are_refused_inside_the_repository(fetched, tmp_path):
     with pytest.raises(SystemExit):
         clean_scan.main(["--config", str(fetched), "--today", TODAY, "--out-dir", str(tmp_path / "out"),
                          "--keep-export", str(clean_scan.REPO / "docs" / "export")])
+
+
+def test_a_grain_split_is_listed_with_whether_a_declared_key_supports_it(shop_release, tmp_path):
+    """Steps point at their parent job on a declared key; in Readings a count column merely holds key values."""
+    con = sqlite3.connect(shop_release / "shop" / "shop_template.sqlite")
+    con.executescript("""
+        CREATE TABLE Jobs (JobId INTEGER PRIMARY KEY, ParentJob INTEGER REFERENCES Jobs (JobId), Label TEXT);
+        CREATE TABLE Readings (ReadingId INTEGER PRIMARY KEY, Spores INTEGER, Site TEXT);
+        INSERT INTO Jobs WITH RECURSIVE n (i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 12)
+            SELECT i, CASE WHEN i > 4 THEN i % 4 + 1 END, 'job ' || i FROM n;
+        INSERT INTO Readings WITH RECURSIVE n (i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 12)
+            SELECT i, CASE WHEN i > 3 THEN i % 5 + 1 END, 'site ' || i FROM n;
+    """)
+    con.commit()
+    con.close()
+
+    assert shop(shop_release, tmp_path)["grain_splits"] == [
+        {"table": "Jobs", "column": "ParentJob", "rows": 12, "top_level_rows": 4, "declared_self_reference": True},
+        {"table": "Readings", "column": "Spores", "rows": 12, "top_level_rows": 3, "declared_self_reference": False},
+    ]
+
+
+def test_the_report_names_the_tables_split_without_a_declared_key(shop_release, tmp_path):
+    report, runtimes = scan_release(shop_release, ["shop"], TODAY, tmp_path / "work")
+    assert report["databases"]["shop"]["grain_splits"] == []
+    assert "0 of the 4 tables are split" in render_markdown(report, runtimes)
+
+    report["databases"]["shop"]["grain_splits"] = [
+        {"table": "Orders", "column": "Fee", "rows": 24, "top_level_rows": 5, "declared_self_reference": False}]
+    markdown = render_markdown(report, runtimes)
+    assert "- shop.`Orders`: split on `Fee`, keeping 5 of 24 rows" in markdown
+    assert "(only on the rows the GRAIN split keeps; see the caveat)" in markdown
+
+
+def test_the_command_lists_the_findings_on_a_defects_table_by_claim_kind(fetched, tmp_path):
+    out = tmp_path / "out"
+    clean_scan.main(["--config", str(fetched), "--today", TODAY, "--out-dir", str(out),
+                     "--defect-subjects", "column_formula:shop.Orders.Total", "coverage:store.Customers"])
+
+    report = json.loads((out / clean_scan.JSON_NAME).read_text())
+    section = (out / clean_scan.REPORT_NAME).read_text().split("## Tables of the frozen defects")[1]
+    orders, customers = section.split("### Coverage defect: `store.Customers`")
+    assert report["defect_subjects"] == [
+        {"claim_kind": "column_formula", "database": "shop", "table": "Orders", "column": "Total"},
+        {"claim_kind": "coverage", "database": "store", "table": "Customers", "column": None}]
+    assert "### Column formula defect: `shop.Orders.Total`" in orders
+    assert "- Peers of `Orders`: Customers, OrderLines." in orders
+    assert "- RULE `Orders.Total`: Total equals Net + Tax + Shipping for all 24 rows" in orders
+    assert "- GRAIN split: none on `Orders`; none on its peers." in orders
+    on_orders = [f for f in report["databases"]["shop"]["findings"] if f["subject"].split(".")[0] == "Orders"]
+    on_total = [f for f in on_orders if f["subject"] == "Orders.Total"]
+    assert {f["assertion_type"] for f in on_total} == {"GRAIN", "RULE"}
+    assert f"Findings on `Orders` and its columns: {len(on_orders)}, of which {len(on_total)} on `Total`." in orders
+    for finding in on_orders:
+        assert " ".join(finding["statement"].split()) in orders
+    assert "- `Orders.CustRef` (scanning `Orders`): CustRef joins to Customers.CustRegistry" in customers
+    assert "confounding is #34's call" in section
+
+
+def test_a_defect_subject_must_name_a_claim_kind_and_a_scanned_table(fetched, tmp_path):
+    for subject in ("shop.Orders", "colour:shop.Orders", "coverage:shop.Missing", "coverage:other.Orders"):
+        with pytest.raises(SystemExit):
+            clean_scan.main(["--config", str(fetched), "--today", TODAY, "--out-dir", str(tmp_path / "out"),
+                             "--defect-subjects", subject])

@@ -1,0 +1,23 @@
+{
+ "today": "2026-10-12",
+ "seconds": {
+  "alien": 3.62,
+  "archeology": 2.43,
+  "credit": 3.95,
+  "cross_db": 3.36,
+  "crypto": 3.44,
+  "cybermarket": 3.86,
+  "disaster": 3.07,
+  "fake": 2.93,
+  "gaming": 6.22,
+  "insider": 2.15,
+  "mental": 1.59,
+  "museum": 4.23,
+  "news": 3.03,
+  "polar": 4.59,
+  "robot": 4.08,
+  "solar": 2.88,
+  "vaccine": 3.34,
+  "virtual": 2.33
+ }
+}
