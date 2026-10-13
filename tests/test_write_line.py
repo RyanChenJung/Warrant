@@ -106,7 +106,7 @@ def test_the_agent_gets_the_schema_the_store_and_only_a_read_only_sql_tool(confi
     assert request.tools == ("sql",)
     assert "CREATE TABLE workorders" in request.schema
     assert set(offered[0]) == {"sql"}
-    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+    with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
         offered[0]["sql"]("DELETE FROM tasks")
 
 

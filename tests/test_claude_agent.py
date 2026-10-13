@@ -223,7 +223,7 @@ def test_the_read_only_sql_tool_rejects_writes_and_the_loop_carries_on(
 
     (result,) = tool_results(create.calls[1])
     assert result["is_error"] is True
-    assert "readonly" in result["content"]
+    assert "not authorized" in result["content"]
     assert query(workorders_db, "SELECT COUNT(*) FROM tasks") == [(23,)]
     assert output.response.kind == ResponseKind.ANSWER
 
