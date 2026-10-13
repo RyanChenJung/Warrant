@@ -10,7 +10,8 @@ from warrant.data.sqlite import query
 
 
 class ReadOnlySQL:
-    """Runs one SQL statement on the named SQLite file; any write raises sqlite3.OperationalError."""
+    """Runs one SQL statement on the named SQLite file; one that does more than read raises
+    sqlite3.DatabaseError before it runs."""
 
     name = "sql"
 

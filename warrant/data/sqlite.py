@@ -3,13 +3,23 @@
 import sqlite3
 from pathlib import Path
 
+# Opening a file read-only stops writes to it, but not ATTACH, VACUUM INTO or temporary tables,
+# which create files or state elsewhere. Statements the model or the team wrote may only read.
+_READ_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION, sqlite3.SQLITE_RECURSIVE}
+
+
+def _reads_only(action: int, *_) -> int:
+    return sqlite3.SQLITE_OK if action in _READ_ACTIONS else sqlite3.SQLITE_DENY
+
 
 def connect_read_only(path: Path) -> sqlite3.Connection:
-    return sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True)
+    con = sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True)
+    con.set_authorizer(_reads_only)
+    return con
 
 
 def query(path: Path, sql: str) -> list[tuple]:
-    """Run one statement on a database opened read-only; writes raise sqlite3.OperationalError."""
+    """Run one statement that only reads; anything else raises sqlite3.DatabaseError before it runs."""
     con = connect_read_only(path)
     try:
         return con.execute(sql).fetchall()
