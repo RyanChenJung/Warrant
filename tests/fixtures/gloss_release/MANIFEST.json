@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/RyanChenJung/gloss-public",
+  "commit": "b5025fb43bbad0308737a89684ad8f6f92003a07",
+  "private_original_commit": "16d42780b525c08cc0d21e34301e45457f55763b",
+  "duckdb": "1.5.5",
+  "files": {
+    "LICENSE": "931e7ce2207b0231074121a1c7a897a9bd61a856",
+    "gloss/__init__.py": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+    "gloss/detect/__init__.py": "c301f26bfb5161ae8d7970b339409cb02d9db281",
+    "gloss/detect/field.py": "5bb1f8a2ca84a05c3e4f70e9ee47cf62d020e1e0",
+    "gloss/detect/grain.py": "9b5b0023d906f46ec4c4ed193423ae952b88e560",
+    "gloss/detect/limit.py": "b9120e9edd9eb927635102e6369fb9b9ce795c14",
+    "gloss/detect/link.py": "756bcb0d74a7255eb92a5a0fbd87aa745cb27c04",
+    "gloss/detect/rule.py": "efd1fa5f70df7ba0fcd8b4fe8811efc3b500e922",
+    "gloss/detect/scope.py": "95f1d490249623a08f3eef793c84551bab30c510",
+    "gloss/detect/value.py": "dbb5a0233f83394b157e473aa3c6e27e9a480dd8",
+    "gloss/dictionary.py": "5b40cdc5bd3f8dfa8cc20986f3f38cbb3d40a3c0",
+    "gloss/evidence.py": "ba9821b516eae1da689cf6d2ba2204ee2de10335",
+    "gloss/model.py": "a0a49dea39f1de6ba55b56fc3ac77a5259bbd820",
+    "gloss/source.py": "2bd6a6dd2655970cd25b1dae8a476c8fa1031694",
+    "tests/conftest.py": "bec68e7c8b1b4a4bec80328ea5ffd86222ac0a12",
+    "tests/test_detect_field.py": "62318ba1ba835e093a543960c88355b73e6e0d38",
+    "tests/test_detect_grain.py": "2b19d778a7c3c8bd1c9347c3b738253f631957b1",
+    "tests/test_detect_limit.py": "db0696b6d751f51533c6d5f81b8fb9e0fb8bdd54",
+    "tests/test_detect_link.py": "cd2a884b04a414afefcceff7b1d65978f1ecf8a5",
+    "tests/test_detect_rule.py": "86dbf2428c9a267d6187eca21cf8b2c818621c61",
+    "tests/test_detect_rule_identities.py": "181778f550b5d44115bce289fdffcae305d0e34b",
+    "tests/test_detect_scope.py": "6b7e18fd1122520b08c1173d55b3be8aeca7a9c1",
+    "tests/test_detect_value.py": "fc19f1a1220e14cb0a9eaa2f1831634b68d12292"
+  }
+}

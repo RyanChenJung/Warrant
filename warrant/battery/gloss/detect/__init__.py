@@ -1,0 +1,96 @@
+"""Detector plumbing.
+
+A detector reads a Context and returns Findings. Detectors are independent of one
+another with one deliberate exception: `Context.grain_filter`, which `run_all`
+populates from the GRAIN detector before running the rest. That exists because a
+rate is meaningless without knowing what it is a rate *of* - in the test fixture
+ASSETNUM is 25% null across all rows and 30% null across its work orders, and only
+the second number answers the question a human actually asked.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Protocol
+
+import duckdb
+
+from warrant.battery.gloss.dictionary import Dictionary
+from warrant.battery.gloss.model import AssertionType, Finding
+from warrant.battery.gloss.source import columns as _columns
+from warrant.battery.gloss.source import row_count as _row_count
+
+HIGH_NULL_THRESHOLD = 0.20
+LOW_CARDINALITY_MAX = 50
+SKEW_THRESHOLD = 0.95
+
+
+def quote(identifier: str) -> str:
+    """Double-quote a SQL identifier. Column names in real exports contain spaces
+    and mixed case, so bare interpolation is not an option."""
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+@dataclass
+class Context:
+    conn: duckdb.DuckDBPyConnection
+    table: str
+    columns: list[str]
+    row_count: int
+    today: str
+    dictionary: Dictionary | None = None
+    grain_filter: str | None = None
+    peers: dict[str, str] = field(default_factory=dict)
+
+    def subject(self, column: str | None = None) -> str:
+        return f"{self.table}.{column}" if column else self.table
+
+    def where(self, extra: str | None = None) -> str:
+        """Compose the grain filter with a detector's own predicate."""
+        parts = [p for p in (self.grain_filter, extra) if p]
+        return f" WHERE {' AND '.join(f'({p})' for p in parts)}" if parts else ""
+
+    def population(self) -> int:
+        sql = f"SELECT COUNT(*) FROM {quote(self.table)}{self.where()}"
+        return self.conn.sql(sql).fetchone()[0]
+
+
+class Detector(Protocol):
+    type: AssertionType
+
+    def run(self, ctx: Context) -> list[Finding]: ...
+
+
+def build_context(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    today: str,
+    dictionary: Dictionary | None = None,
+    peers: dict[str, str] | None = None,
+) -> Context:
+    return Context(
+        conn=conn, table=table, columns=_columns(conn, table),
+        row_count=_row_count(conn, table), today=today,
+        dictionary=dictionary, peers=peers or {},
+    )
+
+
+def run_all(ctx: Context) -> list[Finding]:
+    """GRAIN runs first and sets ctx.grain_filter; everything else then measures
+    against the correct population. Ordering matters here and only here - the store
+    sorts its output, so detector order never shows up in a diff."""
+    from warrant.battery.gloss.detect.field import FieldDetector
+    from warrant.battery.gloss.detect.grain import GrainDetector, derive_grain_filter
+    from warrant.battery.gloss.detect.limit import LimitDetector
+    from warrant.battery.gloss.detect.link import LinkDetector
+    from warrant.battery.gloss.detect.rule import RuleDetector
+    from warrant.battery.gloss.detect.scope import ScopeDetector
+    from warrant.battery.gloss.detect.value import ValueDetector
+    from warrant.battery.gloss.probe import OrdinalDirectionProbe
+
+    findings = list(GrainDetector().run(ctx))
+    ctx.grain_filter = derive_grain_filter(ctx)
+    for detector in (ScopeDetector(), FieldDetector(), ValueDetector(),
+                     LinkDetector(), RuleDetector(), LimitDetector(),
+                     OrdinalDirectionProbe()):
+        findings += detector.run(ctx)
+    return findings

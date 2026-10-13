@@ -1,0 +1,70 @@
+from warrant.battery.gloss.detect import build_context
+from warrant.battery.gloss.detect.grain import GrainDetector, derive_grain_filter
+from warrant.battery.gloss.evidence import verify
+from warrant.battery.gloss.model import AssertionType, Tier
+
+
+def _ctx(mini_conn):
+    return build_context(mini_conn, "wo_history", "2026-08-23")
+
+
+def _run(mini_conn):
+    return GrainDetector().run(_ctx(mini_conn))
+
+
+def test_identifies_the_unique_key(mini_conn):
+    keys = [f for f in _run(mini_conn) if "uniquely identifies" in f.assertion.statement]
+    assert [f.assertion.subject for f in keys] == ["wo_history.WORKORDERID"]
+    assert keys[0].assertion.type is AssertionType.GRAIN
+
+
+def test_detects_the_self_reference_and_the_row_split(mini_conn):
+    split = [f for f in _run(mini_conn) if "not one" in f.assertion.statement]
+    assert len(split) == 1
+    a = split[0].assertion
+    assert "PARENT" in a.statement
+    assert "10" in a.statement          # 10 root rows of 20
+    assert a.tier is Tier.MEASURED
+
+
+def test_the_split_ships_a_question_for_a_human(mini_conn):
+    split = [f for f in _run(mini_conn) if "not one" in f.assertion.statement][0]
+    assert split.question is not None
+    assert split.question.cost_seconds <= 30
+    assert len(split.question.options) >= 2
+
+
+def test_detects_the_equivalent_column_pair(mini_conn):
+    eq = [f for f in _run(mini_conn) if "carries the same information"
+          in f.assertion.statement]
+    assert len(eq) == 1
+    statement = eq[0].assertion.statement
+    assert "ISTASK" in statement and "WOCLASS" in statement
+    assert eq[0].question is None  # arithmetic settles it; nothing to ask
+
+
+def test_identifier_columns_are_not_reported_as_equivalent(mini_conn):
+    # WORKORDERID and DESCRIPTION are both unique, so they are one-to-one by
+    # definition. Reporting that would be noise, not a finding.
+    statements = [f.assertion.statement for f in _run(mini_conn)
+                  if "carries the same information" in f.assertion.statement]
+    assert not any("WORKORDERID" in s for s in statements)
+
+
+def test_derives_a_grain_filter_isolating_root_rows(mini_conn):
+    f = derive_grain_filter(_ctx(mini_conn))
+    assert f is not None
+    got = mini_conn.sql(
+        f"SELECT COUNT(*) FROM wo_history WHERE {f}").fetchone()[0]
+    assert got == 10
+
+
+def test_no_self_reference_means_no_grain_filter(mini_conn):
+    # assets has no self-reference to its own key, so grain is already one row
+    # per entity and there is nothing to restrict.
+    assert derive_grain_filter(build_context(mini_conn, "assets", "2026-08-23")) is None
+
+
+def test_every_assertion_carries_re_runnable_sql(mini_conn):
+    for f in _run(mini_conn):
+        assert verify(mini_conn, f.assertion.evidence[0]).status == "PASS"

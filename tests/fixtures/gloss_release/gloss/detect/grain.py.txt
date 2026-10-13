@@ -1,0 +1,189 @@
+"""Type 2 GRAIN - what does one row represent?
+
+Every count depends on this, and so does any average or sum whose child rows
+carry values, so the agent contract is MUST-read before any aggregate. In a
+header/detail export most rows can be sub-tasks rather than work orders, so "how
+many work orders?" is wrong several-fold without this assertion.
+
+Detection looks for a self-reference - a column whose values point back at the
+table's own unique key - because that is the shape of a header/detail table in any
+system. A flag column that happens to name the split (ISTASK,
+WOCLASS) is then matched against it, but the split is found without needing one.
+"""
+from __future__ import annotations
+
+from gloss.detect import LOW_CARDINALITY_MAX, Context, quote
+from gloss.evidence import make_evidence
+from gloss.model import Assertion, AssertionType, Finding, Question, Tier
+
+_SELF_REFERENCE_MATCH = 0.95
+# A value must recur this often on average for its column to be a
+# category rather than an identifier. See _equivalences.
+_MIN_VALUE_RECURRENCE = 3
+
+
+def _distinct(ctx: Context, column: str) -> int:
+    return ctx.conn.sql(
+        f"SELECT COUNT(DISTINCT {quote(column)}) FROM {quote(ctx.table)}"
+    ).fetchone()[0]
+
+
+def _unique_keys(ctx: Context) -> list[str]:
+    return [c for c in ctx.columns if _distinct(ctx, c) == ctx.row_count
+            and ctx.row_count > 0]
+
+
+def _root_predicate(column: str) -> str:
+    return f"({quote(column)} IS NULL OR {quote(column)} = '')"
+
+
+def _self_reference(ctx: Context, key: str) -> str | None:
+    """A column that genuinely points back at `key` as a parent pointer.
+
+    Subset-of-key is necessary but nowhere near sufficient. On a small table a
+    PRIORITY column holding small integers is entirely contained in a WONUM key
+    holding 1-40, and was detected as a hierarchy - which then reported a 0-row
+    top level and divided by zero. A real parent pointer also has *both* roots
+    (rows with no parent) and children (rows with one); a tree cannot be all one
+    or all the other. That structural requirement is what separates the two cases.
+    """
+    for column in ctx.columns:
+        if column == key:
+            continue
+        row = ctx.conn.sql(f"""
+            SELECT COUNT(*) AS populated,
+                   SUM(CASE WHEN t.{quote(column)} IN
+                       (SELECT {quote(key)} FROM {quote(ctx.table)})
+                       THEN 1 ELSE 0 END) AS matched,
+                   (SELECT COUNT(*) FROM {quote(ctx.table)}
+                    WHERE {_root_predicate(column)}) AS roots
+            FROM {quote(ctx.table)} t
+            WHERE t.{quote(column)} IS NOT NULL AND t.{quote(column)} <> ''
+        """).fetchone()
+        populated, matched, roots = row[0], row[1] or 0, row[2] or 0
+        if not populated or not roots:
+            continue
+        if matched / populated >= _SELF_REFERENCE_MATCH:
+            return column
+    return None
+
+
+def derive_grain_column(ctx: Context) -> str | None:
+    """The parent pointer that splits this table into records and child rows, or
+    None if one row already is one record. Usage-drift checking needs the column
+    itself, not only the predicate built from it, to ask whether a logged query
+    mentioned it."""
+    for key in _unique_keys(ctx):
+        ref = _self_reference(ctx, key)
+        if ref:
+            return ref
+    return None
+
+
+def derive_grain_filter(ctx: Context) -> str | None:
+    """The predicate isolating one row per top-level entity, or None if the table
+    already has one row per entity."""
+    ref = derive_grain_column(ctx)
+    return _root_predicate(ref) if ref else None
+
+
+def grain_predicate(column: str) -> str:
+    return _root_predicate(column)
+
+
+class GrainDetector:
+    type = AssertionType.GRAIN
+
+    def run(self, ctx: Context) -> list[Finding]:
+        findings: list[Finding] = []
+        keys = _unique_keys(ctx)
+        for key in keys:
+            sql = (f"SELECT COUNT(DISTINCT {quote(key)}) = COUNT(*) "
+                   f"FROM {quote(ctx.table)}")
+            findings.append(Finding(Assertion(
+                type=self.type, subject=ctx.subject(key),
+                statement=(f"{key} uniquely identifies a row and so uniquely "
+                           f"identifies a record: {ctx.row_count:,} distinct values "
+                           f"across {ctx.row_count:,} rows."),
+                tier=Tier.MEASURED,
+                evidence=(make_evidence(ctx.conn, sql, ctx.today),),
+            )))
+            ref = _self_reference(ctx, key)
+            if ref:
+                split = self._split_finding(ctx, ref)
+                if split is not None:
+                    findings.append(split)
+                break
+        findings += self._equivalences(ctx)
+        return findings
+
+    def _split_finding(self, ctx: Context, ref: str) -> Finding | None:
+        predicate = _root_predicate(ref)
+        sql = (f"SELECT SUM(CASE WHEN {predicate} THEN 1 ELSE 0 END), COUNT(*) "
+               f"FROM {quote(ctx.table)}")
+        evidence = make_evidence(ctx.conn, sql, ctx.today)
+        roots, total = int(evidence.expected[0]), int(evidence.expected[1])
+        children = total - roots
+        if not roots or not children:
+            # _self_reference should have excluded this; belt and braces, because
+            # the alternative is a crash on a customer's first run.
+            return None
+        assertion = Assertion(
+            type=self.type, subject=ctx.subject(),
+            statement=(
+                f"One row is not one top-level record. {ref} points back at this "
+                f"table's own key, splitting {total:,} rows into {roots:,} top-level "
+                f"records and {children:,} child rows. Counting rows overstates the "
+                f"number of records by {total / roots:.1f}x. Restrict with "
+                f"{predicate} before any COUNT or SUM."
+            ),
+            tier=Tier.MEASURED, evidence=(evidence,),
+        )
+        question = Question(
+            subject=ctx.subject(),
+            text=(f"Should a top-level record and its child rows both count as one "
+                  f"record, or only the {roots:,} top-level rows?"),
+            proposed_answer=(f"Only the {roots:,} top-level rows "
+                             f"(those where {predicate})."),
+            options=(f"only the {roots:,} top-level rows",
+                     f"all {total:,} rows",
+                     "depends on the question being asked",
+                     "unsure"),
+            basis=assertion.id, cost_seconds=20,
+        )
+        return Finding(assertion, question, impact=children / total if total else 0.0)
+
+    def _equivalences(self, ctx: Context) -> list[Finding]:
+        """Two columns encoding the same distinction. Pure arithmetic: if A and B
+        have the same number of distinct values and their pairing has the same
+        count again, the mapping is one-to-one.
+
+        Only genuine categories qualify. Two *identifier* columns are one-to-one by
+        definition - a unique key maps one-to-one onto every other unique column -
+        and reporting that tells a reader nothing. The requirement that each value
+        recur at least `_MIN_VALUE_RECURRENCE` times on average is what separates a
+        category from an identifier. On a table of any real size this never binds,
+        since LOW_CARDINALITY_MAX is already 50; it earns its keep on small ones.
+        """
+        low = [(c, _distinct(ctx, c)) for c in ctx.columns]
+        low = [(c, n) for c, n in low
+               if 2 <= n <= LOW_CARDINALITY_MAX
+               and n * _MIN_VALUE_RECURRENCE <= ctx.row_count]
+        out: list[Finding] = []
+        for i, (a, na) in enumerate(low):
+            for b, nb in low[i + 1:]:
+                if na != nb:
+                    continue
+                sql = (f"SELECT COUNT(*) FROM (SELECT DISTINCT {quote(a)}, "
+                       f"{quote(b)} FROM {quote(ctx.table)})")
+                evidence = make_evidence(ctx.conn, sql, ctx.today)
+                if int(evidence.expected) != na:
+                    continue
+                out.append(Finding(Assertion(
+                    type=self.type, subject=ctx.subject(),
+                    statement=(f"{a} carries the same information as {b}: the two "
+                               f"columns map one-to-one across all {na} values. "
+                               f"Filtering on both is redundant."),
+                    tier=Tier.MEASURED, evidence=(evidence,),
+                )))
+        return out
