@@ -2,8 +2,9 @@
 
 The write-line tests go through the write-line entry point with the scripted fake agent, on
 `fixtures/write_line_scoring.yaml`, which has one question per kind of expected response. The
-maintenance line's entry point (#42) does not exist yet, so its rules (stale value, silent error)
-are tested on the scorer itself until #42 can run them end to end.
+maintenance line's rules (stale value, silent error) are tested here on the scorer itself, and end
+to end through the maintenance run (#42) in `test_maintenance.py`; a run with an escalation needs
+the escalation tool (#39), so that case is tested here only.
 """
 
 import dataclasses
@@ -384,7 +385,7 @@ def test_a_set_question_without_a_key_its_gold_result_has_is_rejected_before_any
     assert agent.requests == []
 
 
-# The maintenance line's rules, on the scorer until the maintenance run (#42) exists.
+# The maintenance line's rules, on the scorer.
 #
 # A constant-change drift task on the work-order fixture: large work orders cost more than 500
 # before drift and more than 800 after it. The drift is a convention drift, so the database stays
@@ -438,7 +439,8 @@ def test_the_right_post_drift_answer_is_not_a_stale_value_even_when_the_drift_is
     workorders_db,
 ):
     # The smallest cost counted goes from 60 to 70, which drops one order of 64.25 out of a total
-    # of 5,440.50: the gold results differ, so the task is valid, but by 1.2 percent.
+    # of 5,440.50: the gold results differ, but by 1.2 percent. The task validator (#42) rejects
+    # such a task; the scorer must still not call the right answer stale.
     pre_drift = result_of(workorders_db, "SELECT SUM(total_cost) FROM workorders WHERE total_cost > 60")
     post_drift_sql = "SELECT SUM(total_cost) FROM workorders WHERE total_cost > 70"
     executed = post_drift = result_of(workorders_db, post_drift_sql)

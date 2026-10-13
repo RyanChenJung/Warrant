@@ -1,0 +1,3 @@
+{"id": 0, "knowledge": "Large work order", "description": "Which work orders count as large.", "definition": "A work order is large when its total cost is over 500.", "type": "domain_knowledge", "children_knowledge": -1}
+{"id": 1, "knowledge": "Open work order", "description": "What the status 'OPEN' stands for.", "definition": "A work order with status 'OPEN' has not been closed yet.", "type": "value_illustration", "children_knowledge": -1}
+{"id": 2, "knowledge": "Task hours", "description": "The hours logged on a work order.", "definition": "Task hours = the sum of tasks.hours over the work order's tasks.", "type": "calculation_knowledge", "children_knowledge": -1}

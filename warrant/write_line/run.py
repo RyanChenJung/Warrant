@@ -5,7 +5,6 @@ person; #50 and #51 add the others.
 """
 
 import argparse
-import sqlite3
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +23,7 @@ from warrant.scoring.classify import (
     Result,
     Score,
     accuracy,
+    execute,
     flips,
     rule_based_refusal_check,
     score,
@@ -120,15 +120,6 @@ def _rejected(config: Config, gold: dict[str, GoldAnswer]) -> list[str]:
     return rejected
 
 
-def _execute(path: Path, sql: str | None) -> Result | None:
-    if sql is None:
-        return None
-    try:
-        return Result(*query_with_columns(path, sql))
-    except sqlite3.Error:
-        return None
-
-
 def run(
     config: Config,
     agent: Agent,
@@ -177,7 +168,7 @@ def run(
                 output = agent.answer(request, {ReadOnlySQL.name: ReadOnlySQL(path)})
                 response = output.response
                 executed = (
-                    _execute(path, response.final_sql)
+                    execute(path, response.final_sql)
                     if response is not None and response.kind == ResponseKind.ANSWER
                     else None
                 )
