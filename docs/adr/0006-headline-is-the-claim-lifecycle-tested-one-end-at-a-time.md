@@ -68,8 +68,9 @@ requirement to measure agent answers, not only the checks' output, still holds.
   drift through their frozen drift readings: the coverage and column-formula claims through
   data-part drift on the drift reading's database, the value-meaning claim through convention drift
   with identical data. These results are descriptive. The coverage claim, whose readings the
-  check battery narrows and a person picks among, carries a testimony warrant, which a stronger
-  battery could later turn into a data warrant. The full warrant kind by drift type matrix comes
+  check battery narrows and a person picks among, carries a testimony warrant: the readings that
+  remain differ on how the export was made, which no battery on this database can see, so only a
+  record of the export or a person who knows it can settle them (amended 2026-10-12, #34). The full warrant kind by drift type matrix comes
   after December.
 - The confirmatory maintenance test runs on convention drift only, so it can show where confidence
   is blind but not that confidence does better under data-part drift. The two carried claims with
