@@ -1,0 +1,15 @@
+{
+  "id": "msg_recorded_refusal_missing_not_text",
+  "type": "message",
+  "role": "assistant",
+  "model": "anthropic.claude-model-placeholder",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"kind\": \"refusal\", \"missing\": [\"which statuses count as open\"], \"alternative\": \"the number of work orders per status\", \"confidence\": 0.3}"
+    }
+  ],
+  "usage": {"input_tokens": 1300, "output_tokens": 60}
+}

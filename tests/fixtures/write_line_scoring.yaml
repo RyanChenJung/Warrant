@@ -1,0 +1,43 @@
+# Write-line configuration for the shared scoring (#40): the tracer bullet's coverage defect on the
+# work-order fixture, with one question per kind of expected response. Paths are relative to this
+# file.
+databases:
+  workorders: workorders.sqlite
+rules: [empty, all_person]
+runs: 1
+defects:
+  - id: open-orders-cut
+    database: workorders
+    slot: {claim_kind: coverage, subject: workorders}
+    transformation:
+      - DELETE FROM workorders WHERE status = 'OPEN'
+    reference_claim: >-
+      The work-order table only holds closed work orders. Open work orders are missing from it,
+      but their tasks are still in the tasks table.
+questions:
+  # A number: 16.25 hours on the injected copy.
+  - id: open-order-hours
+    database: workorders
+    defect: open-orders-cut
+    text: How many task hours have been logged on open work orders?
+    gold_sql: SELECT SUM(hours) FROM tasks WHERE wonum NOT IN (SELECT wonum FROM workorders)
+  # A set, compared on its key values.
+  - id: open-order-numbers
+    database: workorders
+    defect: open-orders-cut
+    text: Which work orders are open?
+    gold_sql: SELECT DISTINCT wonum FROM tasks WHERE wonum NOT IN (SELECT wonum FROM workorders)
+    key: [wonum]
+  # The data cannot answer this one: the cut took the open orders' costs, and no other table has
+  # them. Its correct response is a refusal that names one of these terms.
+  - id: open-order-cost
+    database: workorders
+    defect: open-orders-cut
+    text: What is the total cost of open work orders?
+    missing_terms: [open work order, open order]
+  # A control question whose gold answer is zero.
+  - id: costly-closed-orders
+    database: workorders
+    defect: null
+    text: How many closed work orders cost more than 2,000?
+    gold_sql: SELECT COUNT(*) FROM workorders WHERE status = 'CLOSED' AND total_cost > 2000
