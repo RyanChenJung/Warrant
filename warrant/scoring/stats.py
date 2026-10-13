@@ -3,7 +3,7 @@
 A record is one stored result, as the results store keeps it: a mapping with at least the item it
 is about (a question or a task state), the condition it ran under (an allocation rule or a
 maintenance condition) and its response class. A maintenance run's record also carries its
-silent-error flag and its number of escalation calls.
+silent-error and stale-value flags and its number of escalation calls.
 
 The bootstrap method and the write line's confirmatory test belong to the global part of the freeze
 (#33): until it is wired in, the bootstrap's choices are parameters, with a percentile bootstrap
@@ -160,12 +160,13 @@ def _by_task(runs: Iterable[Record], item: str) -> dict[str, list[Record]]:
     return by_task
 
 
-def _silent_error_rate(by_task: Mapping[str, Sequence[Record]]) -> float | None:
+def _rate_per_task(by_task: Mapping[str, Sequence[Record]], flag: str = "silent_error") -> float | None:
+    """Each task's share of scored runs whose `flag` is set, averaged over tasks."""
     scored = {task: _scored(runs) for task, runs in by_task.items()}
     unscored = sorted(task for task, runs in scored.items() if not runs)
     if unscored:
         raise ValueError(f"tasks with no scored run: {', '.join(unscored)}")
-    shares = [sum(bool(run["silent_error"]) for run in runs) / len(runs) for runs in scored.values()]
+    shares = [sum(bool(run[flag]) for run in runs) / len(runs) for runs in scored.values()]
     return sum(shares) / len(shares) if shares else None
 
 
@@ -183,7 +184,14 @@ def silent_error_rate(runs: Iterable[Record], *, item: str = "task") -> float | 
     per-task rates is around. A task with no scored run raises rather than dropping out unseen.
     None when there are no runs.
     """
-    return _silent_error_rate(_by_task(runs, item))
+    return _rate_per_task(_by_task(runs, item))
+
+
+def stale_value_rate(runs: Iterable[Record], *, item: str = "task") -> float | None:
+    """The stale-value rate per task, by the rule of `silent_error_rate`: each task's share of scored
+    runs whose answer is a stale value (its runs' `stale_value`, as the scorer decided it with
+    `is_stale_value`), averaged over tasks. Before drift no answer is one."""
+    return _rate_per_task(_by_task(runs, item), "stale_value")
 
 
 def questions_per_100_tasks(runs: Iterable[Record], *, item: str = "task") -> float | None:
@@ -217,7 +225,7 @@ def frontier(
     points = []
     for k in range(len(order) + 1):
         runs = {task: asked[task] for task in order[:k]} | {task: base[task] for task in order[k:]}
-        points.append(FrontierPoint(k, _questions_per_100_tasks(runs), _silent_error_rate(runs)))
+        points.append(FrontierPoint(k, _questions_per_100_tasks(runs), _rate_per_task(runs)))
     return points
 
 

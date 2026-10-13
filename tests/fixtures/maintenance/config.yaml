@@ -1,0 +1,11 @@
+# Maintenance-line configuration for the tracer bullet (#42): one documented constant-change task
+# on the work-order fixture, answered under the two conditions that need no new tools. Paths are
+# relative to this file.
+databases:
+  workorders: workorders.sqlite
+# Each database's knowledge base, in the release's format (one JSON entry per line).
+knowledge_bases:
+  workorders: workorders_kb.jsonl
+tasks: [large-order-spend.yaml]
+conditions: [full_knowledge_base, stored_answer_without_tools]
+runs: 1

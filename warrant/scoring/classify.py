@@ -5,11 +5,14 @@ is wired in they are parameters, with the spec's values as defaults.
 """
 
 import re
+import sqlite3
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 from warrant.agent.interface import Response, ResponseKind
+from warrant.data.sqlite import query_with_columns
 
 # A numeric answer is correct when its relative error is below this.
 TOLERANCE = 0.05
@@ -47,6 +50,19 @@ class Result:
 
     columns: tuple[str, ...]
     rows: list[tuple]
+
+
+def execute(path: Path, sql: str | None) -> Result | None:
+    """The result of re-executing an answer's final SQL on the database it named, read-only; None
+    when there is no SQL, it fails, or it is not a query (it returns no result, as a comment or a
+    temporary table does)."""
+    if sql is None:
+        return None
+    try:
+        columns, rows = query_with_columns(path, sql)
+    except sqlite3.Error:
+        return None
+    return Result(columns, rows) if columns else None
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,41 @@
+# A documented constant-change drift task on the work-order fixture (#42). Before drift the
+# knowledge base says a large work order costs more than 500; the entry's new version says more
+# than 800. The drift is a convention drift: the database stays the same, and only the entry and
+# the gold SQL change.
+id: large-order-spend
+database: workorders
+question: What is the total cost of large work orders at each site?
+# documented: the entry gets a new version. undocumented (#44): it is removed or marked under
+# revision, so only the oracle person knows the new rule. A view cannot mark an entry removed or
+# under revision yet, so the validator refuses undocumented tasks for now.
+drift_type: documented
+# The knowledge-base entries the task depends on, by their id in the database's knowledge base.
+entries:
+  - id: 0
+    # The oracle person's current definition of the entry: what it answers when asked after drift.
+    oracle_definition: A work order is large when its total cost is over 800.
+    # The stored answer: the pre-drift value copied from the old entry, without its source or
+    # version. The fixture supplies it until #45 builds stored answers.
+    stored_answer: A large work order is one whose total cost is over 500.
+# Each state's knowledge-base view and gold SQL. The view holds exactly the task's entries in the
+# release's knowledge-base format, each with its version; every other entry stays as released.
+pre_drift:
+  knowledge_base:
+    - id: 0
+      version: 1
+      knowledge: Large work order
+      description: Which work orders count as large.
+      definition: A work order is large when its total cost is over 500.
+      type: domain_knowledge
+      children_knowledge: -1
+  gold_sql: SELECT site, SUM(total_cost) FROM workorders WHERE total_cost > 500 GROUP BY site
+post_drift:
+  knowledge_base:
+    - id: 0
+      version: 2
+      knowledge: Large work order
+      description: Which work orders count as large.
+      definition: A work order is large when its total cost is over 800.
+      type: domain_knowledge
+      children_knowledge: -1
+  gold_sql: SELECT site, SUM(total_cost) FROM workorders WHERE total_cost > 800 GROUP BY site

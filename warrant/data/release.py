@@ -112,6 +112,11 @@ def write_checksums(path: Path, checksums: dict[str, str]) -> None:
     Path(path).write_text("".join(f"{digest}  {relative}\n" for relative, digest in sorted(checksums.items())))
 
 
+def read_knowledge_base(path: Path) -> list[dict[str, Any]]:
+    """The entries of a knowledge-base file (`<db>_kb.jsonl`), one JSON object per line."""
+    return [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
+
+
 def load_database(release_dir: Path, name: str) -> Database:
     """Load one database of a fetched release: declared foreign keys, column meanings, knowledge base."""
     root = Path(release_dir) / name
@@ -127,5 +132,5 @@ def load_database(release_dir: Path, name: str) -> Database:
     finally:
         con.close()
     column_meanings = json.loads((root / f"{name}_column_meaning_base.json").read_text())
-    knowledge_base = [json.loads(line) for line in (root / f"{name}_kb.jsonl").read_text().splitlines() if line.strip()]
+    knowledge_base = read_knowledge_base(root / f"{name}_kb.jsonl")
     return Database(name, path, foreign_keys, column_meanings, knowledge_base)
