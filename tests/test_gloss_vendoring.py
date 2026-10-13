@@ -41,9 +41,9 @@ def blob_id(data):
     return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
-def comparable(source, package):
-    """The code of a module with docstrings dropped and the import path `package` read as the
-    release's. Comments are not in the syntax tree, and nothing else is normalised."""
+def normalised(source, package):
+    """The syntax tree of a module with docstrings dropped and the import path `package` read as
+    the release's. Comments are not in the syntax tree, and nothing else is normalised."""
     tree = ast.parse(source)
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -57,10 +57,36 @@ def comparable(source, package):
         if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
             if node.module == package or node.module.startswith(package + "."):
                 node.module = RELEASE_PACKAGE + node.module.removeprefix(package)
-    return ast.dump(tree, indent=1)
+    return tree
+
+
+def comparable(source, package):
+    return ast.dump(normalised(source, package), indent=1)
+
+
+def parts(source, package):
+    """A module as named parts in order: each top-level function, each method of a top-level
+    class, each class without its methods, and every other statement under its own code."""
+    found = []
+    for node in normalised(source, package).body:
+        if isinstance(node, ast.ClassDef):
+            methods = [n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            node.body = [n for n in node.body if n not in methods]
+            found.append((node.name, ast.dump(node)))
+            found += [(f"{node.name}.{method.name}", ast.dump(method)) for method in methods]
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            found.append((node.name, ast.dump(node)))
+        else:
+            found.append((ast.dump(node), ast.dump(node)))
+    return found
 
 
 MODULES = sorted(path for path in MANIFEST["files"] if path.endswith(".py"))
+
+# Every part of a vendored module that may differ from the release, by name. A module not listed
+# here must match the release whole. Each entry is a change listed in VENDORING.md.
+CHANGED = {"gloss/detect/link.py": {"LinkDetector._pairs"}}
+ADDED = {"gloss/detect/link.py": {"declared_key_pairs", "LinkDetector.__init__"}}
 
 
 def test_the_reference_files_are_the_blobs_of_the_release_commit():
@@ -68,11 +94,35 @@ def test_the_reference_files_are_the_blobs_of_the_release_commit():
         assert blob_id(reference_path(path).read_bytes()) == blob, path
 
 
-@pytest.mark.parametrize("path", MODULES)
+@pytest.mark.parametrize("path", [path for path in MODULES if path not in CHANGED])
 def test_a_vendored_module_has_the_code_of_the_release(path):
     vendored = comparable(vendored_path(path).read_text(encoding="utf-8"), VENDORED_PACKAGE)
     released = comparable(reference_path(path).read_text(encoding="utf-8"), RELEASE_PACKAGE)
     assert vendored == released
+
+
+@pytest.mark.parametrize("path", sorted(CHANGED))
+def test_a_changed_module_differs_from_the_release_only_in_its_named_parts(path):
+    vendored = parts(vendored_path(path).read_text(encoding="utf-8"), VENDORED_PACKAGE)
+    released = parts(reference_path(path).read_text(encoding="utf-8"), RELEASE_PACKAGE)
+    changed, added = CHANGED[path], ADDED[path]
+
+    assert [part for part in vendored if part[0] not in changed | added] == [
+        part for part in released if part[0] not in changed
+    ]
+    # The allowed differences are exactly these: nothing else is excused, and none is stale.
+    assert added.isdisjoint(name for name, _ in released)
+    assert added <= {name for name, _ in vendored}
+    for name in changed:
+        assert dict(vendored)[name] != dict(released)[name], name
+    assert set(ADDED) == set(CHANGED)
+
+
+def test_the_vendoring_note_names_every_part_that_differs_from_the_release():
+    note = NOTE.read_text()
+    for path in CHANGED:
+        for name in CHANGED[path] | ADDED[path]:
+            assert f"`{name}`" in note, name
 
 
 def test_the_reference_comparison_notices_a_changed_statement():

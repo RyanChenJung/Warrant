@@ -72,7 +72,34 @@ fixtures.
 1. **Import path.** In every `from gloss… import …` statement the module path prefix `gloss` is
    rewritten to `warrant.battery.gloss`: 38 lines in the package and 37 in the tests and their
    `conftest.py`, counted per file in the table above. Nothing else on those lines changes, and no
-   other line changes. Docstrings and comments are as released.
+   other line changes in the vendoring commit. Docstrings and comments are as released.
 
-`tests/test_gloss_vendoring.py` checks this: with docstrings and comments stripped and that one
-prefix read back as `gloss`, the syntax tree of every vendored module equals the release's.
+2. **Declared-foreign-key pairing in the link detector** (`detect/link.py`, in its own commit after
+   the vendoring commit and before the first injection; decided on #28). The released detector pairs
+   key columns by name only, and 256 of the 257 foreign keys declared in LiveSQLBench-Base-Lite join
+   differently named columns, for example `signals.telescref -> telescopes.telescregistry`. The
+   detector now also pairs columns on declared foreign keys. This changes which column pairs the
+   detector reads; what it checks on each pair is as released. The parts of the module that differ
+   from the release are exactly these:
+   - `declared_key_pairs` (new function): the column pairs that the declared keys give for one
+     table and one peer. The keys are (child table, child column, parent table, parent column)
+     tuples. A key is paired from child to parent only, never from the parent back to the child:
+     pairing both directions adds fan-out records (#28, from the freeze values on #34).
+   - `LinkDetector.__init__` (new method): takes the declared keys as an explicit input,
+     `LinkDetector(declared_keys=...)`. The default is no keys, which gives the released behaviour.
+     #30 will pass the keys that `warrant.data.release.load_database` returns.
+   - `LinkDetector._pairs` (changed method): returns the same-named pairs from `name_matched_pairs`
+     as before, followed by the declared pairs that are not already among them.
+   - The module docstring gains one paragraph that points here.
+
+   `name_matched_pairs`, `LinkDetector.run`, `LinkDetector._analyse`, `LinkDetector._unmatched`,
+   `LinkDetector._reverse_coverage`, the imports and `_MIN_MATCH_RATE` are as released. The parent
+   table still has to be among the context's peers, as for a same-named pair.
+   Declared names are matched exactly, so the export (#30) must keep the SQLite table and column
+   names as declared.
+   `tests/test_link_declared_keys.py` covers the change.
+
+`tests/test_gloss_vendoring.py` checks both changes: with docstrings and comments stripped and the
+import prefix read back as `gloss`, the syntax tree of every vendored module equals the release's,
+except that in `detect/link.py` the three parts named above may differ and every other part must
+match.

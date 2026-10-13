@@ -7,6 +7,10 @@ determines whether a sum inflates after the join.
 
 Column pairing is by name, case-insensitively, because real exports disagree about
 case: the work-order table has ASSETNUM and the asset master has assetnum.
+
+Changed in Warrant (see VENDORING.md): columns are also paired on the declared
+foreign keys given to `LinkDetector`, from child to parent only. What is checked on
+each pair is as released.
 """
 from __future__ import annotations
 
@@ -32,8 +36,25 @@ def name_matched_pairs(conn, left_columns: list[str],
             if c.upper() in peer_cols]
 
 
+def declared_key_pairs(declared_keys, table: str,
+                       peer: str) -> list[tuple[str, str]]:
+    """Column pairs joining `table` to `peer` on declared foreign keys.
+
+    `declared_keys` holds (child table, child column, parent table, parent column)
+    tuples. A key is paired only in its declared direction, from the child that
+    holds the reference to the parent it references: the parent is never paired
+    back to its child. Table and column names are used as declared.
+    """
+    return [(column, ref_column)
+            for child, column, parent, ref_column in declared_keys
+            if child == table and parent == peer]
+
+
 class LinkDetector:
     type = AssertionType.LINK
+
+    def __init__(self, declared_keys=()):
+        self.declared_keys = tuple(declared_keys)
 
     def run(self, ctx: Context) -> list[Finding]:
         findings: list[Finding] = []
@@ -45,7 +66,13 @@ class LinkDetector:
         return findings
 
     def _pairs(self, ctx: Context, peer: str) -> list[tuple[str, str]]:
-        return name_matched_pairs(ctx.conn, ctx.columns, peer)
+        pairs = name_matched_pairs(ctx.conn, ctx.columns, peer)
+        seen = {(left.upper(), right.upper()) for left, right in pairs}
+        for left, right in declared_key_pairs(self.declared_keys, ctx.table, peer):
+            if (left.upper(), right.upper()) not in seen:
+                seen.add((left.upper(), right.upper()))
+                pairs.append((left, right))
+        return pairs
 
     def _analyse(self, ctx, peer, left, right) -> list[Finding]:
         lq, rq = quote(left), quote(right)
