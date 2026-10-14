@@ -1,0 +1,117 @@
+# A valid freeze for the validation tests: the global part and three defects shaped like the write
+# line's (crypto column formula and coverage, alien value meaning). Tests change copies of it in memory.
+global:
+  battery:
+    normalisation: exact
+    pairing: declared_child_to_parent
+    peers: declared_foreign_keys
+  fixed_date: "2026-10-12"
+  duckdb_version: "1.5.5"
+  seeds: {matched_asks_tie_break: 20261012, bootstrap: 20261013, judge_reading_order: 20261014}
+  drift_reading_rule: the no-defect reading, chosen from declared forms, transformations and statements only
+  outcome_rule: {cutoff: 0.25, bootstrap: {resamples: 10000, level: 0.95}}
+  per_kind_combination: the prediction all claims of the kind share, else mixed
+  judge: {temperature: 0, profile: [holds, fails, not_addressed], same_profile_agrees: true}
+  confidence_combination: [agreement, mean_confidence, seeded_permutation]
+  matched_asks: {scope: all_slots_pooled, k: settlement_ask_count, tie_break: seeded_permutation}
+  numeric_tolerance: 0.01
+  refusal_check: the missing-piece field names a recorded term and the alternative is not empty
+  confirmatory_test:
+    statistic: {name: sum_of_question_differences, sign: confidence_minus_settlement, test: exact_sign_flip, tails: one_sided, alpha: 0.05}
+    pairing: {by: question, runs_per_question: 3, run_matching: same_index}
+    question_set: defect probes of the slots the two rules fill from different sources
+    error_coding: [wrong_answer, inadequate_refusal, unanswerable_answered, over_refusal]
+    failures:
+      primary: pairs_where_both_rules_scored
+      scored_excludes: [failure_after_retries, clarification_request]
+      sensitivity: [failures_as_wrong, clarifications_as_wrong, all_defect_probes]
+      report_failure_rate_per_rule: true
+defects:
+  - id: wallet-sum
+    database: crypto
+    slot: {claim_kind: column_formula, subject: accountbalances.walletsum}
+    touches: {accountbalances: [walletsum]}
+    transformation:
+      - UPDATE accountbalances SET walletsum = ROUND(availsum + frozensum + margsum, 2)
+    reference_claim: The wallet balance is the available, frozen and margin amounts added together.
+    relation: {table: accountbalances, target: walletsum, form: sum, operands: [availsum, frozensum, margsum]}
+    readings:
+      - id: three-terms
+        statement: The wallet balance is available plus frozen plus margin.
+        form: world_fixed
+        transformation:
+          - UPDATE accountbalances SET walletsum = ROUND(availsum + frozensum + margsum, 2)
+        holds: true
+        is_true: true
+      - id: two-terms
+        statement: The wallet balance is available plus frozen.
+        form: world_fixed
+        transformation:
+          - UPDATE accountbalances SET walletsum = ROUND(availsum + frozensum, 2)
+        holds: false
+        is_true: false
+      - id: as-released
+        statement: The wallet balance is as released, with no injected change.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+    drift_reading: {reading: as-released}
+  - id: orders-cut
+    database: crypto
+    slot: {claim_kind: coverage, subject: orders}
+    touches: {orders: ["*"]}
+    transformation:
+      - DELETE FROM orders WHERE orderflow = 'Cancelled'
+    cut_tables: []
+    reference_claim: >-
+      The orders table leaves out the cancelled orders, but their executions, fees and margin rows
+      are still in their own tables.
+    readings:
+      - id: parent-cut
+        statement: Cancelled orders were cut from the orders table and their child rows kept.
+        form: world_fixed
+        transformation:
+          - DELETE FROM orders WHERE orderflow = 'Cancelled'
+        holds: true
+        is_true: true
+      - id: nothing-cut
+        statement: Nothing was cut from the orders table.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+      - id: kept-elsewhere
+        statement: Cancelled orders are kept in another system.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: true
+        is_true: false
+    drift_reading: {reading: nothing-cut}
+  - id: seeing-recode
+    database: alien
+    slot: {claim_kind: value_meaning, subject: observatories.seeingprofile}
+    touches: {observatories: [seeingprofile]}
+    transformation:
+      - UPDATE observatories SET seeingprofile = CASE seeingprofile WHEN 'Excellent' THEN '1' WHEN 'Good' THEN '2' ELSE '3' END
+    reference_claim: The seeing profile is graded with the codes '1', '2' and '3', and '1' is the best.
+    readings:
+      - id: one-is-best
+        statement: The code '1' is the best seeing and '3' the worst.
+        form: meaning_only
+        kind: convention
+        transformation: []
+        holds: true
+        is_true: true
+      - id: three-is-best
+        statement: The code '3' is the best seeing and '1' the worst.
+        form: meaning_only
+        kind: convention
+        transformation: []
+        holds: false
+        is_true: false
+        no_defect: true
+    drift_reading:
+      reading: three-is-best
+      reference_claim: The seeing profile is graded with the codes '1', '2' and '3', and '3' is the best.
