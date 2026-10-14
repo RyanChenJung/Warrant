@@ -1,0 +1,73 @@
+# Documented drift task for #43, drafted with Claude Code.
+# Draw position: 8 (seed 20261015). Entry: disaster 51 (Environmental Impact Classification).
+# Old value: 50 (the Sustainable / Moderate Impact boundary on EIF, stated twice in the entry,
+# both changed). New value: 60. Direction used: up (drawn).
+# Restating entries changed: 25 (Sustainable Response Operation, which states EIF < 50).
+# Entries built on (unchanged in both views): 16.
+# Gold results: pre-drift [(94,)], post-drift [(129,)].
+id: disaster-51-environmental-impact-classification
+database: disaster
+question: How many operations are classified as Sustainable under the Environmental Impact Classification?
+drift_type: documented
+entries:
+- id: 51
+  oracle_definition: Sustainable (EIF < 60) indicates operations with minimal environmental footprint and strong sustainability practices; Moderate Impact (60 ≤ EIF < 100) represents operations with reasonable environmental management; High Impact (EIF ≥ 100) indicates operations with significant environmental footprint requiring mitigation strategies
+  stored_answer: Sustainable (EIF < 50) indicates operations with minimal environmental footprint and strong sustainability practices; Moderate Impact (50 ≤ EIF < 100) represents operations with reasonable environmental management; High Impact (EIF ≥ 100) indicates operations with significant environmental footprint requiring mitigation strategies
+- id: 25
+  oracle_definition: Operations where EIF < 60 AND renewenergypct > 30 AND recyclepct > 60, demonstrating environmental responsibility during emergency response
+  stored_answer: Operations where EIF < 50 AND renewenergypct > 30 AND recyclepct > 60, demonstrating environmental responsibility during emergency response
+- id: 16
+  oracle_definition: EIF = carbontons \times \left(1 - \frac{renewenergypct}{100}\right) + (100 - recyclepct) \times 0.5
+  stored_answer: EIF = carbontons \times \left(1 - \frac{renewenergypct}{100}\right) + (100 - recyclepct) \times 0.5
+pre_drift:
+  knowledge_base:
+  - id: 51
+    version: 1
+    knowledge: Environmental Impact Classification
+    description: Categorizes operations based on their Environmental Impact Factor (EIF) values
+    definition: Sustainable (EIF < 50) indicates operations with minimal environmental footprint and strong sustainability practices; Moderate Impact (50 ≤ EIF < 100) represents operations with reasonable environmental management; High Impact (EIF ≥ 100) indicates operations with significant environmental footprint requiring mitigation strategies
+    type: domain_knowledge
+    children_knowledge:
+    - 16
+  - id: 25
+    version: 1
+    knowledge: Sustainable Response Operation
+    description: Identifies disaster responses with strong sustainability practices
+    definition: Operations where EIF < 50 AND renewenergypct > 30 AND recyclepct > 60, demonstrating environmental responsibility during emergency response
+    type: domain_knowledge
+    children_knowledge:
+    - 16
+  - id: 16
+    version: 1
+    knowledge: Environmental Impact Factor (EIF)
+    description: Quantifies the environmental footprint of disaster response operations
+    definition: EIF = carbontons \times \left(1 - \frac{renewenergypct}{100}\right) + (100 - recyclepct) \times 0.5
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(*) AS sustainable_operations FROM operations o JOIN environmentandhealth e ON TRIM(e.envdistref) = TRIM(o.opsdistref) WHERE e.carbontons * (1 - e.renewenergypct / 100.0) + (100 - e.recyclepct) * 0.5 < 50
+post_drift:
+  knowledge_base:
+  - id: 51
+    version: 2
+    knowledge: Environmental Impact Classification
+    description: Categorizes operations based on their Environmental Impact Factor (EIF) values
+    definition: Sustainable (EIF < 60) indicates operations with minimal environmental footprint and strong sustainability practices; Moderate Impact (60 ≤ EIF < 100) represents operations with reasonable environmental management; High Impact (EIF ≥ 100) indicates operations with significant environmental footprint requiring mitigation strategies
+    type: domain_knowledge
+    children_knowledge:
+    - 16
+  - id: 25
+    version: 2
+    knowledge: Sustainable Response Operation
+    description: Identifies disaster responses with strong sustainability practices
+    definition: Operations where EIF < 60 AND renewenergypct > 30 AND recyclepct > 60, demonstrating environmental responsibility during emergency response
+    type: domain_knowledge
+    children_knowledge:
+    - 16
+  - id: 16
+    version: 1
+    knowledge: Environmental Impact Factor (EIF)
+    description: Quantifies the environmental footprint of disaster response operations
+    definition: EIF = carbontons \times \left(1 - \frac{renewenergypct}{100}\right) + (100 - recyclepct) \times 0.5
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(*) AS sustainable_operations FROM operations o JOIN environmentandhealth e ON TRIM(e.envdistref) = TRIM(o.opsdistref) WHERE e.carbontons * (1 - e.renewenergypct / 100.0) + (100 - e.recyclepct) * 0.5 < 60

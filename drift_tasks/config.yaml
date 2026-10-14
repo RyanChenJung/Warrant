@@ -1,0 +1,30 @@
+# The documented drift tasks of the maintenance line's part (1) (#43), in draw order. The databases
+# are found by name in the release as fetched into the data directory. Validate with
+# `uv run python -m warrant.maintenance.validate --config drift_tasks/config.yaml`.
+release: ../configs/livesqlbench-base-lite.yaml
+databases: [archeology, credit, cross_db, cybermarket, disaster, fake, gaming, insider, mental, news, polar, solar, virtual]
+tasks:
+  - insider-11.yaml
+  - archeology-31.yaml
+  - disaster-51.yaml
+  - fake-41.yaml
+  - virtual-5.yaml
+  - gaming-32.yaml
+  - disaster-21.yaml
+  - mental-45.yaml
+  - virtual-34.yaml
+  - gaming-15.yaml
+  - cross_db-10.yaml
+  - news-8.yaml
+  - cybermarket-12.yaml
+  - polar-14.yaml
+  - polar-48.yaml
+  - credit-33.yaml
+  - cybermarket-36.yaml
+  - credit-36.yaml
+  - news-54.yaml
+  - solar-2.yaml
+# The run's conditions and number of runs are fixed by the maintenance pre-registration (#47); these
+# are the conditions the tasks can be validated and tried under today.
+conditions: [full_knowledge_base, stored_answer_without_tools]
+runs: 1

@@ -1,0 +1,111 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 23. Entry: mental 45 (Patient with Severe Comorbid Distress Profile).
+# Old value: 15 (the PHQ-9 score threshold; the GAD-7 threshold 15 stays). New value: 12.
+# Direction used: down (drawn).
+# Restating entries changed: 10 (High-Risk Patient states phq9_score > 15; its gad7 > 15 stays).
+# Left unchanged: 20 (the PHQ-9 scale's band 15-19 'moderately severe', whose lower bound alone
+# cannot move without overlapping '10-14 moderate', which would make the KB contradict itself).
+# Entries built on (unchanged): 0, 1, 6.
+# Gold results: pre-drift 35, post-drift 44.
+id: mental-45-severe-comorbid-distress-profile
+database: mental
+question: How many patients have the Severe Comorbid Distress Profile?
+drift_type: documented
+entries:
+- id: 45
+  oracle_definition: A patient where mental_health_scores['depression']['phq9_score'] \geq 12 AND mental_health_scores['anxiety']['gad7_score'] \geq 15 AND funcimp = 'Severe'. \text{This profile relates to high individual contributions to APSF, AGSF, and PFIS}.
+  stored_answer: A patient where mental_health_scores['depression']['phq9_score'] \geq 15 AND mental_health_scores['anxiety']['gad7_score'] \geq 15 AND funcimp = 'Severe'. \text{This profile relates to high individual contributions to APSF, AGSF, and PFIS}.
+- id: 0
+  oracle_definition: APSF = \frac{\sum_{i \in assessmentsymptomsandrisk} (mental\_health\_scores_i['depression']['phq9\_score'])} {|assessmentsymptomsandrisk|}
+  stored_answer: APSF = \frac{\sum_{i \in assessmentsymptomsandrisk} (mental\_health\_scores_i['depression']['phq9\_score'])} {|assessmentsymptomsandrisk|}
+- id: 1
+  oracle_definition: AGSF = \frac{\sum_{i \in assessmentsymptomsandrisk} (mental\_health\_scores_i['anxiety']['gad7\_score'])} {|assessmentsymptomsandrisk|}, \text{where } mental\_health\_scores_i['anxiety']['gad7\_score'] \text{ is the GAD-7 score for each assessment in the assessmentsymptomsandrisk table, linked to a facility via encounters.facid}
+  stored_answer: AGSF = \frac{\sum_{i \in assessmentsymptomsandrisk} (mental\_health\_scores_i['anxiety']['gad7\_score'])} {|assessmentsymptomsandrisk|}, \text{where } mental\_health\_scores_i['anxiety']['gad7\_score'] \text{ is the GAD-7 score for each assessment in the assessmentsymptomsandrisk table, linked to a facility via encounters.facid}
+- id: 6
+  oracle_definition: PFIS = \frac{\sum_{i \in assessmentsocialanddiagnosis} funcimp\_score_i} {|assessmentsocialanddiagnosis|}, \text{where } funcimp\_score = \begin{cases} 3 & \text{if } funcimp = Severe \\ 2 & \text{if } funcimp = Moderate \\ 1 & \text{if } funcimp = Mild \end{cases}
+  stored_answer: PFIS = \frac{\sum_{i \in assessmentsocialanddiagnosis} funcimp\_score_i} {|assessmentsocialanddiagnosis|}, \text{where } funcimp\_score = \begin{cases} 3 & \text{if } funcimp = Severe \\ 2 & \text{if } funcimp = Moderate \\ 1 & \text{if } funcimp = Mild \end{cases}
+- id: 10
+  oracle_definition: A patient with suicrisk \in \{High, Severe\} or mental\_health\_scores['depression']['phq9\_score'] > 12 or mental\_health\_scores['anxiety']['gad7\_score'] > 15,
+  stored_answer: A patient with suicrisk \in \{High, Severe\} or mental\_health\_scores['depression']['phq9\_score'] > 15 or mental\_health\_scores['anxiety']['gad7\_score'] > 15,
+pre_drift:
+  knowledge_base:
+  - id: 45
+    version: 1
+    knowledge: Patient with Severe Comorbid Distress Profile
+    description: Identifies patients experiencing significant simultaneous distress across depression, anxiety, and functional domains.
+    definition: A patient where mental_health_scores['depression']['phq9_score'] \geq 15 AND mental_health_scores['anxiety']['gad7_score'] \geq 15 AND funcimp = 'Severe'. \text{This profile relates to high individual contributions to APSF, AGSF, and PFIS}.
+    type: domain_knowledge
+    children_knowledge:
+    - 0
+    - 1
+    - 6
+  - id: 0
+    version: 1
+    knowledge: Average PHQ-9 Score by Facility (APSF)
+    description: Calculates the average PHQ-9 depression score for patients assessed at a specific facility.
+    definition: APSF = \frac{\sum_{i \in assessmentsymptomsandrisk} (mental\_health\_scores_i['depression']['phq9\_score'])} {|assessmentsymptomsandrisk|}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 1
+    version: 1
+    knowledge: Average GAD-7 Score by Facility (AGSF)
+    description: Calculates the average GAD-7 anxiety score for patients assessed at a specific facility.
+    definition: AGSF = \frac{\sum_{i \in assessmentsymptomsandrisk} (mental\_health\_scores_i['anxiety']['gad7\_score'])} {|assessmentsymptomsandrisk|}, \text{where } mental\_health\_scores_i['anxiety']['gad7\_score'] \text{ is the GAD-7 score for each assessment in the assessmentsymptomsandrisk table, linked to a facility via encounters.facid}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 6
+    version: 1
+    knowledge: Patient Functional Impairment Score (PFIS)
+    description: Calculates an average functional impairment score across patients.
+    definition: PFIS = \frac{\sum_{i \in assessmentsocialanddiagnosis} funcimp\_score_i} {|assessmentsocialanddiagnosis|}, \text{where } funcimp\_score = \begin{cases} 3 & \text{if } funcimp = Severe \\ 2 & \text{if } funcimp = Moderate \\ 1 & \text{if } funcimp = Mild \end{cases}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 10
+    knowledge: High-Risk Patient
+    description: Identifies patients with elevated suicide risk or severe symptoms.
+    definition: A patient with suicrisk \in \{High, Severe\} or mental\_health\_scores['depression']['phq9\_score'] > 15 or mental\_health\_scores['anxiety']['gad7\_score'] > 15,
+    type: domain_knowledge
+    children_knowledge: -1
+    version: 1
+  gold_sql: SELECT COUNT(DISTINCT TRIM(b.patownerref)) FROM assessmentbasics b JOIN assessmentsymptomsandrisk r ON TRIM(r.asrkey) = TRIM(b.abkey) JOIN assessmentsocialanddiagnosis d ON TRIM(d.asdkey) = TRIM(b.abkey) WHERE CAST(json_extract(r.mental_health_scores, '$.depression.phq9_score') AS REAL) >= 15 AND CAST(json_extract(r.mental_health_scores, '$.anxiety.gad7_score') AS REAL) >= 15 AND TRIM(d.funcimp) = 'Severe'
+post_drift:
+  knowledge_base:
+  - id: 45
+    version: 2
+    knowledge: Patient with Severe Comorbid Distress Profile
+    description: Identifies patients experiencing significant simultaneous distress across depression, anxiety, and functional domains.
+    definition: A patient where mental_health_scores['depression']['phq9_score'] \geq 12 AND mental_health_scores['anxiety']['gad7_score'] \geq 15 AND funcimp = 'Severe'. \text{This profile relates to high individual contributions to APSF, AGSF, and PFIS}.
+    type: domain_knowledge
+    children_knowledge:
+    - 0
+    - 1
+    - 6
+  - id: 0
+    version: 1
+    knowledge: Average PHQ-9 Score by Facility (APSF)
+    description: Calculates the average PHQ-9 depression score for patients assessed at a specific facility.
+    definition: APSF = \frac{\sum_{i \in assessmentsymptomsandrisk} (mental\_health\_scores_i['depression']['phq9\_score'])} {|assessmentsymptomsandrisk|}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 1
+    version: 1
+    knowledge: Average GAD-7 Score by Facility (AGSF)
+    description: Calculates the average GAD-7 anxiety score for patients assessed at a specific facility.
+    definition: AGSF = \frac{\sum_{i \in assessmentsymptomsandrisk} (mental\_health\_scores_i['anxiety']['gad7\_score'])} {|assessmentsymptomsandrisk|}, \text{where } mental\_health\_scores_i['anxiety']['gad7\_score'] \text{ is the GAD-7 score for each assessment in the assessmentsymptomsandrisk table, linked to a facility via encounters.facid}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 6
+    version: 1
+    knowledge: Patient Functional Impairment Score (PFIS)
+    description: Calculates an average functional impairment score across patients.
+    definition: PFIS = \frac{\sum_{i \in assessmentsocialanddiagnosis} funcimp\_score_i} {|assessmentsocialanddiagnosis|}, \text{where } funcimp\_score = \begin{cases} 3 & \text{if } funcimp = Severe \\ 2 & \text{if } funcimp = Moderate \\ 1 & \text{if } funcimp = Mild \end{cases}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 10
+    knowledge: High-Risk Patient
+    description: Identifies patients with elevated suicide risk or severe symptoms.
+    definition: A patient with suicrisk \in \{High, Severe\} or mental\_health\_scores['depression']['phq9\_score'] > 12 or mental\_health\_scores['anxiety']['gad7\_score'] > 15,
+    type: domain_knowledge
+    children_knowledge: -1
+    version: 2
+  gold_sql: SELECT COUNT(DISTINCT TRIM(b.patownerref)) FROM assessmentbasics b JOIN assessmentsymptomsandrisk r ON TRIM(r.asrkey) = TRIM(b.abkey) JOIN assessmentsocialanddiagnosis d ON TRIM(d.asdkey) = TRIM(b.abkey) WHERE CAST(json_extract(r.mental_health_scores, '$.depression.phq9_score') AS REAL) >= 12 AND CAST(json_extract(r.mental_health_scores, '$.anxiety.gad7_score') AS REAL) >= 15 AND TRIM(d.funcimp) = 'Severe'

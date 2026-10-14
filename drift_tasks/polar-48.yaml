@@ -1,0 +1,115 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 44 (seed 20261015). Entry: polar 48 (Polar Base Energy Security Status (PBESS)).
+# Old value: 65 (the REC threshold, in percent as REC is defined x100). New value: 52. Direction used: down (drawn).
+# Restating entries changed: none (no other polar entry states REC > 65; entries 19 and 52 use
+# REC > 70 for 'Energy-Sustainable', another term; entry 48's description states no number).
+# Unit: pieces of equipment; each has one row in thermalsolarwindandgrid, powerbattery and
+# waterandwaste (1000 each), joined by equipment code (thermalpowerref gives the same pairing).
+# Gold results: pre-drift [(29,)], post-drift [(49,)].
+# Entries built on (unchanged in both views): 2, 9, 35, 7.
+id: polar-48-polar-base-energy-security-status
+database: polar
+question: How many pieces of equipment meet the conditions for the 'energy secure' state of the Polar Base Energy Security Status (PBESS)?
+drift_type: documented
+entries:
+- id: 48
+  oracle_definition: A polar base is assessed as being in an 'energy secure' state when it maintains REC > 52%, ESI > 0.7, and RSSI > 0.75, with batterystatus.level_percent > 75 and hydrogenlevelpercent > 70.
+  stored_answer: A polar base is assessed as being in an 'energy secure' state when it maintains REC > 65%, ESI > 0.7, and RSSI > 0.75, with batterystatus.level_percent > 75 and hydrogenlevelpercent > 70.
+- id: 2
+  oracle_definition: ESI = energyefficiencypercent \times \begin{cases} 1.5 & \text{if powersource IN ('Solar', 'Wind')} \\ 1.2 & \text{if powersource = 'Hybrid'} \\ 1.0 & \text{if powersource = 'Battery'} \\ 0.7 & \text{if powersource = 'Diesel'} \\ 0 & \text{otherwise} \end{cases}, \text{ providing higher ratings for renewable energy and lower ratings for fossil fuels.}
+  stored_answer: ESI = energyefficiencypercent \times \begin{cases} 1.5 & \text{if powersource IN ('Solar', 'Wind')} \\ 1.2 & \text{if powersource = 'Hybrid'} \\ 1.0 & \text{if powersource = 'Battery'} \\ 0.7 & \text{if powersource = 'Diesel'} \\ 0 & \text{otherwise} \end{cases}, \text{ providing higher ratings for renewable energy and lower ratings for fossil fuels.}
+- id: 9
+  oracle_definition: REC = \frac{renewablemetrics.solar.output\_w + renewablemetrics.wind.output\_w}{fuelcelloutputw + renewablemetrics.solar.output\_w + renewablemetrics.wind.output\_w} \times 100, \text{ where higher values indicate greater reliance on renewable energy.}
+  stored_answer: REC = \frac{renewablemetrics.solar.output\_w + renewablemetrics.wind.output\_w}{fuelcelloutputw + renewablemetrics.solar.output\_w + renewablemetrics.wind.output\_w} \times 100, \text{ where higher values indicate greater reliance on renewable energy.}
+- id: 35
+  oracle_definition: RSSI = 0.6 × REC + 0.4 × WRMI
+  stored_answer: RSSI = 0.6 × REC + 0.4 × WRMI
+- id: 7
+  oracle_definition: WRMI = waterlevelpercent \times \frac{waterqualityindex}{100} \times (1 - \frac{wastetanklevelpercent}{100}), \text{ where higher water quality and appropriate water/waste levels indicate better management.}
+  stored_answer: WRMI = waterlevelpercent \times \frac{waterqualityindex}{100} \times (1 - \frac{wastetanklevelpercent}{100}), \text{ where higher water quality and appropriate water/waste levels indicate better management.}
+pre_drift:
+  knowledge_base:
+  - id: 48
+    version: 1
+    knowledge: Polar Base Energy Security Status (PBESS)
+    description: Determines the security status of energy supply for polar bases
+    definition: A polar base is assessed as being in an 'energy secure' state when it maintains REC > 65%, ESI > 0.7, and RSSI > 0.75, with batterystatus.level_percent > 75 and hydrogenlevelpercent > 70.
+    type: domain_knowledge
+    children_knowledge:
+    - 2
+    - 9
+    - 35
+  - id: 2
+    version: 1
+    knowledge: Energy Sustainability Index (ESI)
+    description: Measures the sustainability of an equipment's energy usage by evaluating energy efficiency and renewable sources.
+    definition: ESI = energyefficiencypercent \times \begin{cases} 1.5 & \text{if powersource IN ('Solar', 'Wind')} \\ 1.2 & \text{if powersource = 'Hybrid'} \\ 1.0 & \text{if powersource = 'Battery'} \\ 0.7 & \text{if powersource = 'Diesel'} \\ 0 & \text{otherwise} \end{cases}, \text{ providing higher ratings for renewable energy and lower ratings for fossil fuels.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 9
+    version: 1
+    knowledge: Renewable Energy Contribution (REC)
+    description: Calculates the percentage contribution of renewable energy sources to the total power generation.
+    definition: REC = \frac{renewablemetrics.solar.output\_w + renewablemetrics.wind.output\_w}{fuelcelloutputw + renewablemetrics.solar.output\_w + renewablemetrics.wind.output\_w} \times 100, \text{ where higher values indicate greater reliance on renewable energy.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 35
+    version: 1
+    knowledge: Resource Self-Sufficiency Index (RSSI)
+    description: Measures a polar site's self-sufficiency in terms of resources
+    definition: RSSI = 0.6 × REC + 0.4 × WRMI
+    type: calculation_knowledge
+    children_knowledge:
+    - 7
+    - 9
+  - id: 7
+    version: 1
+    knowledge: Water Resource Management Index (WRMI)
+    description: Evaluates the efficiency of water resource management based on water levels, quality, and waste levels.
+    definition: WRMI = waterlevelpercent \times \frac{waterqualityindex}{100} \times (1 - \frac{wastetanklevelpercent}{100}), \text{ where higher water quality and appropriate water/waste levels indicate better management.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: WITH m AS (SELECT t.thermaleqref AS eq, (CAST(json_extract(t.renewablemetrics, '$.solar.output_w') AS REAL) + CAST(json_extract(t.renewablemetrics, '$.wind.output_w') AS REAL)) * 100.0 / (t.fuelcelloutputw + CAST(json_extract(t.renewablemetrics, '$.solar.output_w') AS REAL) + CAST(json_extract(t.renewablemetrics, '$.wind.output_w') AS REAL)) AS rec, p.energyefficiencypercent * CASE WHEN p.powersource IN ('Solar', 'Wind') THEN 1.5 WHEN p.powersource = 'Hybrid' THEN 1.2 WHEN p.powersource = 'Battery' THEN 1.0 WHEN p.powersource = 'Diesel' THEN 0.7 ELSE 0 END AS esi, w.waterlevelpercent * (w.waterqualityindex / 100.0) * (1 - w.wastetanklevelpercent / 100.0) AS wrmi, CAST(json_extract(p.batterystatus, '$.level_percent') AS REAL) AS battery_level, t.hydrogenlevelpercent AS hydrogen_level FROM thermalsolarwindandgrid t JOIN powerbattery p ON p.pwrbatteqref = t.thermaleqref JOIN waterandwaste w ON w.watereqref = t.thermaleqref) SELECT COUNT(DISTINCT eq) AS energy_secure_equipment FROM m WHERE rec > 65 AND esi > 0.7 AND 0.6 * rec + 0.4 * wrmi > 0.75 AND battery_level > 75 AND hydrogen_level > 70
+post_drift:
+  knowledge_base:
+  - id: 48
+    version: 2
+    knowledge: Polar Base Energy Security Status (PBESS)
+    description: Determines the security status of energy supply for polar bases
+    definition: A polar base is assessed as being in an 'energy secure' state when it maintains REC > 52%, ESI > 0.7, and RSSI > 0.75, with batterystatus.level_percent > 75 and hydrogenlevelpercent > 70.
+    type: domain_knowledge
+    children_knowledge:
+    - 2
+    - 9
+    - 35
+  - id: 2
+    version: 1
+    knowledge: Energy Sustainability Index (ESI)
+    description: Measures the sustainability of an equipment's energy usage by evaluating energy efficiency and renewable sources.
+    definition: ESI = energyefficiencypercent \times \begin{cases} 1.5 & \text{if powersource IN ('Solar', 'Wind')} \\ 1.2 & \text{if powersource = 'Hybrid'} \\ 1.0 & \text{if powersource = 'Battery'} \\ 0.7 & \text{if powersource = 'Diesel'} \\ 0 & \text{otherwise} \end{cases}, \text{ providing higher ratings for renewable energy and lower ratings for fossil fuels.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 9
+    version: 1
+    knowledge: Renewable Energy Contribution (REC)
+    description: Calculates the percentage contribution of renewable energy sources to the total power generation.
+    definition: REC = \frac{renewablemetrics.solar.output\_w + renewablemetrics.wind.output\_w}{fuelcelloutputw + renewablemetrics.solar.output\_w + renewablemetrics.wind.output\_w} \times 100, \text{ where higher values indicate greater reliance on renewable energy.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 35
+    version: 1
+    knowledge: Resource Self-Sufficiency Index (RSSI)
+    description: Measures a polar site's self-sufficiency in terms of resources
+    definition: RSSI = 0.6 × REC + 0.4 × WRMI
+    type: calculation_knowledge
+    children_knowledge:
+    - 7
+    - 9
+  - id: 7
+    version: 1
+    knowledge: Water Resource Management Index (WRMI)
+    description: Evaluates the efficiency of water resource management based on water levels, quality, and waste levels.
+    definition: WRMI = waterlevelpercent \times \frac{waterqualityindex}{100} \times (1 - \frac{wastetanklevelpercent}{100}), \text{ where higher water quality and appropriate water/waste levels indicate better management.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: WITH m AS (SELECT t.thermaleqref AS eq, (CAST(json_extract(t.renewablemetrics, '$.solar.output_w') AS REAL) + CAST(json_extract(t.renewablemetrics, '$.wind.output_w') AS REAL)) * 100.0 / (t.fuelcelloutputw + CAST(json_extract(t.renewablemetrics, '$.solar.output_w') AS REAL) + CAST(json_extract(t.renewablemetrics, '$.wind.output_w') AS REAL)) AS rec, p.energyefficiencypercent * CASE WHEN p.powersource IN ('Solar', 'Wind') THEN 1.5 WHEN p.powersource = 'Hybrid' THEN 1.2 WHEN p.powersource = 'Battery' THEN 1.0 WHEN p.powersource = 'Diesel' THEN 0.7 ELSE 0 END AS esi, w.waterlevelpercent * (w.waterqualityindex / 100.0) * (1 - w.wastetanklevelpercent / 100.0) AS wrmi, CAST(json_extract(p.batterystatus, '$.level_percent') AS REAL) AS battery_level, t.hydrogenlevelpercent AS hydrogen_level FROM thermalsolarwindandgrid t JOIN powerbattery p ON p.pwrbatteqref = t.thermaleqref JOIN waterandwaste w ON w.watereqref = t.thermaleqref) SELECT COUNT(DISTINCT eq) AS energy_secure_equipment FROM m WHERE rec > 52 AND esi > 0.7 AND 0.6 * rec + 0.4 * wrmi > 0.75 AND battery_level > 75 AND hydrogen_level > 70

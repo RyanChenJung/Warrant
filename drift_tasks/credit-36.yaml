@@ -1,0 +1,59 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 50 (seed 20261015). Entry: credit 36 (Credit Risk Intensity (CRI)).
+# Old value: 0.5 (the weight of the credit-score term). New value: 0.6. Direction used: up (drawn).
+# Restating entries changed: none (no other credit entry states the credit-score weight of CRI;
+# CHS and CQI weight credscore / 850 with 0.4 and 0.6, other quantities).
+# AHI (entry 9) caps each component at 1.0: avgaccage / 10, accmixscore and payconsist are each
+# capped (only avgaccage / 10 exceeds 1 in the data, up to 2.0).
+# Unit: customers; 1000 customers, each with one credit_and_compliance and one
+# credit_accounts_and_history row. The average and maximum CRI move only 4.2 and 4.3 percent,
+# so the question asks for the minimum.
+# Gold results: pre-drift [(0.11829999999999997,)], post-drift [(0.12629999999999997,)].
+# Entries built on (unchanged in both views): 9.
+id: credit-36-credit-risk-intensity
+database: credit
+question: What is the lowest Credit Risk Intensity (CRI) of any customer?
+drift_type: documented
+entries:
+- id: 36
+  oracle_definition: CRI = 0.6 × (1 - \frac{credscore}{850}) + 0.3 × \frac{delinqcount + latepaycount + choffs}{10} + 0.2 × (1 - AHI), \text{where AHI is the Account Health Index}
+  stored_answer: CRI = 0.5 × (1 - \frac{credscore}{850}) + 0.3 × \frac{delinqcount + latepaycount + choffs}{10} + 0.2 × (1 - AHI), \text{where AHI is the Account Health Index}
+- id: 9
+  oracle_definition: AHI = 0.4 × \frac{avgaccage}{10} + 0.3 × accmixscore + 0.3 × payconsist, \text{where each component is capped at 1.0}
+  stored_answer: AHI = 0.4 × \frac{avgaccage}{10} + 0.3 × accmixscore + 0.3 × payconsist, \text{where each component is capped at 1.0}
+pre_drift:
+  knowledge_base:
+  - id: 36
+    version: 1
+    knowledge: Credit Risk Intensity (CRI)
+    description: Advanced measure of credit risk that incorporates payment history and account diversity.
+    definition: CRI = 0.5 × (1 - \frac{credscore}{850}) + 0.3 × \frac{delinqcount + latepaycount + choffs}{10} + 0.2 × (1 - AHI), \text{where AHI is the Account Health Index}
+    type: calculation_knowledge
+    children_knowledge:
+    - 9
+  - id: 9
+    version: 1
+    knowledge: Account Health Index (AHI)
+    description: Composite measure of account quality considering age, mix, and payment history.
+    definition: AHI = 0.4 × \frac{avgaccage}{10} + 0.3 × accmixscore + 0.3 × payconsist, \text{where each component is capped at 1.0}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT MIN(0.5 * (1 - c.credscore / 850.0) + 0.3 * (c.delinqcount + c.latepaycount + c.choffs) / 10.0 + 0.2 * (1 - (0.4 * MIN(h.avgaccage / 10.0, 1.0) + 0.3 * MIN(h.accmixscore, 1.0) + 0.3 * MIN(h.payconsist, 1.0)))) AS min_cri FROM credit_and_compliance c JOIN credit_accounts_and_history h ON h.histcompref = c.compbankref
+post_drift:
+  knowledge_base:
+  - id: 36
+    version: 2
+    knowledge: Credit Risk Intensity (CRI)
+    description: Advanced measure of credit risk that incorporates payment history and account diversity.
+    definition: CRI = 0.6 × (1 - \frac{credscore}{850}) + 0.3 × \frac{delinqcount + latepaycount + choffs}{10} + 0.2 × (1 - AHI), \text{where AHI is the Account Health Index}
+    type: calculation_knowledge
+    children_knowledge:
+    - 9
+  - id: 9
+    version: 1
+    knowledge: Account Health Index (AHI)
+    description: Composite measure of account quality considering age, mix, and payment history.
+    definition: AHI = 0.4 × \frac{avgaccage}{10} + 0.3 × accmixscore + 0.3 × payconsist, \text{where each component is capped at 1.0}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT MIN(0.6 * (1 - c.credscore / 850.0) + 0.3 * (c.delinqcount + c.latepaycount + c.choffs) / 10.0 + 0.2 * (1 - (0.4 * MIN(h.avgaccage / 10.0, 1.0) + 0.3 * MIN(h.accmixscore, 1.0) + 0.3 * MIN(h.payconsist, 1.0)))) AS min_cri FROM credit_and_compliance c JOIN credit_accounts_and_history h ON h.histcompref = c.compbankref

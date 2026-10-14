@@ -1,0 +1,116 @@
+# Documented drift task for #43, drafted with Claude Code.
+# Draw position: 31 (seed 20261015). Entry: cross_db 10 (High-Risk Data Flow).
+# Old value: 0.7 (RES threshold). New value: 0.6. Direction used: down (drawn).
+# Restating entries changed: 39, 47 (both state the same RES > 0.7 threshold for high risk exposure).
+# Entries built on (unchanged in both views): 2, 4.
+# Gold results: pre-drift [(461,)], post-drift [(514,)].
+# DSI (entry 4) has no case for datasense 'Critical', so a Critical profile has no DSI and
+# never counts; this is the same in both states.
+id: cross_db-10-high-risk-data-flow
+database: cross_db
+question: How many data flows are High-Risk Data Flows?
+drift_type: documented
+entries:
+- id: 10
+  oracle_definition: A data flow where RES > 0.6 and DSI > 100
+  stored_answer: A data flow where RES > 0.7 and DSI > 100
+- id: 39
+  oracle_definition: A data flow where RES > 0.6 and DFRS < 0.5
+  stored_answer: A data flow where RES > 0.7 and DFRS < 0.5
+- id: 47
+  oracle_definition: A data flow where BRF > 100 and RES > 0.6
+  stored_answer: A data flow where BRF > 100 and RES > 0.7
+- id: 2
+  oracle_definition: RES = \text{RiskAssess} \times \text{CtrlEff}^{-1}
+  stored_answer: RES = \text{RiskAssess} \times \text{CtrlEff}^{-1}
+- id: 4
+  oracle_definition: DSI = \text{VolGB} \times \begin{cases} 3 & \text{if DataSense = 'High'} \\ 2 & \text{if DataSense = 'Medium'} \\ 1 & \text{if DataSense = 'Low'} \end{cases}
+  stored_answer: DSI = \text{VolGB} \times \begin{cases} 3 & \text{if DataSense = 'High'} \\ 2 & \text{if DataSense = 'Medium'} \\ 1 & \text{if DataSense = 'Low'} \end{cases}
+pre_drift:
+  knowledge_base:
+  - id: 10
+    version: 1
+    knowledge: High-Risk Data Flow
+    description: Identifies data flows with elevated risk based on risk exposure and sensitivity.
+    definition: A data flow where RES > 0.7 and DSI > 100
+    type: domain_knowledge
+    children_knowledge:
+    - 2
+    - 4
+  - id: 39
+    version: 1
+    knowledge: Critical Data Flow Risk
+    description: Identifies data flows with both high risk exposure and poor reliability.
+    definition: A data flow where RES > 0.7 and DFRS < 0.5
+    type: domain_knowledge
+    children_knowledge:
+    - 2
+    - 30
+  - id: 47
+    version: 1
+    knowledge: Bandwidth-Constrained Risk
+    description: Identifies data flows where bandwidth saturation amplifies risk.
+    definition: A data flow where BRF > 100 and RES > 0.7
+    type: domain_knowledge
+    children_knowledge:
+    - 2
+    - 37
+  - id: 2
+    version: 1
+    knowledge: Risk Exposure Score (RES)
+    description: Calculates the overall risk exposure by combining risk assessment and residual risk.
+    definition: RES = \text{RiskAssess} \times \text{CtrlEff}^{-1}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 4
+    version: 1
+    knowledge: Data Sensitivity Index (DSI)
+    description: Quantifies the sensitivity of data based on volume and sensitivity level.
+    definition: DSI = \text{VolGB} \times \begin{cases} 3 & \text{if DataSense = 'High'} \\ 2 & \text{if DataSense = 'Medium'} \\ 1 & \text{if DataSense = 'Low'} \end{cases}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(*) AS high_risk_data_flows FROM dataflow d WHERE EXISTS (SELECT 1 FROM riskmanagement r WHERE TRIM(r.flowlink) = TRIM(d.recordregistry) AND r.riskassess * 1.0 / r.ctrleff > 0.7) AND EXISTS (SELECT 1 FROM dataprofile p WHERE TRIM(p.flowsign) = TRIM(d.recordregistry) AND p.volgb * CASE p.datasense WHEN 'High' THEN 3 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 1 END > 100)
+post_drift:
+  knowledge_base:
+  - id: 10
+    version: 2
+    knowledge: High-Risk Data Flow
+    description: Identifies data flows with elevated risk based on risk exposure and sensitivity.
+    definition: A data flow where RES > 0.6 and DSI > 100
+    type: domain_knowledge
+    children_knowledge:
+    - 2
+    - 4
+  - id: 39
+    version: 2
+    knowledge: Critical Data Flow Risk
+    description: Identifies data flows with both high risk exposure and poor reliability.
+    definition: A data flow where RES > 0.6 and DFRS < 0.5
+    type: domain_knowledge
+    children_knowledge:
+    - 2
+    - 30
+  - id: 47
+    version: 2
+    knowledge: Bandwidth-Constrained Risk
+    description: Identifies data flows where bandwidth saturation amplifies risk.
+    definition: A data flow where BRF > 100 and RES > 0.6
+    type: domain_knowledge
+    children_knowledge:
+    - 2
+    - 37
+  - id: 2
+    version: 1
+    knowledge: Risk Exposure Score (RES)
+    description: Calculates the overall risk exposure by combining risk assessment and residual risk.
+    definition: RES = \text{RiskAssess} \times \text{CtrlEff}^{-1}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 4
+    version: 1
+    knowledge: Data Sensitivity Index (DSI)
+    description: Quantifies the sensitivity of data based on volume and sensitivity level.
+    definition: DSI = \text{VolGB} \times \begin{cases} 3 & \text{if DataSense = 'High'} \\ 2 & \text{if DataSense = 'Medium'} \\ 1 & \text{if DataSense = 'Low'} \end{cases}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(*) AS high_risk_data_flows FROM dataflow d WHERE EXISTS (SELECT 1 FROM riskmanagement r WHERE TRIM(r.flowlink) = TRIM(d.recordregistry) AND r.riskassess * 1.0 / r.ctrleff > 0.6) AND EXISTS (SELECT 1 FROM dataprofile p WHERE TRIM(p.flowsign) = TRIM(d.recordregistry) AND p.volgb * CASE p.datasense WHEN 'High' THEN 3 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 1 END > 100)

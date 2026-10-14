@@ -1,0 +1,73 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 19. Entry: gaming 32 (Ergonomic Sustainability Factor (ESF)).
+# Old value: 5 (the ErgoRate baseline in ESF). New value: 4. Direction used: down (drawn).
+# Restating entries changed: none.
+# Entries built on (unchanged): 3.
+# Gold results: pre-drift 5.144564736, post-drift 5.568085880888889.
+id: gaming-32-ergonomic-sustainability-factor
+database: gaming
+question: What is the average Ergonomic Sustainability Factor (ESF) across all devices?
+drift_type: documented
+entries:
+- id: 32
+  oracle_definition: ESF = CI \times \left(1 + \frac{ErgoRate - 4}{10}\right) \times \left(1 - \frac{|PalmAngle - 15|}{30}\right) \times \left(1 + \frac{ErgoRate \times WristFlag}{50}\right)
+  stored_answer: ESF = CI \times \left(1 + \frac{ErgoRate - 5}{10}\right) \times \left(1 - \frac{|PalmAngle - 15|}{30}\right) \times \left(1 + \frac{ErgoRate \times WristFlag}{50}\right)
+- id: 3
+  oracle_definition: 'CI = \frac{ErgoRate}{10} \times \left(1 + \frac{(WristFlag ? 1 : 0)}{5}\right) \times \left(1 - \frac{|PalmAngle - 15|}{45}\right) \times 10'
+  stored_answer: 'CI = \frac{ErgoRate}{10} \times \left(1 + \frac{(WristFlag ? 1 : 0)}{5}\right) \times \left(1 - \frac{|PalmAngle - 15|}{45}\right) \times 10'
+pre_drift:
+  knowledge_base:
+  - id: 32
+    version: 1
+    knowledge: Ergonomic Sustainability Factor (ESF)
+    description: Evaluates how suitable a device is for extended gaming sessions based on ergonomic design and comfort metrics.
+    definition: ESF = CI \times \left(1 + \frac{ErgoRate - 5}{10}\right) \times \left(1 - \frac{|PalmAngle - 15|}{30}\right) \times \left(1 + \frac{ErgoRate \times WristFlag}{50}\right)
+    type: calculation_knowledge
+    children_knowledge:
+    - 3
+  - id: 3
+    version: 1
+    knowledge: Comfort Index (CI)
+    description: Evaluates the ergonomic comfort of a device based on its physical design factors and ergonomic rating.
+    definition: 'CI = \frac{ErgoRate}{10} \times \left(1 + \frac{(WristFlag ? 1 : 0)}{5}\right) \times \left(1 - \frac{|PalmAngle - 15|}{45}\right) \times 10'
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: |-
+    SELECT AVG(
+        ci * (1 + (ergorate - 5) / 10.0) * (1 - abs(palmangle - 15) / 30.0) * (1 + ergorate * wristflag / 50.0)
+      ) AS average_esf
+    FROM (
+      SELECT m.ergorate, m.wristflag, m.palmangle,
+        (m.ergorate / 10.0) * (1 + (CASE WHEN m.wristflag THEN 1 ELSE 0 END) / 5.0)
+          * (1 - abs(m.palmangle - 15) / 45.0) * 10 AS ci
+      FROM deviceidentity d
+      JOIN mechanical m ON m.mechdevref = d.devregistry
+    )
+post_drift:
+  knowledge_base:
+  - id: 32
+    version: 2
+    knowledge: Ergonomic Sustainability Factor (ESF)
+    description: Evaluates how suitable a device is for extended gaming sessions based on ergonomic design and comfort metrics.
+    definition: ESF = CI \times \left(1 + \frac{ErgoRate - 4}{10}\right) \times \left(1 - \frac{|PalmAngle - 15|}{30}\right) \times \left(1 + \frac{ErgoRate \times WristFlag}{50}\right)
+    type: calculation_knowledge
+    children_knowledge:
+    - 3
+  - id: 3
+    version: 1
+    knowledge: Comfort Index (CI)
+    description: Evaluates the ergonomic comfort of a device based on its physical design factors and ergonomic rating.
+    definition: 'CI = \frac{ErgoRate}{10} \times \left(1 + \frac{(WristFlag ? 1 : 0)}{5}\right) \times \left(1 - \frac{|PalmAngle - 15|}{45}\right) \times 10'
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: |-
+    SELECT AVG(
+        ci * (1 + (ergorate - 4) / 10.0) * (1 - abs(palmangle - 15) / 30.0) * (1 + ergorate * wristflag / 50.0)
+      ) AS average_esf
+    FROM (
+      SELECT m.ergorate, m.wristflag, m.palmangle,
+        (m.ergorate / 10.0) * (1 + (CASE WHEN m.wristflag THEN 1 ELSE 0 END) / 5.0)
+          * (1 - abs(m.palmangle - 15) / 45.0) * 10 AS ci
+      FROM deviceidentity d
+      JOIN mechanical m ON m.mechdevref = d.devregistry
+    )

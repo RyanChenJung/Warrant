@@ -1,0 +1,78 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 55 (seed 20261015). Entry: solar 2 (Temperature Performance Coefficient Impact (TPCI)).
+# Old value: 25 (the standard test condition cell temperature in (CellTempC - 25), stated twice in the
+# definition, both changed). New value: 30. Direction used: up (drawn).
+# Restating entries changed: 22 (TempCoef: power decreases for each degree above 25°C) and 35 (Weather
+# Corrected Efficiency: TempCoef x (25 - CellTempC)), both the same reference temperature of TempCoef.
+# Left unchanged: 15 (Optimal Performance Window, cell temperature between 25-45°C), a window bound, not
+# the reference temperature.
+# Entries built on (unchanged): none (children_knowledge is -1).
+# Gold results: pre-drift -5463.857275, post-drift -4367.319275 (1000 panels, one environment reading each).
+id: solar-2-temperature-performance-coefficient-impact
+database: solar
+question: What is the average Temperature Performance Coefficient Impact (TPCI) over all panels, taking each panel's cell temperature from the environment reading of its plant?
+drift_type: documented
+entries:
+- id: 2
+  oracle_definition: TPCI = PowerRatedW \times TempCoef \times (CellTempC - 30), \text{where TempCoef is the temperature coefficient and 30°C is the standard test condition temperature.}
+  stored_answer: TPCI = PowerRatedW \times TempCoef \times (CellTempC - 25), \text{where TempCoef is the temperature coefficient and 25°C is the standard test condition temperature.}
+- id: 22
+  oracle_definition: Expressed as a percentage per degree Celsius (usually negative), indicating how much a panel's power output decreases for each degree above 30°C. Typical values range from -0.25% to -0.50% per °C, with lower absolute values indicating better high-temperature performance.
+  stored_answer: Expressed as a percentage per degree Celsius (usually negative), indicating how much a panel's power output decreases for each degree above 25°C. Typical values range from -0.25% to -0.50% per °C, with lower absolute values indicating better high-temperature performance.
+- id: 35
+  oracle_definition: WCE = CurrentEfficiencyPercent × (1 + TempCoef × (30 - CellTempC) / 100) × (1000 / POAIrradianceWM2), where CurrentEfficiencyPercent is from efficiency_profile.current_efficiency.curreffpct.
+  stored_answer: WCE = CurrentEfficiencyPercent × (1 + TempCoef × (25 - CellTempC) / 100) × (1000 / POAIrradianceWM2), where CurrentEfficiencyPercent is from efficiency_profile.current_efficiency.curreffpct.
+pre_drift:
+  knowledge_base:
+  - id: 2
+    version: 1
+    knowledge: Temperature Performance Coefficient Impact (TPCI)
+    description: Quantifies the impact of temperature on panel performance based on its temperature coefficient.
+    definition: TPCI = PowerRatedW \times TempCoef \times (CellTempC - 25), \text{where TempCoef is the temperature coefficient and 25°C is the standard test condition temperature.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 22
+    version: 1
+    knowledge: TempCoef (Temperature Coefficient)
+    description: Illustrates how panel performance changes with temperature.
+    definition: Expressed as a percentage per degree Celsius (usually negative), indicating how much a panel's power output decreases for each degree above 25°C. Typical values range from -0.25% to -0.50% per °C, with lower absolute values indicating better high-temperature performance.
+    type: value_illustration
+    children_knowledge: -1
+  - id: 35
+    version: 1
+    knowledge: Weather Corrected Efficiency (WCE)
+    description: Adjusts panel efficiency measurements to account for weather conditions.
+    definition: WCE = CurrentEfficiencyPercent × (1 + TempCoef × (25 - CellTempC) / 100) × (1000 / POAIrradianceWM2), where CurrentEfficiencyPercent is from efficiency_profile.current_efficiency.curreffpct.
+    type: calculation_knowledge
+    children_knowledge:
+    - 22
+    - 23
+    - 28
+  gold_sql: SELECT AVG(p.powratew * p.tempcoef * (e.celltempc - 25)) AS avg_tpci FROM panel p JOIN environment e ON TRIM(e.arearegistry) = TRIM(p.hubregistry)
+post_drift:
+  knowledge_base:
+  - id: 2
+    version: 2
+    knowledge: Temperature Performance Coefficient Impact (TPCI)
+    description: Quantifies the impact of temperature on panel performance based on its temperature coefficient.
+    definition: TPCI = PowerRatedW \times TempCoef \times (CellTempC - 30), \text{where TempCoef is the temperature coefficient and 30°C is the standard test condition temperature.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 22
+    version: 2
+    knowledge: TempCoef (Temperature Coefficient)
+    description: Illustrates how panel performance changes with temperature.
+    definition: Expressed as a percentage per degree Celsius (usually negative), indicating how much a panel's power output decreases for each degree above 30°C. Typical values range from -0.25% to -0.50% per °C, with lower absolute values indicating better high-temperature performance.
+    type: value_illustration
+    children_knowledge: -1
+  - id: 35
+    version: 2
+    knowledge: Weather Corrected Efficiency (WCE)
+    description: Adjusts panel efficiency measurements to account for weather conditions.
+    definition: WCE = CurrentEfficiencyPercent × (1 + TempCoef × (30 - CellTempC) / 100) × (1000 / POAIrradianceWM2), where CurrentEfficiencyPercent is from efficiency_profile.current_efficiency.curreffpct.
+    type: calculation_knowledge
+    children_knowledge:
+    - 22
+    - 23
+    - 28
+  gold_sql: SELECT AVG(p.powratew * p.tempcoef * (e.celltempc - 30)) AS avg_tpci FROM panel p JOIN environment e ON TRIM(e.arearegistry) = TRIM(p.hubregistry)

@@ -1,0 +1,54 @@
+# Documented drift task for #43, drafted with Claude Code.
+# Draw position: 21 (seed 20261015). Entry: disaster 21 (High-Risk Response Operation).
+# Old value: 50 (secincidentcount threshold). New value: 40. Direction used: down (drawn).
+# Restating entries changed: none (no other disaster entry states the secincidentcount > 50
+# threshold; entry 47 uses its own secincidentcount > 40 for a different term).
+# Entries built on (unchanged in both views): 1.
+# Gold results: pre-drift [(88,)], post-drift [(108,)].
+id: disaster-21-high-risk-response-operation
+database: disaster
+question: How many High-Risk Response Operations are there?
+drift_type: documented
+entries:
+- id: 21
+  oracle_definition: Operations where emerglevel is 'Red' or 'Black' AND safetyranking is 'High Risk' AND secincidentcount > 40, indicating dangerous conditions requiring special safety protocols
+  stored_answer: Operations where emerglevel is 'Red' or 'Black' AND safetyranking is 'High Risk' AND secincidentcount > 50, indicating dangerous conditions requiring special safety protocols
+- id: 1
+  oracle_definition: Yellow indicates monitoring phase with minimal activation, Orange represents partial activation with elevated alert, Red signifies full activation for serious emergencies, and Black denotes critical emergency situations requiring all available resources
+  stored_answer: Yellow indicates monitoring phase with minimal activation, Orange represents partial activation with elevated alert, Red signifies full activation for serious emergencies, and Black denotes critical emergency situations requiring all available resources
+pre_drift:
+  knowledge_base:
+  - id: 21
+    version: 1
+    knowledge: High-Risk Response Operation
+    description: Identifies disaster operations with elevated risk factors
+    definition: Operations where emerglevel is 'Red' or 'Black' AND safetyranking is 'High Risk' AND secincidentcount > 50, indicating dangerous conditions requiring special safety protocols
+    type: domain_knowledge
+    children_knowledge:
+    - 1
+  - id: 1
+    version: 1
+    knowledge: emerglevel
+    description: Illustrates the color-coded emergency classification system
+    definition: Yellow indicates monitoring phase with minimal activation, Orange represents partial activation with elevated alert, Red signifies full activation for serious emergencies, and Black denotes critical emergency situations requiring all available resources
+    type: value_illustration
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(*) AS high_risk_operations FROM operations o JOIN coordinationandevaluation c ON TRIM(c.coordopsref) = TRIM(o.opsregistry) WHERE o.emerglevel IN ('Red', 'Black') AND c.safetyranking = 'High Risk' AND c.secincidentcount > 50
+post_drift:
+  knowledge_base:
+  - id: 21
+    version: 2
+    knowledge: High-Risk Response Operation
+    description: Identifies disaster operations with elevated risk factors
+    definition: Operations where emerglevel is 'Red' or 'Black' AND safetyranking is 'High Risk' AND secincidentcount > 40, indicating dangerous conditions requiring special safety protocols
+    type: domain_knowledge
+    children_knowledge:
+    - 1
+  - id: 1
+    version: 1
+    knowledge: emerglevel
+    description: Illustrates the color-coded emergency classification system
+    definition: Yellow indicates monitoring phase with minimal activation, Orange represents partial activation with elevated alert, Red signifies full activation for serious emergencies, and Black denotes critical emergency situations requiring all available resources
+    type: value_illustration
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(*) AS high_risk_operations FROM operations o JOIN coordinationandevaluation c ON TRIM(c.coordopsref) = TRIM(o.opsregistry) WHERE o.emerglevel IN ('Red', 'Black') AND c.safetyranking = 'High Risk' AND c.secincidentcount > 40

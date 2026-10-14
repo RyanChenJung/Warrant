@@ -1,0 +1,34 @@
+# Documented drift task for #43, drafted with Claude Code.
+# Draw position: 35 (seed 20261015). Entry: cybermarket 12 (Transaction Anomaly Score (TAS)).
+# Old value: 100 (escrowhrs scale in (1 + escrowhrs/100); before it, /1000 and /24 are unit conversions and the 1 is the factor's baseline). New value: 120. Direction used: up (drawn).
+# Restating entries changed: none (no other cybermarket entry divides escrowhrs by 100).
+# Entries built on (unchanged in both views): none.
+# Gold results: pre-drift [(169.9014351718308,)], post-drift [(155.79236878692558,)].
+id: cybermarket-12-transaction-anomaly-score
+database: cybermarket
+question: What is the average Transaction Anomaly Score across all transactions?
+drift_type: documented
+entries:
+- id: 12
+  oracle_definition: TAS = \frac{payamtusd}{1000} \times \frac{txfinishhrs}{24} \times \left(1 + \frac{escrowhrs}{120}\right) \times \left(1 - \frac{esccomprate}{100}\right), \text{where esccomprate is from the associated market, and higher scores indicate more suspicious transactions.}
+  stored_answer: TAS = \frac{payamtusd}{1000} \times \frac{txfinishhrs}{24} \times \left(1 + \frac{escrowhrs}{100}\right) \times \left(1 - \frac{esccomprate}{100}\right), \text{where esccomprate is from the associated market, and higher scores indicate more suspicious transactions.}
+pre_drift:
+  knowledge_base:
+  - id: 12
+    version: 1
+    knowledge: Transaction Anomaly Score (TAS)
+    description: Detects unusual transactions based on multiple variables
+    definition: TAS = \frac{payamtusd}{1000} \times \frac{txfinishhrs}{24} \times \left(1 + \frac{escrowhrs}{100}\right) \times \left(1 - \frac{esccomprate}{100}\right), \text{where esccomprate is from the associated market, and higher scores indicate more suspicious transactions.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT AVG(t.payamtusd / 1000.0 * (t.txfinishhrs / 24.0) * (1 + t.escrowhrs / 100.0) * (1 - m.esccomprate / 100.0)) AS avg_tas FROM transactions t JOIN markets m ON TRIM(m.mktregistry) = TRIM(t.mktref)
+post_drift:
+  knowledge_base:
+  - id: 12
+    version: 2
+    knowledge: Transaction Anomaly Score (TAS)
+    description: Detects unusual transactions based on multiple variables
+    definition: TAS = \frac{payamtusd}{1000} \times \frac{txfinishhrs}{24} \times \left(1 + \frac{escrowhrs}{120}\right) \times \left(1 - \frac{esccomprate}{100}\right), \text{where esccomprate is from the associated market, and higher scores indicate more suspicious transactions.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT AVG(t.payamtusd / 1000.0 * (t.txfinishhrs / 24.0) * (1 + t.escrowhrs / 120.0) * (1 - m.esccomprate / 100.0)) AS avg_tas FROM transactions t JOIN markets m ON TRIM(m.mktregistry) = TRIM(t.mktref)

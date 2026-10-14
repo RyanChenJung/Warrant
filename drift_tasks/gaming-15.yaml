@@ -1,0 +1,53 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 27. Entry: gaming 15 (Streaming-Optimized Device).
+# Old value: -45 (the MicSenseDb threshold). New value: -36. Direction used: down (drawn).
+# Restating entries changed: none.
+# Entries built on (unchanged): none.
+# MicFreqResp is stored as '<low>-<high>Hz'; covering at least 50Hz-18kHz means low <= 50 and high >= 18000.
+# Gold results: pre-drift 1, post-drift 3.
+id: gaming-15-streaming-optimized-device
+database: gaming
+question: How many devices qualify as a Streaming-Optimized Device?
+drift_type: documented
+entries:
+- id: 15
+  oracle_definition: A device with MicSenseDb < -36, MicFreqResp covering at least '50Hz-18kHz', McRespTime < 1.0, and ProfCount ≥ 5, allowing streamers to capture high-quality audio while maintaining flexible device configurations.
+  stored_answer: A device with MicSenseDb < -45, MicFreqResp covering at least '50Hz-18kHz', McRespTime < 1.0, and ProfCount ≥ 5, allowing streamers to capture high-quality audio while maintaining flexible device configurations.
+pre_drift:
+  knowledge_base:
+  - id: 15
+    version: 1
+    knowledge: Streaming-Optimized Device
+    description: Identifies devices specifically designed for content creators and streamers with appropriate features.
+    definition: A device with MicSenseDb < -45, MicFreqResp covering at least '50Hz-18kHz', McRespTime < 1.0, and ProfCount ≥ 5, allowing streamers to capture high-quality audio while maintaining flexible device configurations.
+    type: domain_knowledge
+    children_knowledge: -1
+  gold_sql: |-
+    SELECT COUNT(*) AS streaming_optimized_devices
+    FROM (
+      SELECT a.micsensedb, d.mcresptime, d.profcount,
+        CAST(substr(a.micfreqresp, 1, instr(a.micfreqresp, '-') - 1) AS INTEGER) AS low_hz,
+        CAST(replace(substr(a.micfreqresp, instr(a.micfreqresp, '-') + 1), 'Hz', '') AS INTEGER) AS high_hz
+      FROM deviceidentity d
+      JOIN audioandmedia a ON a.auddevref = d.devregistry
+    )
+    WHERE micsensedb < -45 AND low_hz <= 50 AND high_hz >= 18000 AND mcresptime < 1.0 AND profcount >= 5
+post_drift:
+  knowledge_base:
+  - id: 15
+    version: 2
+    knowledge: Streaming-Optimized Device
+    description: Identifies devices specifically designed for content creators and streamers with appropriate features.
+    definition: A device with MicSenseDb < -36, MicFreqResp covering at least '50Hz-18kHz', McRespTime < 1.0, and ProfCount ≥ 5, allowing streamers to capture high-quality audio while maintaining flexible device configurations.
+    type: domain_knowledge
+    children_knowledge: -1
+  gold_sql: |-
+    SELECT COUNT(*) AS streaming_optimized_devices
+    FROM (
+      SELECT a.micsensedb, d.mcresptime, d.profcount,
+        CAST(substr(a.micfreqresp, 1, instr(a.micfreqresp, '-') - 1) AS INTEGER) AS low_hz,
+        CAST(replace(substr(a.micfreqresp, instr(a.micfreqresp, '-') + 1), 'Hz', '') AS INTEGER) AS high_hz
+      FROM deviceidentity d
+      JOIN audioandmedia a ON a.auddevref = d.devregistry
+    )
+    WHERE micsensedb < -36 AND low_hz <= 50 AND high_hz >= 18000 AND mcresptime < 1.0 AND profcount >= 5

@@ -1,0 +1,166 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 5. Entry: insider 11 (Potential Insider Trading Flag).
+# Old value: 50.0 (infoleaksc threshold). New value: 60.0. Direction used: up (drawn).
+# Restating entries changed: 27 (Information Leakage Score Interpretation: High scores (>50) and
+# Moderate scores (20-50) state the same infoleaksc boundary; both become 60).
+# Entries built on (unchanged): 33, 34, 6, 35, 7, 9.
+# Gold results: pre-drift 325, post-drift 261.
+id: insider-11-potential-insider-trading-flag
+database: insider
+question: How many transactions are flagged by the Potential Insider Trading Flag?
+drift_type: documented
+entries:
+- id: 11
+  oracle_definition: A transaction is flagged if `infoleaksc` > 60.0 AND `corpeventprx` is NOT NULL AND `eventannotm` is 'Pre-market' or 'Intraday'.
+  stored_answer: A transaction is flagged if `infoleaksc` > 50.0 AND `corpeventprx` is NOT NULL AND `eventannotm` is 'Pre-market' or 'Intraday'.
+- id: 27
+  oracle_definition: '`infoleaksc`: A score typically from 0-100. Low scores (<20) suggest little evidence of trading activity ahead of significant news or events. Moderate scores (20-60) warrant attention and may correlate with known events. High scores (>60) strongly suggest potential trading based on material non-public information, requiring investigation.'
+  stored_answer: '`infoleaksc`: A score typically from 0-100. Low scores (<20) suggest little evidence of trading activity ahead of significant news or events. Moderate scores (20-50) warrant attention and may correlate with known events. High scores (>50) strongly suggest potential trading based on material non-public information, requiring investigation.'
+- id: 33
+  oracle_definition: 'WIS = \text{III} \times \text{AlertLevelMultiplier} \\ \text{where III is Investigation Intensity Index } \\ \text{and AlertLevelMultiplier maps Alert Level Severity  to numeric: ''Low''=1, ''Medium''=2, ''High''=3, ''Critical''=4.}'
+  stored_answer: 'WIS = \text{III} \times \text{AlertLevelMultiplier} \\ \text{where III is Investigation Intensity Index } \\ \text{and AlertLevelMultiplier maps Alert Level Severity  to numeric: ''Low''=1, ''Medium''=2, ''High''=3, ''Critical''=4.}'
+- id: 34
+  oracle_definition: SWOV = \text{optvolrt} \times (1 + \text{SDF}) \\ \text{where SDF is the Sentiment Divergence Factor .}
+  stored_answer: SWOV = \text{optvolrt} \times (1 + \text{SDF}) \\ \text{where SDF is the Sentiment Divergence Factor .}
+- id: 6
+  oracle_definition: III = (0.6 \times \text{behansc}) + (0.4 \times \text{netansc})
+  stored_answer: III = (0.6 \times \text{behansc}) + (0.4 \times \text{netansc})
+- id: 35
+  oracle_definition: LEFI = \text{EFIR} \times \log_{10}(\text{Max}(10, \text{penamt})) \\ \text{where EFIR is the Enforcement Financial Impact Ratio .}
+  stored_answer: LEFI = \text{EFIR} \times \log_{10}(\text{Max}(10, \text{penamt})) \\ \text{where EFIR is the Enforcement Financial Impact Ratio .}
+- id: 7
+  oracle_definition: SDF = |\text{newsscore} - \text{socscore}|
+  stored_answer: SDF = |\text{newsscore} - \text{socscore}|
+- id: 9
+  oracle_definition: EFIR = \frac{\text{penamt}}{\text{acctbal}}
+  stored_answer: EFIR = \frac{\text{penamt}}{\text{acctbal}}
+pre_drift:
+  knowledge_base:
+  - id: 11
+    version: 1
+    knowledge: Potential Insider Trading Flag
+    description: Flags transactions potentially linked to insider knowledge based on timing and context.
+    definition: A transaction is flagged if `infoleaksc` > 50.0 AND `corpeventprx` is NOT NULL AND `eventannotm` is 'Pre-market' or 'Intraday'.
+    type: domain_knowledge
+    children_knowledge:
+    - 33
+    - 34
+  - id: 27
+    version: 1
+    knowledge: Information Leakage Score Interpretation
+    description: Provides context for the information leakage score, indicating potential trading on non-public information.
+    definition: '`infoleaksc`: A score typically from 0-100. Low scores (<20) suggest little evidence of trading activity ahead of significant news or events. Moderate scores (20-50) warrant attention and may correlate with known events. High scores (>50) strongly suggest potential trading based on material non-public information, requiring investigation.'
+    type: value_illustration
+    children_knowledge: -1
+  - id: 33
+    version: 1
+    knowledge: Weighted Investigation Score (WIS)
+    description: Combines raw investigation scores with the current alert severity level.
+    definition: 'WIS = \text{III} \times \text{AlertLevelMultiplier} \\ \text{where III is Investigation Intensity Index } \\ \text{and AlertLevelMultiplier maps Alert Level Severity  to numeric: ''Low''=1, ''Medium''=2, ''High''=3, ''Critical''=4.}'
+    type: calculation_knowledge
+    children_knowledge:
+    - 6
+    - 35
+  - id: 34
+    version: 1
+    knowledge: Sentiment-Weighted Option Volume (SWOV)
+    description: Adjusts the option volume ratio based on the divergence between news and social sentiment.
+    definition: SWOV = \text{optvolrt} \times (1 + \text{SDF}) \\ \text{where SDF is the Sentiment Divergence Factor .}
+    type: calculation_knowledge
+    children_knowledge:
+    - 7
+  - id: 6
+    version: 1
+    knowledge: Investigation Intensity Index (III)
+    description: Combines behavioral and network analysis scores from an investigation.
+    definition: III = (0.6 \times \text{behansc}) + (0.4 \times \text{netansc})
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 35
+    version: 1
+    knowledge: Logarithmic Enforcement Fine Impact (LEFI)
+    description: Calculates the log-scaled financial impact ratio of enforcement fines, emphasizing order of magnitude.
+    definition: LEFI = \text{EFIR} \times \log_{10}(\text{Max}(10, \text{penamt})) \\ \text{where EFIR is the Enforcement Financial Impact Ratio .}
+    type: calculation_knowledge
+    children_knowledge:
+    - 9
+  - id: 7
+    version: 1
+    knowledge: Sentiment Divergence Factor (SDF)
+    description: Measures the difference between news and social media sentiment scores.
+    definition: SDF = |\text{newsscore} - \text{socscore}|
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 9
+    version: 1
+    knowledge: Enforcement Financial Impact Ratio (EFIR)
+    description: Calculates the ratio of the penalty amount to the trader's account balance at the time of the related transaction.
+    definition: EFIR = \frac{\text{penamt}}{\text{acctbal}}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(DISTINCT TRIM(transref)) FROM sentimentandfundamentals WHERE infoleaksc > 50.0 AND corpeventprx IS NOT NULL AND TRIM(eventannotm) IN ('Pre-market', 'Intraday')
+post_drift:
+  knowledge_base:
+  - id: 11
+    version: 2
+    knowledge: Potential Insider Trading Flag
+    description: Flags transactions potentially linked to insider knowledge based on timing and context.
+    definition: A transaction is flagged if `infoleaksc` > 60.0 AND `corpeventprx` is NOT NULL AND `eventannotm` is 'Pre-market' or 'Intraday'.
+    type: domain_knowledge
+    children_knowledge:
+    - 33
+    - 34
+  - id: 27
+    version: 2
+    knowledge: Information Leakage Score Interpretation
+    description: Provides context for the information leakage score, indicating potential trading on non-public information.
+    definition: '`infoleaksc`: A score typically from 0-100. Low scores (<20) suggest little evidence of trading activity ahead of significant news or events. Moderate scores (20-60) warrant attention and may correlate with known events. High scores (>60) strongly suggest potential trading based on material non-public information, requiring investigation.'
+    type: value_illustration
+    children_knowledge: -1
+  - id: 33
+    version: 1
+    knowledge: Weighted Investigation Score (WIS)
+    description: Combines raw investigation scores with the current alert severity level.
+    definition: 'WIS = \text{III} \times \text{AlertLevelMultiplier} \\ \text{where III is Investigation Intensity Index } \\ \text{and AlertLevelMultiplier maps Alert Level Severity  to numeric: ''Low''=1, ''Medium''=2, ''High''=3, ''Critical''=4.}'
+    type: calculation_knowledge
+    children_knowledge:
+    - 6
+    - 35
+  - id: 34
+    version: 1
+    knowledge: Sentiment-Weighted Option Volume (SWOV)
+    description: Adjusts the option volume ratio based on the divergence between news and social sentiment.
+    definition: SWOV = \text{optvolrt} \times (1 + \text{SDF}) \\ \text{where SDF is the Sentiment Divergence Factor .}
+    type: calculation_knowledge
+    children_knowledge:
+    - 7
+  - id: 6
+    version: 1
+    knowledge: Investigation Intensity Index (III)
+    description: Combines behavioral and network analysis scores from an investigation.
+    definition: III = (0.6 \times \text{behansc}) + (0.4 \times \text{netansc})
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 35
+    version: 1
+    knowledge: Logarithmic Enforcement Fine Impact (LEFI)
+    description: Calculates the log-scaled financial impact ratio of enforcement fines, emphasizing order of magnitude.
+    definition: LEFI = \text{EFIR} \times \log_{10}(\text{Max}(10, \text{penamt})) \\ \text{where EFIR is the Enforcement Financial Impact Ratio .}
+    type: calculation_knowledge
+    children_knowledge:
+    - 9
+  - id: 7
+    version: 1
+    knowledge: Sentiment Divergence Factor (SDF)
+    description: Measures the difference between news and social media sentiment scores.
+    definition: SDF = |\text{newsscore} - \text{socscore}|
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 9
+    version: 1
+    knowledge: Enforcement Financial Impact Ratio (EFIR)
+    description: Calculates the ratio of the penalty amount to the trader's account balance at the time of the related transaction.
+    definition: EFIR = \frac{\text{penamt}}{\text{acctbal}}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(DISTINCT TRIM(transref)) FROM sentimentandfundamentals WHERE infoleaksc > 60.0 AND corpeventprx IS NOT NULL AND TRIM(eventannotm) IN ('Pre-market', 'Intraday')

@@ -1,0 +1,148 @@
+# Documented drift task for #43, drafted with Claude Code.
+# Draw position: 9 (seed 20261015). Entry: fake 41 (Trusted Content Creator).
+# Old value: 0.8 (ETS threshold). New value: 0.6. Direction used: down (drawn).
+# Restating entries changed: none (no other fake entry states an ETS threshold).
+# Entries built on (unchanged in both views): 32, 37, 5, 1, 8, 9.
+# Gold results: pre-drift [(137,)], post-drift [(164,)].
+id: fake-41-trusted-content-creator
+database: fake
+question: How many accounts are Trusted Content Creators?
+drift_type: documented
+entries:
+- id: 41
+  oracle_definition: An account with ETS > 0.6 and CIS < 0.2
+  stored_answer: An account with ETS > 0.8 and CIS < 0.2
+- id: 32
+  oracle_definition: ETS = 0.5 \times PCI + 0.5 \times CAS
+  stored_answer: ETS = 0.5 \times PCI + 0.5 \times CAS
+- id: 37
+  oracle_definition: CIS = CMS \times MPS \times \frac{\text{netinflscore}}{100}
+  stored_answer: CIS = CMS \times MPS \times \frac{\text{netinflscore}}{100}
+- id: 5
+  oracle_definition: PCI = 0.3 \times \text{credscore} + 0.3 \times \text{reputscore} + 0.4 \times \text{completeness}
+  stored_answer: PCI = 0.3 \times \text{credscore} + 0.3 \times \text{reputscore} + 0.4 \times \text{completeness}
+- id: 1
+  oracle_definition: CAS = 0.3 \times \text{authenscore} + 0.3 \times \text{cntuniqscore} + 0.4 \times \text{convnatval} where values are normalized to [0,1]
+  stored_answer: CAS = 0.3 \times \text{authenscore} + 0.3 \times \text{cntuniqscore} + 0.4 \times \text{convnatval} where values are normalized to [0,1]
+- id: 8
+  oracle_definition: CMS = 0.4 \times (1 - \text{cntuniqscore}) + 0.3 \times \text{mediareratio} + 0.3 \times (1 - \text{txtuniq})
+  stored_answer: CMS = 0.4 \times (1 - \text{cntuniqscore}) + 0.3 \times \text{mediareratio} + 0.3 \times (1 - \text{txtuniq})
+- id: 9
+  oracle_definition: MPS = 0.3 \times \frac{\text{abuserepnum}}{1000} + 0.4 \times \text{impactval} + 0.3 \times \text{riskval}
+  stored_answer: MPS = 0.3 \times \frac{\text{abuserepnum}}{1000} + 0.4 \times \text{impactval} + 0.3 \times \text{riskval}
+pre_drift:
+  knowledge_base:
+  - id: 41
+    version: 1
+    knowledge: Trusted Content Creator
+    description: Identifies reliable content creators.
+    definition: An account with ETS > 0.8 and CIS < 0.2
+    type: domain_knowledge
+    children_knowledge:
+    - 32
+    - 37
+  - id: 32
+    version: 1
+    knowledge: Enhanced Trust Score (ETS)
+    description: Calculates trust score considering both profile credibility and content authenticity.
+    definition: ETS = 0.5 \times PCI + 0.5 \times CAS
+    type: calculation_knowledge
+    children_knowledge:
+    - 5
+    - 1
+  - id: 37
+    version: 1
+    knowledge: Content Impact Score (CIS)
+    description: Measures potential impact of manipulated content.
+    definition: CIS = CMS \times MPS \times \frac{\text{netinflscore}}{100}
+    type: calculation_knowledge
+    children_knowledge:
+    - 8
+    - 9
+  - id: 5
+    version: 1
+    knowledge: Profile Credibility Index (PCI)
+    description: Evaluates overall profile credibility.
+    definition: PCI = 0.3 \times \text{credscore} + 0.3 \times \text{reputscore} + 0.4 \times \text{completeness}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 1
+    version: 1
+    knowledge: Content Authenticity Score (CAS)
+    description: Aggregates multiple authenticity indicators into a single score.
+    definition: CAS = 0.3 \times \text{authenscore} + 0.3 \times \text{cntuniqscore} + 0.4 \times \text{convnatval} where values are normalized to [0,1]
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 8
+    version: 1
+    knowledge: Content Manipulation Score (CMS)
+    description: Evaluates content manipulation patterns.
+    definition: CMS = 0.4 \times (1 - \text{cntuniqscore}) + 0.3 \times \text{mediareratio} + 0.3 \times (1 - \text{txtuniq})
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 9
+    version: 1
+    knowledge: Moderation Priority Score (MPS)
+    description: Calculates priority for moderation review.
+    definition: MPS = 0.3 \times \frac{\text{abuserepnum}}{1000} + 0.4 \times \text{impactval} + 0.3 \times \text{riskval}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: WITH base AS (SELECT a.accindex, 0.3 * m.credscore + 0.3 * m.reputscore + 0.4 * json_extract(p.profile_composition, '$.completeness') AS pci, 0.3 * m.authenscore + 0.3 * c.cntuniqscore + 0.4 * g.convnatval AS cas, 0.4 * (1 - c.cntuniqscore) + 0.3 * c.mediareratio + 0.3 * (1 - g.txtuniq) AS cms, 0.3 * m.abuserepnum / 1000.0 + 0.4 * m.impactval + 0.3 * json_extract(s.detection_score_profile, '$.overall.riskval') AS mps, m.netinflscore FROM account a JOIN profile p ON TRIM(p.profaccref) = TRIM(a.accindex) JOIN sessionbehavior sb ON TRIM(sb.sessprofref) = TRIM(p.profkey) JOIN contentbehavior c ON TRIM(c.cntsessref) = TRIM(sb.sessref) JOIN moderationaction m ON TRIM(m.macntref) = TRIM(c.cntref) JOIN securitydetection s ON TRIM(s.secdetkey) = TRIM(m.masedetref) JOIN messaginganalysis g ON TRIM(g.msgcntref) = TRIM(c.cntref)) SELECT COUNT(DISTINCT accindex) AS trusted_content_creators FROM base WHERE 0.5 * pci + 0.5 * cas > 0.8 AND cms * mps * netinflscore / 100.0 < 0.2
+post_drift:
+  knowledge_base:
+  - id: 41
+    version: 2
+    knowledge: Trusted Content Creator
+    description: Identifies reliable content creators.
+    definition: An account with ETS > 0.6 and CIS < 0.2
+    type: domain_knowledge
+    children_knowledge:
+    - 32
+    - 37
+  - id: 32
+    version: 1
+    knowledge: Enhanced Trust Score (ETS)
+    description: Calculates trust score considering both profile credibility and content authenticity.
+    definition: ETS = 0.5 \times PCI + 0.5 \times CAS
+    type: calculation_knowledge
+    children_knowledge:
+    - 5
+    - 1
+  - id: 37
+    version: 1
+    knowledge: Content Impact Score (CIS)
+    description: Measures potential impact of manipulated content.
+    definition: CIS = CMS \times MPS \times \frac{\text{netinflscore}}{100}
+    type: calculation_knowledge
+    children_knowledge:
+    - 8
+    - 9
+  - id: 5
+    version: 1
+    knowledge: Profile Credibility Index (PCI)
+    description: Evaluates overall profile credibility.
+    definition: PCI = 0.3 \times \text{credscore} + 0.3 \times \text{reputscore} + 0.4 \times \text{completeness}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 1
+    version: 1
+    knowledge: Content Authenticity Score (CAS)
+    description: Aggregates multiple authenticity indicators into a single score.
+    definition: CAS = 0.3 \times \text{authenscore} + 0.3 \times \text{cntuniqscore} + 0.4 \times \text{convnatval} where values are normalized to [0,1]
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 8
+    version: 1
+    knowledge: Content Manipulation Score (CMS)
+    description: Evaluates content manipulation patterns.
+    definition: CMS = 0.4 \times (1 - \text{cntuniqscore}) + 0.3 \times \text{mediareratio} + 0.3 \times (1 - \text{txtuniq})
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 9
+    version: 1
+    knowledge: Moderation Priority Score (MPS)
+    description: Calculates priority for moderation review.
+    definition: MPS = 0.3 \times \frac{\text{abuserepnum}}{1000} + 0.4 \times \text{impactval} + 0.3 \times \text{riskval}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: WITH base AS (SELECT a.accindex, 0.3 * m.credscore + 0.3 * m.reputscore + 0.4 * json_extract(p.profile_composition, '$.completeness') AS pci, 0.3 * m.authenscore + 0.3 * c.cntuniqscore + 0.4 * g.convnatval AS cas, 0.4 * (1 - c.cntuniqscore) + 0.3 * c.mediareratio + 0.3 * (1 - g.txtuniq) AS cms, 0.3 * m.abuserepnum / 1000.0 + 0.4 * m.impactval + 0.3 * json_extract(s.detection_score_profile, '$.overall.riskval') AS mps, m.netinflscore FROM account a JOIN profile p ON TRIM(p.profaccref) = TRIM(a.accindex) JOIN sessionbehavior sb ON TRIM(sb.sessprofref) = TRIM(p.profkey) JOIN contentbehavior c ON TRIM(c.cntsessref) = TRIM(sb.sessref) JOIN moderationaction m ON TRIM(m.macntref) = TRIM(c.cntref) JOIN securitydetection s ON TRIM(s.secdetkey) = TRIM(m.masedetref) JOIN messaginganalysis g ON TRIM(g.msgcntref) = TRIM(c.cntref)) SELECT COUNT(DISTINCT accindex) AS trusted_content_creators FROM base WHERE 0.5 * pci + 0.5 * cas > 0.6 AND cms * mps * netinflscore / 100.0 < 0.2

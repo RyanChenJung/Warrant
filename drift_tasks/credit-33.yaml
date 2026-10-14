@@ -1,0 +1,57 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 45 (seed 20261015). Entry: credit 33 (Financial Vulnerability Score (FVS)).
+# Old value: 0.5 (the weight of DTI; the 0.5 weight of the savings term stays). New value: 0.4.
+# Direction used: down (drawn).
+# Restating entries changed: none (no other credit entry states the DTI weight of FVS).
+# Unit: customers; 1000 customers, each with one employment_and_income and one
+# expenses_and_assets row. The average FVS moves only 2.7 percent (-1.1193 to -1.1493), so the
+# question asks for the maximum.
+# Gold results: pre-drift [(0.7817902361020886,)], post-drift [(0.7250902361020887,)].
+# Entries built on (unchanged in both views): 0.
+id: credit-33-financial-vulnerability-score
+database: credit
+question: What is the highest Financial Vulnerability Score (FVS) of any customer?
+drift_type: documented
+entries:
+- id: 33
+  oracle_definition: FVS = 0.4 × DTI + 0.5 × (1 - \frac{liqassets}{mthincome × 6}), \text{where DTI is the Debt-to-Income Ratio and the second term measures emergency fund adequacy}
+  stored_answer: FVS = 0.5 × DTI + 0.5 × (1 - \frac{liqassets}{mthincome × 6}), \text{where DTI is the Debt-to-Income Ratio and the second term measures emergency fund adequacy}
+- id: 0
+  oracle_definition: DTI = \frac{\text{Total Monthly Debt Payments}}{\text{Monthly Income}} = debincratio
+  stored_answer: DTI = \frac{\text{Total Monthly Debt Payments}}{\text{Monthly Income}} = debincratio
+pre_drift:
+  knowledge_base:
+  - id: 33
+    version: 1
+    knowledge: Financial Vulnerability Score (FVS)
+    description: Quantifies financial fragility by combining debt burden and savings adequacy.
+    definition: FVS = 0.5 × DTI + 0.5 × (1 - \frac{liqassets}{mthincome × 6}), \text{where DTI is the Debt-to-Income Ratio and the second term measures emergency fund adequacy}
+    type: calculation_knowledge
+    children_knowledge:
+    - 0
+  - id: 0
+    version: 1
+    knowledge: Debt-to-Income Ratio (DTI)
+    description: Calculates the proportion of a customer's monthly income that goes toward debt payments.
+    definition: DTI = \frac{\text{Total Monthly Debt Payments}}{\text{Monthly Income}} = debincratio
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT MAX(0.5 * e.debincratio + 0.5 * (1 - x.liqassets / (e.mthincome * 6))) AS max_fvs FROM employment_and_income e JOIN expenses_and_assets x ON x.expemplref = e.emplcoreref
+post_drift:
+  knowledge_base:
+  - id: 33
+    version: 2
+    knowledge: Financial Vulnerability Score (FVS)
+    description: Quantifies financial fragility by combining debt burden and savings adequacy.
+    definition: FVS = 0.4 × DTI + 0.5 × (1 - \frac{liqassets}{mthincome × 6}), \text{where DTI is the Debt-to-Income Ratio and the second term measures emergency fund adequacy}
+    type: calculation_knowledge
+    children_knowledge:
+    - 0
+  - id: 0
+    version: 1
+    knowledge: Debt-to-Income Ratio (DTI)
+    description: Calculates the proportion of a customer's monthly income that goes toward debt payments.
+    definition: DTI = \frac{\text{Total Monthly Debt Payments}}{\text{Monthly Income}} = debincratio
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT MAX(0.4 * e.debincratio + 0.5 * (1 - x.liqassets / (e.mthincome * 6))) AS max_fvs FROM employment_and_income e JOIN expenses_and_assets x ON x.expemplref = e.emplcoreref

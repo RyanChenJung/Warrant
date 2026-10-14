@@ -1,0 +1,75 @@
+# Documented drift task for #43, drafted with Claude Code.
+# Draw position: 48 (seed 20261015). Entry: cybermarket 36 (Operational Security Index (OSI)).
+# Old value: 0.5 (weight on APL in (APL \times 0.5), the definition's first number). New value: 0.4. Direction used: down (drawn).
+# Restating entries changed: none (no other cybermarket entry weights APL by 0.5 or restates the OSI formula; entry 46 builds on OSI with OSI > 85, a different number).
+# Entries built on (unchanged in both views): 17, 19.
+# Gold results: pre-drift [(111.512267,)], post-drift [(95.68591,)].
+# communication and securitymonitoring are 1:1 (1997 rows each, every commref distinct and matched).
+# fpprob is NULL in 1897 of the 1997 security monitoring records, so SPS and OSI can be computed
+# for 100 records only; the question asks for the average over those, as AVG does.
+id: cybermarket-36-operational-security-index
+database: cybermarket
+question: Taking each communication record together with its security monitoring record, what is the average Operational Security Index (OSI) over the records for which it can be computed?
+drift_type: documented
+entries:
+- id: 36
+  oracle_definition: OSI = (APL \times 0.4) + (SPS \times 0.2) + (tornodecount \times 2) + (CASE WHEN encryptmethod = 'Standard' THEN 1 WHEN encryptmethod = 'Enhanced' THEN 2 WHEN encryptmethod = 'Custom' THEN 3 ELSE 0 END \times 5) - (iptally \times 0.5), \text{where APL and SPS are defined by the Anonymity Protection Level and Security Posture Score respectively, and higher scores indicate stronger operational security.}
+  stored_answer: OSI = (APL \times 0.5) + (SPS \times 0.2) + (tornodecount \times 2) + (CASE WHEN encryptmethod = 'Standard' THEN 1 WHEN encryptmethod = 'Enhanced' THEN 2 WHEN encryptmethod = 'Custom' THEN 3 ELSE 0 END \times 5) - (iptally \times 0.5), \text{where APL and SPS are defined by the Anonymity Protection Level and Security Posture Score respectively, and higher scores indicate stronger operational security.}
+- id: 17
+  oracle_definition: SPS = (100 - (vulntally \times 5)) + (securitymeasurecount \times 2) + (sessionsecurityscore \times 0.5) + (privprotscore \times 0.3) - (fpprob \times 100), \text{where higher scores indicate stronger security postures.}
+  stored_answer: SPS = (100 - (vulntally \times 5)) + (securitymeasurecount \times 2) + (sessionsecurityscore \times 0.5) + (privprotscore \times 0.3) - (fpprob \times 100), \text{where higher scores indicate stronger security postures.}
+- id: 19
+  oracle_definition: APL = (vpnflag\_numeric \times 30) + (tornodecount \times 2) + (encryptmethod\_numeric \times 15) + (connpatscore \times 0.2) + \frac{brwsrunique}{20}, \text{where vpnflag\_numeric maps Yes=1, Suspected=0.5, No=0, encryptmethod\_numeric maps Standard=1, Enhanced=2, Custom=3, else=0 and higher scores indicate stronger anonymity protections.}
+  stored_answer: APL = (vpnflag\_numeric \times 30) + (tornodecount \times 2) + (encryptmethod\_numeric \times 15) + (connpatscore \times 0.2) + \frac{brwsrunique}{20}, \text{where vpnflag\_numeric maps Yes=1, Suspected=0.5, No=0, encryptmethod\_numeric maps Standard=1, Enhanced=2, Custom=3, else=0 and higher scores indicate stronger anonymity protections.}
+pre_drift:
+  knowledge_base:
+  - id: 36
+    version: 1
+    knowledge: Operational Security Index (OSI)
+    description: Quantifies an entity's operational security practices
+    definition: OSI = (APL \times 0.5) + (SPS \times 0.2) + (tornodecount \times 2) + (CASE WHEN encryptmethod = 'Standard' THEN 1 WHEN encryptmethod = 'Enhanced' THEN 2 WHEN encryptmethod = 'Custom' THEN 3 ELSE 0 END \times 5) - (iptally \times 0.5), \text{where APL and SPS are defined by the Anonymity Protection Level and Security Posture Score respectively, and higher scores indicate stronger operational security.}
+    type: calculation_knowledge
+    children_knowledge:
+    - 17
+    - 19
+  - id: 17
+    version: 1
+    knowledge: Security Posture Score (SPS)
+    description: Evaluates the overall security posture of an entity
+    definition: SPS = (100 - (vulntally \times 5)) + (securitymeasurecount \times 2) + (sessionsecurityscore \times 0.5) + (privprotscore \times 0.3) - (fpprob \times 100), \text{where higher scores indicate stronger security postures.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 19
+    version: 1
+    knowledge: Anonymity Protection Level (APL)
+    description: Measures how well a user's identity is protected
+    definition: APL = (vpnflag\_numeric \times 30) + (tornodecount \times 2) + (encryptmethod\_numeric \times 15) + (connpatscore \times 0.2) + \frac{brwsrunique}{20}, \text{where vpnflag\_numeric maps Yes=1, Suspected=0.5, No=0, encryptmethod\_numeric maps Standard=1, Enhanced=2, Custom=3, else=0 and higher scores indicate stronger anonymity protections.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT AVG(apl * 0.5 + sps * 0.2 + tornodecount * 2 + enc * 5 - iptally * 0.5) AS avg_osi FROM (SELECT (CASE c.vpnflag WHEN 'Yes' THEN 1 WHEN 'Suspected' THEN 0.5 ELSE 0 END) * 30 + c.tornodecount * 2 + (CASE c.encryptmethod WHEN 'Standard' THEN 1 WHEN 'Enhanced' THEN 2 WHEN 'Custom' THEN 3 ELSE 0 END) * 15 + c.connpatscore * 0.2 + c.brwsrunique / 20.0 AS apl, (100 - s.vulntally * 5) + s.securitymeasurecount * 2 + s.sessionsecurityscore * 0.5 + s.privprotscore * 0.3 - s.fpprob * 100 AS sps, c.tornodecount, (CASE c.encryptmethod WHEN 'Standard' THEN 1 WHEN 'Enhanced' THEN 2 WHEN 'Custom' THEN 3 ELSE 0 END) AS enc, c.iptally FROM communication c JOIN securitymonitoring s ON TRIM(s.commref) = TRIM(c.commregistry))
+post_drift:
+  knowledge_base:
+  - id: 36
+    version: 2
+    knowledge: Operational Security Index (OSI)
+    description: Quantifies an entity's operational security practices
+    definition: OSI = (APL \times 0.4) + (SPS \times 0.2) + (tornodecount \times 2) + (CASE WHEN encryptmethod = 'Standard' THEN 1 WHEN encryptmethod = 'Enhanced' THEN 2 WHEN encryptmethod = 'Custom' THEN 3 ELSE 0 END \times 5) - (iptally \times 0.5), \text{where APL and SPS are defined by the Anonymity Protection Level and Security Posture Score respectively, and higher scores indicate stronger operational security.}
+    type: calculation_knowledge
+    children_knowledge:
+    - 17
+    - 19
+  - id: 17
+    version: 1
+    knowledge: Security Posture Score (SPS)
+    description: Evaluates the overall security posture of an entity
+    definition: SPS = (100 - (vulntally \times 5)) + (securitymeasurecount \times 2) + (sessionsecurityscore \times 0.5) + (privprotscore \times 0.3) - (fpprob \times 100), \text{where higher scores indicate stronger security postures.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 19
+    version: 1
+    knowledge: Anonymity Protection Level (APL)
+    description: Measures how well a user's identity is protected
+    definition: APL = (vpnflag\_numeric \times 30) + (tornodecount \times 2) + (encryptmethod\_numeric \times 15) + (connpatscore \times 0.2) + \frac{brwsrunique}{20}, \text{where vpnflag\_numeric maps Yes=1, Suspected=0.5, No=0, encryptmethod\_numeric maps Standard=1, Enhanced=2, Custom=3, else=0 and higher scores indicate stronger anonymity protections.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT AVG(apl * 0.4 + sps * 0.2 + tornodecount * 2 + enc * 5 - iptally * 0.5) AS avg_osi FROM (SELECT (CASE c.vpnflag WHEN 'Yes' THEN 1 WHEN 'Suspected' THEN 0.5 ELSE 0 END) * 30 + c.tornodecount * 2 + (CASE c.encryptmethod WHEN 'Standard' THEN 1 WHEN 'Enhanced' THEN 2 WHEN 'Custom' THEN 3 ELSE 0 END) * 15 + c.connpatscore * 0.2 + c.brwsrunique / 20.0 AS apl, (100 - s.vulntally * 5) + s.securitymeasurecount * 2 + s.sessionsecurityscore * 0.5 + s.privprotscore * 0.3 - s.fpprob * 100 AS sps, c.tornodecount, (CASE c.encryptmethod WHEN 'Standard' THEN 1 WHEN 'Enhanced' THEN 2 WHEN 'Custom' THEN 3 ELSE 0 END) AS enc, c.iptally FROM communication c JOIN securitymonitoring s ON TRIM(s.commref) = TRIM(c.commregistry))

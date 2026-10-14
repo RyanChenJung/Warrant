@@ -1,0 +1,93 @@
+# Documented drift task for #43, drafted with Claude Code.
+# Draw position: 54 (seed 20261015). Entry: news 54 (Performance Segment).
+# Old value: 0.25 (the bounce_percentile cut-off for High Bounce). New value: 0.20. Direction used: down (drawn).
+# Restating entries changed: inside entry 54, 'High Bounce, High CTR' restates the same High Bounce cut-off
+# (bounce_percentile < 0.25) and is changed too; no other news entry states it. The ctr_percentile < 0.25
+# cut-off is a different metric and stays.
+# Entries built on: 3, 52, 53, unchanged.
+# Gold results: pre-drift 58, post-drift 49.
+id: news-54-performance-segment
+database: news
+question: How many sessions are in the 'High Bounce, Low CTR' Performance Segment?
+drift_type: documented
+entries:
+  - id: 3
+    oracle_definition: SBRA = bncrate \times \left(1 - \frac{ctrval}{100}\right), \text{ where bncrate is the bounce rate and ctrval is the click-through rate percentage.}
+    stored_answer: SBRA = bncrate \times \left(1 - \frac{ctrval}{100}\right), \text{ where bncrate is the bounce rate and ctrval is the click-through rate percentage.}
+  - id: 52
+    oracle_definition: A percentile ranking computed using PERCENT_RANK() over all sessions ordered by adjusted_bounce_rate.
+    stored_answer: A percentile ranking computed using PERCENT_RANK() over all sessions ordered by adjusted_bounce_rate.
+  - id: 53
+    oracle_definition: A percentile ranking computed using PERCENT_RANK() over all sessions ordered by ctrval in descending order.
+    stored_answer: A percentile ranking computed using PERCENT_RANK() over all sessions ordered by ctrval in descending order.
+  - id: 54
+    oracle_definition: 'A classification of sessions into performance categories based on specific percentile criteria: ''High Bounce, Low CTR'' (bounce_percentile < 0.20, ctr_percentile < 0.25), ''High Bounce, High CTR'' (bounce_percentile < 0.20, ctr_percentile >= 0.75), ''Low Bounce, Low CTR'' (bounce_percentile >= 0.75, ctr_percentile < 0.25), ''Low Bounce, High CTR'' (bounce_percentile >= 0.75, ctr_percentile >= 0.75), or ''Average Performance'' for all other combinations.'
+    stored_answer: 'A classification of sessions into performance categories based on specific percentile criteria: ''High Bounce, Low CTR'' (bounce_percentile < 0.25, ctr_percentile < 0.25), ''High Bounce, High CTR'' (bounce_percentile < 0.25, ctr_percentile >= 0.75), ''Low Bounce, Low CTR'' (bounce_percentile >= 0.75, ctr_percentile < 0.25), ''Low Bounce, High CTR'' (bounce_percentile >= 0.75, ctr_percentile >= 0.75), or ''Average Performance'' for all other combinations.'
+pre_drift:
+  knowledge_base:
+    - id: 3
+      version: 1
+      knowledge: Session Bounce Rate Adjustment (SBRA)
+      description: Adjusts the raw session bounce rate by factoring in the click-through rate to better understand session quality.
+      definition: SBRA = bncrate \times \left(1 - \frac{ctrval}{100}\right), \text{ where bncrate is the bounce rate and ctrval is the click-through rate percentage.}
+      type: calculation_knowledge
+      children_knowledge: -1
+    - id: 52
+      version: 1
+      knowledge: Bounce Percentile
+      description: Ranks sessions by their adjusted bounce rate relative to all other sessions.
+      definition: A percentile ranking computed using PERCENT_RANK() over all sessions ordered by adjusted_bounce_rate.
+      type: calculation_knowledge
+      children_knowledge:
+        - 3
+    - id: 53
+      version: 1
+      knowledge: CTR Percentile
+      description: Ranks sessions by their click-through rate relative to all other sessions.
+      definition: A percentile ranking computed using PERCENT_RANK() over all sessions ordered by ctrval in descending order.
+      type: calculation_knowledge
+      children_knowledge: -1
+    - id: 54
+      version: 1
+      knowledge: Performance Segment
+      description: Categorizes sessions based on their relative bounce rate and CTR performance using percentile rankings.
+      definition: 'A classification of sessions into performance categories based on specific percentile criteria: ''High Bounce, Low CTR'' (bounce_percentile < 0.25, ctr_percentile < 0.25), ''High Bounce, High CTR'' (bounce_percentile < 0.25, ctr_percentile >= 0.75), ''Low Bounce, Low CTR'' (bounce_percentile >= 0.75, ctr_percentile < 0.25), ''Low Bounce, High CTR'' (bounce_percentile >= 0.75, ctr_percentile >= 0.75), or ''Average Performance'' for all other combinations.'
+      type: domain_knowledge
+      children_knowledge:
+        - 52
+        - 53
+  gold_sql: WITH s AS (SELECT seshkey, bncrate * (1 - ctrval / 100.0) AS adjusted_bounce_rate, ctrval FROM sessions), p AS (SELECT seshkey, PERCENT_RANK() OVER (ORDER BY adjusted_bounce_rate) AS bounce_percentile, PERCENT_RANK() OVER (ORDER BY ctrval DESC) AS ctr_percentile FROM s) SELECT COUNT(*) AS high_bounce_low_ctr_sessions FROM p WHERE bounce_percentile < 0.25 AND ctr_percentile < 0.25
+post_drift:
+  knowledge_base:
+    - id: 3
+      version: 1
+      knowledge: Session Bounce Rate Adjustment (SBRA)
+      description: Adjusts the raw session bounce rate by factoring in the click-through rate to better understand session quality.
+      definition: SBRA = bncrate \times \left(1 - \frac{ctrval}{100}\right), \text{ where bncrate is the bounce rate and ctrval is the click-through rate percentage.}
+      type: calculation_knowledge
+      children_knowledge: -1
+    - id: 52
+      version: 1
+      knowledge: Bounce Percentile
+      description: Ranks sessions by their adjusted bounce rate relative to all other sessions.
+      definition: A percentile ranking computed using PERCENT_RANK() over all sessions ordered by adjusted_bounce_rate.
+      type: calculation_knowledge
+      children_knowledge:
+        - 3
+    - id: 53
+      version: 1
+      knowledge: CTR Percentile
+      description: Ranks sessions by their click-through rate relative to all other sessions.
+      definition: A percentile ranking computed using PERCENT_RANK() over all sessions ordered by ctrval in descending order.
+      type: calculation_knowledge
+      children_knowledge: -1
+    - id: 54
+      version: 2
+      knowledge: Performance Segment
+      description: Categorizes sessions based on their relative bounce rate and CTR performance using percentile rankings.
+      definition: 'A classification of sessions into performance categories based on specific percentile criteria: ''High Bounce, Low CTR'' (bounce_percentile < 0.20, ctr_percentile < 0.25), ''High Bounce, High CTR'' (bounce_percentile < 0.20, ctr_percentile >= 0.75), ''Low Bounce, Low CTR'' (bounce_percentile >= 0.75, ctr_percentile < 0.25), ''Low Bounce, High CTR'' (bounce_percentile >= 0.75, ctr_percentile >= 0.75), or ''Average Performance'' for all other combinations.'
+      type: domain_knowledge
+      children_knowledge:
+        - 52
+        - 53
+  gold_sql: WITH s AS (SELECT seshkey, bncrate * (1 - ctrval / 100.0) AS adjusted_bounce_rate, ctrval FROM sessions), p AS (SELECT seshkey, PERCENT_RANK() OVER (ORDER BY adjusted_bounce_rate) AS bounce_percentile, PERCENT_RANK() OVER (ORDER BY ctrval DESC) AS ctr_percentile FROM s) SELECT COUNT(*) AS high_bounce_low_ctr_sessions FROM p WHERE bounce_percentile < 0.20 AND ctr_percentile < 0.25
