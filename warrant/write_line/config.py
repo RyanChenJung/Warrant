@@ -57,6 +57,7 @@ class Config:
     rules: tuple[str, ...]
     runs: int
     model: ModelConfig | None = None
+    global_part: dict | None = None
 
 
 def load_config(path: Path) -> Config:
@@ -72,6 +73,12 @@ def load_config(path: Path) -> Config:
                 slot=Slot(ClaimKind(d["slot"]["claim_kind"]), d["slot"]["subject"]),
                 transformation=tuple(d["transformation"]),
                 reference_claim=d["reference_claim"],
+                touches=d.get("touches"),
+                thresholds=tuple(str(t) for t in d.get("thresholds", ())),
+                cut_tables=tuple(d["cut_tables"]) if "cut_tables" in d else None,
+                relation=d.get("relation"),
+                readings=tuple(d.get("readings", ())),
+                drift_reading=d.get("drift_reading"),
             )
             for d in raw["defects"]
         ),
@@ -79,4 +86,5 @@ def load_config(path: Path) -> Config:
         rules=tuple(raw["rules"]),
         runs=int(raw["runs"]),
         model=load_model_config(raw["model"]) if raw.get("model") else None,
+        global_part=raw.get("global"),
     )

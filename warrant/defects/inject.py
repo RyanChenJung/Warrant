@@ -1,6 +1,6 @@
 """Injecting defects into a copy of a clean database.
 
-The declaration here is the tracer bullet's minimum; #33 replaces it with the freeze format.
+A defect's freeze fields (#33) are optional here; `warrant.freeze.validate` requires them of a freeze.
 """
 
 import shutil
@@ -18,6 +18,12 @@ class Defect:
     slot: Slot
     transformation: tuple[str, ...]
     reference_claim: str
+    touches: dict[str, list[str]] | None = None
+    thresholds: tuple[str, ...] = ()
+    cut_tables: tuple[str, ...] | None = None
+    relation: dict | None = None
+    readings: tuple[dict, ...] = ()
+    drift_reading: dict | None = None
 
 
 def inject(clean: Path, dest: Path, defects: list[Defect]) -> Path:
