@@ -4,7 +4,8 @@
     uv run python -m warrant.data.clean_scan --today 2026-10-12 \
         --defect-subjects column_formula:crypto.accountbalances.walletsum coverage:crypto.orders
 
-For every database of the fetched release it runs the vendored detectors on the exported tables and
+For every database of the fetched release it runs the baseline battery (the eight checks of Gloss's
+`run_all`, with the declared foreign keys given to the link detector) on the exported tables and
 groups each finding by the claim kind it bears on, through the fixed mapping `CLAIM_KINDS`. It also
 lists the numeric relations the identity search finds. It makes no model call and passes the
 detectors no documentation. The findings go to a JSON file that is identical between two runs with
@@ -27,8 +28,10 @@ from pathlib import Path
 import duckdb
 
 from warrant.battery.gloss.detect import build_context
+from warrant.battery.gloss.detect.grain import derive_grain_filter
 from warrant.battery.gloss.detect.rule import _MAX_NUMERIC_COLUMNS, numeric_columns
 from warrant.battery.gloss.model import AssertionType, Finding, SqlEvidence
+from warrant.battery.gloss.probe import _date_columns, _ordinal_levels
 from warrant.battery.run import open_database, run_detectors
 from warrant.data.export import peers_of
 from warrant.data.release import ForeignKey, Release, load_database
@@ -57,7 +60,8 @@ CLAIM_KINDS: dict[AssertionType, tuple[str, ...]] = {
 MAPPING_REASONS = {
     AssertionType.SCOPE: "which population the table covers: its date window, or a column dominated by one value",
     AssertionType.GRAIN: "what one row is: the unique key, a top-level and child split, columns that map one-to-one",
-    AssertionType.FIELD: "what a column's values are: with no documentation passed, only non-breaking spaces",
+    AssertionType.FIELD: "what a column's values are: with no documentation passed, non-breaking spaces, and the "
+                         "direction of an ordinal scale from the ordinal-direction probe",
     AssertionType.VALUE: "what stored values stand for: code lists, value formats, variant spellings",
     AssertionType.LINK: "unmatched and never-referenced key values (what is omitted) and the cardinality of a join "
                         "(what a row counts as after it)",
@@ -69,6 +73,7 @@ NO_COLUMN = "(table)"
 # The two statements the identity search writes (gloss/detect/rule.py, `_identity_finding`).
 # The statement of a table split on a self-reference (gloss/detect/grain.py).
 GRAIN_SPLIT = re.compile(r"^One row is not one top-level record\. (?P<column>\S+) points back at")
+PROBE_STATEMENT = "Direction established by behavioural probe"
 IDENTITY = re.compile(r"^(?P<target>\S+) equals (?P<formula>.+?) for (all [\d,]+ rows|[\d.]+% of the [\d,]+ rows) where")
 
 
@@ -146,6 +151,22 @@ def grain_splits(table: str, findings: list[Finding], foreign_keys: list[Foreign
     return out
 
 
+def probe_reach(conn: duckdb.DuckDBPyConnection, table: str, today: str) -> list[dict]:
+    """Whether the ordinal-direction probe has anything to read on one table (gloss/probe.py).
+
+    The probe compares the delay between two date columns of a table across the levels of a column
+    with 3 to 50 distinct numeric values, among the rows the GRAIN split keeps. A table with fewer
+    than two date columns is out of its reach and is not listed.
+    """
+    ctx = build_context(conn, table, today)
+    ctx.grain_filter = derive_grain_filter(ctx)
+    dates = [column for column, _ in _date_columns(ctx)]
+    if len(dates) < 2:
+        return []
+    return [{"table": table, "date_columns": dates,
+             "level_columns": [c for c in ctx.columns if _ordinal_levels(ctx, c) is not None]}]
+
+
 def group_by_claim_kind(findings: list[dict]) -> dict:
     """Indexes into `findings`, by claim kind, then the subject's table, then its column."""
     grouped: dict = {kind: {} for kind in KINDS}
@@ -162,12 +183,13 @@ def scan_database(release_dir: Path, name: str, today: str, work_dir: Path) -> t
     db = load_database(release_dir, name)
     conn, export = open_database(db, Path(work_dir) / name)
     try:
-        findings, relations, splits = [], [], []
+        findings, relations, splits, reach = [], [], [], []
         for table in export.tables:
             found = run_detectors(conn, table.name, today, db.foreign_keys)
             findings += [finding_record(table.name, f) for f in found]
             relations += identity_relations(conn, table.name, today, found)
             splits += grain_splits(table.name, found, db.foreign_keys)
+            reach += probe_reach(conn, table.name, today)
     finally:
         conn.close()
     result = {
@@ -177,6 +199,7 @@ def scan_database(release_dir: Path, name: str, today: str, work_dir: Path) -> t
         "by_claim_kind": group_by_claim_kind(findings),
         "identity_relations": relations,
         "grain_splits": splits,
+        "probe_reach": reach,
     }
     return result, time.perf_counter() - start
 
@@ -277,8 +300,49 @@ def cell(text: str) -> str:
     return " ".join(str(text).split())
 
 
-def render_markdown(report: dict, runtimes: dict[str, float]) -> str:
-    """The human-readable scan report."""
+def finding_keys(report: dict) -> dict[str, tuple]:
+    """Every finding of a scan under a key that holds all of it, with the database it is in."""
+    return {json.dumps([name, f], sort_keys=True): (name, f)
+            for name, database in report["databases"].items() for f in database["findings"]}
+
+
+def changes_section(report: dict, previous: dict) -> list[str]:
+    """What differs from an earlier scan: counts per assertion type and the findings added or removed."""
+    now, before = finding_keys(report), finding_keys(previous)
+    added = [now[k] for k in now if k not in before]
+    removed = [before[k] for k in before if k not in now]
+    count = lambda findings, t: sum(f["assertion_type"] == t.value for _, f in findings)
+    on_subjects = {(s["database"], s["table"]) for s in report.get("defect_subjects", [])}
+    touches = lambda name, f: (name, f["subject"].partition(".")[0]) in on_subjects or (name, f["table"]) in on_subjects
+    out = [
+        "## Changes since the previous scan",
+        "",
+        "The previous scan (same date, same release) ran the seven detectors without the ordinal-direction probe. "
+        "The battery now includes the probe, as Gloss's `run_all` does (decided on #28). A finding counts as "
+        "unchanged only if its table, type, subject, statement and evidence are all identical.",
+        "",
+        "| Assertion type | Previous scan | This scan | Added | Removed |",
+        "|---|---|---|---|---|",
+    ]
+    for t in AssertionType:
+        out.append(f"| {t.value} | {count(before.values(), t)} | {count(now.values(), t)} | {count(added, t)} | "
+                   f"{count(removed, t)} |")
+    out += [f"| **Total** | {len(before)} | {len(now)} | {len(added)} | {len(removed)} |", ""]
+    for title, findings in (("Added", added), ("Removed", removed)):
+        out += [f"**{title} findings** ({len(findings)})", ""]
+        out += [f"- {name}: {f['assertion_type']} `{f['subject']}`: {cell(f['statement'])}"
+                for name, f in findings] or ["- none"]
+        out.append("")
+    if on_subjects:
+        changed = [(name, f) for name, f in added + removed if touches(name, f)]
+        out += [f"On the tables of the frozen defects, {len(changed)} findings were added or removed."
+                + ("" if not changed else " They are: " + "; ".join(f"`{name}.{f['subject']}`" for name, f in changed)
+                   + "."), ""]
+    return out
+
+
+def render_markdown(report: dict, runtimes: dict[str, float], previous: dict | None = None) -> str:
+    """The human-readable scan report; with `previous`, an earlier scan's report, also what changed."""
     databases = report["databases"]
     measured = [k for k in KINDS if k != "term_boundary"]
     label = lambda kind: kind.replace("_", " ")
@@ -295,8 +359,8 @@ def render_markdown(report: dict, runtimes: dict[str, float]) -> str:
         "# Clean-database scan with the baseline battery",
         "",
         f"Issue #30, for the freeze check in #34. Generated by `uv run python -m warrant.data.clean_scan --today "
-        f"{report['today']}{' --defect-subjects' + arguments if subjects else ''}` from {source}: the seven vendored Gloss detectors, called directly on a CSV export of "
-        f"each clean copy, with DuckDB {report['duckdb_version']} and the detectors' date fixed to "
+        f"{report['today']}{' --defect-subjects' + arguments if subjects else ''}` from {source}: the eight checks of Gloss's `run_all` (the seven vendored detectors and "
+        f"the ordinal-direction probe), called directly in its order on a CSV export of each clean copy, with DuckDB {report['duckdb_version']} and the detectors' date fixed to "
         f"{report['today']}. No model is called and no documentation is passed to the detectors. Every finding, "
         f"with its statement and evidence, is in [{JSON_NAME}]({JSON_NAME}), which is identical between two runs "
         f"with the same date. Table and column names and values quoted here come from LiveSQLBench-Base-Lite "
@@ -372,6 +436,22 @@ def render_markdown(report: dict, runtimes: dict[str, float]) -> str:
     out += [f"- {name}.{describe_relation(r)}"
             + (" (only on the rows the GRAIN split keeps; see the caveat)" if (name, r["table"]) in affected else "")
             for name, r in relations] or ["The identity search finds none."]
+    reach = [(name, r) for name, d in databases.items() for r in d["probe_reach"]]
+    with_levels = [(name, r) for name, r in reach if r["level_columns"]]
+    probed = sum(f["statement"].startswith(PROBE_STATEMENT) for d in databases.values() for f in d["findings"])
+    out += [
+        "",
+        "## Reach of the ordinal-direction probe",
+        "",
+        f"The probe needs two date columns in the same table, and a column with 3 to 50 distinct numeric values "
+        f"among the rows the GRAIN split keeps. {len(reach)} of the {n_tables} tables have two or more date "
+        f"columns, and {len(with_levels)} of those also have such a column: "
+        + ("; ".join(f"{name}.`{r['table']}` ({', '.join(r['level_columns'])})" for name, r in with_levels) or "none")
+        + f". The probe reports {probed} findings"
+        + (" on them." if probed else ", so it reports on none of them."),
+    ]
+    if previous is not None:
+        out += ["", *changes_section(report, previous)]
     if subjects:
         out += ["", *defect_section(report)]
     out += ["", "## Findings per table and claim kind", "",
@@ -397,6 +477,8 @@ def main(argv=None) -> None:
     parser.add_argument("--defect-subjects", nargs="+", default=[], type=parse_defect_subject,
                         metavar="KIND:DATABASE.TABLE[.COLUMN]",
                         help="list the findings on these defects' tables in the report (for #34)")
+    parser.add_argument("--compare-to", type=Path, metavar="JSON",
+                        help="an earlier scan's JSON file; the report then says what changed since")
     args = parser.parse_args(argv)
     if args.keep_export is not None and args.keep_export.resolve().is_relative_to(REPO):
         parser.error("exported CSV files are never kept inside the repository")
@@ -406,6 +488,7 @@ def main(argv=None) -> None:
     unknown = sorted(set(names) - set(release.databases))
     if unknown:
         parser.error(f"not in the configuration: {', '.join(unknown)}")
+    previous = json.loads(args.compare_to.read_text()) if args.compare_to else None
     for subject in args.defect_subjects:
         if subject["database"] not in names:
             parser.error(f"defect subject in a database that is not scanned: {subject['database']}")
@@ -425,7 +508,7 @@ def main(argv=None) -> None:
     (args.out_dir / JSON_NAME).write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n")
     (args.out_dir / RUNTIMES_NAME).write_text(
         json.dumps({"today": args.today, "seconds": runtimes}, indent=1) + "\n")
-    (args.out_dir / REPORT_NAME).write_text(render_markdown(report, runtimes))
+    (args.out_dir / REPORT_NAME).write_text(render_markdown(report, runtimes, previous))
     print(f"Scanned {len(names)} databases in {sum(runtimes.values()):.1f} s; wrote {REPORT_NAME}, {JSON_NAME} "
           f"and {RUNTIMES_NAME} to {args.out_dir}")
 

@@ -218,3 +218,47 @@ def test_a_defect_subject_must_name_a_claim_kind_and_a_scanned_table(fetched, tm
         with pytest.raises(SystemExit):
             clean_scan.main(["--config", str(fetched), "--today", TODAY, "--out-dir", str(tmp_path / "out"),
                              "--defect-subjects", subject])
+
+
+def test_the_report_says_what_changed_since_an_earlier_scan(shop_release, tmp_path):
+    report, runtimes = scan_release(shop_release, ["shop"], TODAY, tmp_path / "work")
+    previous = json.loads(json.dumps(report))
+    dropped = next(f for f in previous["databases"]["shop"]["findings"] if f["assertion_type"] == "RULE")
+    previous["databases"]["shop"]["findings"].remove(dropped)
+    report["defect_subjects"] = [{"claim_kind": "column_formula", "database": "shop", "table": "Orders", "column": None}]
+    total = len(report["databases"]["shop"]["findings"])
+
+    assert "## Changes since the previous scan" not in render_markdown(report, runtimes)
+    section = render_markdown(report, runtimes, previous).split("## Changes since the previous scan")[1]
+    assert "| RULE | 0 | 1 | 1 | 0 |" in section
+    assert f"| **Total** | {total - 1} | {total} | 1 | 0 |" in section
+    assert "- shop: RULE `Orders.Total`: Total equals Net + Tax + Shipping" in section
+    assert "**Removed findings** (0)" in section
+    assert "On the tables of the frozen defects, 1 findings were added or removed. They are: `shop.Orders.Total`." in section
+
+
+def test_the_scan_lists_the_tables_within_the_probes_reach(shop_release, tmp_path):
+    report, runtimes = scan_release(shop_release, ["shop"], TODAY, tmp_path / "before")
+    assert report["databases"]["shop"]["probe_reach"] == []
+    assert "0 of the 4 tables have two or more date columns" in render_markdown(report, runtimes)
+
+    con = sqlite3.connect(shop_release / "shop" / "shop_template.sqlite")
+    con.executescript("""
+        CREATE TABLE Tickets (TicketId TEXT PRIMARY KEY, Priority INTEGER, Opened TEXT, Closed TEXT);
+        INSERT INTO Tickets WITH RECURSIVE n (i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 30)
+            SELECT printf('T%02d', i), i % 3 + 1, date('2026-03-01', '+' || i || ' days'),
+                   date('2026-03-01', '+' || (i + CASE i % 3 WHEN 0 THEN 1 WHEN 1 THEN 6 ELSE 30 END) || ' days')
+            FROM n;
+        CREATE TABLE Visits (VisitId TEXT PRIMARY KEY, Arrived TEXT, Departed TEXT);
+        INSERT INTO Visits VALUES ('V1', '2026-01-01', '2026-01-02'), ('V2', '2026-01-03', '2026-01-05');
+    """)
+    con.commit()
+    con.close()
+    report, runtimes = scan_release(shop_release, ["shop"], TODAY, tmp_path / "after")
+    markdown = render_markdown(report, runtimes)
+
+    assert report["databases"]["shop"]["probe_reach"] == [
+        {"table": "Tickets", "date_columns": ["Opened", "Closed"], "level_columns": ["Priority"]},
+        {"table": "Visits", "date_columns": ["Arrived", "Departed"], "level_columns": []}]
+    assert ("2 of the 6 tables have two or more date columns, and 1 of those also have such a column: "
+            "shop.`Tickets` (Priority). The probe reports 1 findings on them.") in markdown

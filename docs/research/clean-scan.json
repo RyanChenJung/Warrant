@@ -3005,7 +3005,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "archeology": {
    "tables": {
@@ -6350,7 +6351,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "credit": {
    "tables": {
@@ -8906,7 +8908,24 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": [
+    {
+     "table": "core_record",
+     "date_columns": [
+      "scoredate",
+      "nextcheck",
+      "decidedate"
+     ],
+     "level_columns": [
+      "depcount",
+      "addrstab",
+      "phonestab",
+      "emailstab",
+      "tenureyrs"
+     ]
+    }
+   ]
   },
   "cross_db": {
    "tables": {
@@ -13759,7 +13778,25 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": [
+    {
+     "table": "compliance",
+     "date_columns": [
+      "consentcoll",
+      "consentexp"
+     ],
+     "level_columns": []
+    },
+    {
+     "table": "vendormanagement",
+     "date_columns": [
+      "vendauddate",
+      "contrexpire"
+     ],
+     "level_columns": []
+    }
+   ]
   },
   "crypto": {
    "tables": {
@@ -17609,7 +17646,8 @@
      ]
     }
    ],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "cybermarket": {
    "tables": {
@@ -21574,7 +21612,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "disaster": {
    "tables": {
@@ -27855,7 +27894,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "fake": {
    "tables": {
@@ -29758,7 +29798,20 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": [
+    {
+     "table": "moderationaction",
+     "date_columns": [
+      "lastrevdate",
+      "nextrevdate"
+     ],
+     "level_columns": [
+      "susphist",
+      "appealnum"
+     ]
+    }
+   ]
   },
   "gaming": {
    "tables": {
@@ -32531,7 +32584,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "insider": {
    "tables": {
@@ -35916,7 +35970,20 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": [
+    {
+     "table": "compliancecase",
+     "date_columns": [
+      "lastrevdt",
+      "nextrevdt"
+     ],
+     "level_columns": [
+      "prevviol",
+      "fposrate"
+     ]
+    }
+   ]
   },
   "mental": {
    "tables": {
@@ -39521,7 +39588,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "museum": {
    "tables": {
@@ -43431,6 +43499,24 @@
      "top_level_rows": 3,
      "declared_self_reference": false
     }
+   ],
+   "probe_reach": [
+    {
+     "table": "conditionassessments",
+     "date_columns": [
+      "conserveassessdate",
+      "nextassessdue"
+     ],
+     "level_columns": []
+    },
+    {
+     "table": "conservationandmaintenance",
+     "date_columns": [
+      "lastcleaningdate",
+      "nextcleaningdue"
+     ],
+     "level_columns": []
+    }
    ]
   },
   "news": {
@@ -46681,7 +46767,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "polar": {
    "tables": {
@@ -53708,7 +53795,17 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": [
+    {
+     "table": "operationmaintenance",
+     "date_columns": [
+      "lastmaintenancedate",
+      "nextmaintenancedue"
+     ],
+     "level_columns": []
+    }
+   ]
   },
   "robot": {
    "tables": {
@@ -56279,7 +56376,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "solar": {
    "tables": {
@@ -60311,7 +60409,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   },
   "vaccine": {
    "tables": {
@@ -64256,7 +64355,43 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": [
+    {
+     "table": "container",
+     "date_columns": [
+      "refilllatest",
+      "refillnext"
+     ],
+     "level_columns": [
+      "coolrefills"
+     ]
+    },
+    {
+     "table": "regulatoryandmaintenance",
+     "date_columns": [
+      "maintdatelast",
+      "maintdatenext",
+      "calibdatelast",
+      "calibdatenext",
+      "inspectdatelast",
+      "inspectdatenext"
+     ],
+     "level_columns": [
+      "incidents"
+     ]
+    },
+    {
+     "table": "vaccinedetails",
+     "date_columns": [
+      "prodday",
+      "expireday"
+     ],
+     "level_columns": [
+      "dosepervial"
+     ]
+    }
+   ]
   },
   "virtual": {
    "tables": {
@@ -70107,7 +70242,8 @@
     "term_boundary": {}
    },
    "identity_relations": [],
-   "grain_splits": []
+   "grain_splits": [],
+   "probe_reach": []
   }
  },
  "defect_subjects": [
