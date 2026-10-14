@@ -11,6 +11,8 @@ from typing import Any
 
 import yaml
 
+from warrant.data.release import Release
+
 
 class State(StrEnum):
     """A drift task's two states: before drift, its no-drift control, and after drift."""
@@ -84,6 +86,9 @@ class Config:
 def load_config(path: Path) -> Config:
     """Read a configuration and the task files it lists; paths are relative to the configuration.
 
+    The databases are given by path with their knowledge bases, or, in a configuration that names a
+    release, by name: each is then its clean template file and knowledge base in the release as
+    fetched into the data directory, so the configuration holds no local path (#43).
     A task is known by its id, so two task files with one id are refused.
     """
     path = Path(path)
@@ -97,9 +102,20 @@ def load_config(path: Path) -> Config:
     repeated = sorted({i for i in ids if ids.count(i) > 1})
     if repeated:
         raise ValueError(f"{path}: task ids used more than once: {', '.join(repeated)}")
+    if "release" in raw:
+        release = Release.from_yaml(resolve(raw["release"]))
+        missing = [name for name in raw["databases"] if name not in release.databases]
+        if missing:
+            raise ValueError(f"{path}: databases not in the release: {', '.join(missing)}")
+        root = release.local_dir()
+        databases = {name: root / name / f"{name}_template.sqlite" for name in raw["databases"]}
+        knowledge_bases = {name: root / name / f"{name}_kb.jsonl" for name in raw["databases"]}
+    else:
+        databases = {name: resolve(db) for name, db in raw["databases"].items()}
+        knowledge_bases = {name: resolve(kb) for name, kb in raw["knowledge_bases"].items()}
     return Config(
-        databases={name: resolve(db) for name, db in raw["databases"].items()},
-        knowledge_bases={name: resolve(kb) for name, kb in raw["knowledge_bases"].items()},
+        databases=databases,
+        knowledge_bases=knowledge_bases,
         tasks=tasks,
         conditions=tuple(raw["conditions"]),
         runs=int(raw["runs"]),
