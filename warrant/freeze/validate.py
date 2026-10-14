@@ -312,6 +312,16 @@ def read_schema(path: Path) -> Schema:
         scratch.close()
 
 
+def clean_databases(raw: dict, config: Path, release_config: Path = RELEASE_CONFIG) -> dict[str, Path]:
+    """Each database's clean copy: the freeze's `databases:` paths, relative to the freeze, or, without
+    them, the template files of the release as fetched into the data directory."""
+    if raw.get("databases"):
+        return {name: (config.parent / p).resolve() for name, p in raw["databases"].items()}
+    release = Release.from_yaml(release_config)
+    named = {d.get("database") for d in raw.get("defects") or [] if isinstance(d, dict)}
+    return {name: release.template(name) for name in release.databases if name in named}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, type=Path, help="the freeze (configuration) file")
@@ -319,13 +329,7 @@ def main(argv=None) -> int:
                         help="the release configuration, used when the freeze gives no databases: paths")
     args = parser.parse_args(argv)
     raw = yaml.safe_load(args.config.read_text())
-    if raw.get("databases"):
-        paths = {name: (args.config.parent / p).resolve() for name, p in raw["databases"].items()}
-    else:
-        release = Release.from_yaml(args.release)
-        named = {d.get("database") for d in raw.get("defects") or [] if isinstance(d, dict)}
-        paths = {name: release.local_dir() / name / f"{name}_template.sqlite"
-                 for name in release.databases if name in named}
+    paths = clean_databases(raw, args.config, args.release)
     schema = {name: read_schema(p) for name, p in paths.items() if p.is_file()} or None
     errors, warnings = validate(raw, schema)
     for line in errors:
