@@ -3,7 +3,9 @@
 A freeze is a YAML file with a `global` part and a list of `defects` (the write-line configuration
 format of #27, extended). Validation reads only the file, so it needs neither the battery nor any
 database. The one check that needs a schema, the position of a column-formula's columns among the
-table's numeric columns, takes it as an argument and is reported as skipped when there is none.
+table's numeric columns, takes it as an argument and is reported as skipped when there is none. The
+command reads the schema from the freeze's `databases:` paths or, without them, from the clean
+databases of the release as fetched into the data directory.
 Content hashes are not computed here (#36).
 
 `validate` returns (errors, warnings): errors make a freeze invalid; warnings only flag.
@@ -17,6 +19,8 @@ from pathlib import Path
 
 import yaml
 
+from warrant.data.fetch import DEFAULT_CONFIG as RELEASE_CONFIG
+from warrant.data.release import Release
 from warrant.data.sqlite import connect_read_only
 from warrant.store.claims import ClaimKind
 
@@ -122,7 +126,8 @@ def _drift(name: str, d: dict) -> list[str]:
     if reading.get("holds") is True:
         found.append(f"{name}: the reference claim holds under the drift reading")
     # The drift-reading rule reads declarations only: the no-defect reading is the world-fixed reading
-    # with an empty transformation or, with no world-fixed rival, the meaning-only reading marked no_defect.
+    # with an empty transformation or, with no world-fixed rival, the only meaning-only reading other
+    # than the true one (branch (b) as amended on #34).
     world = [r for r in readings if r.get("is_true") is not True and r.get("form") == "world_fixed"]
     if world:
         empty = [r for r in world if r.get("transformation") == []]
@@ -131,11 +136,14 @@ def _drift(name: str, d: dict) -> list[str]:
                 f"{name}: with world-fixed rivals the drift reading must be the one with an empty transformation"
             )
     else:
-        marked = [r for r in readings if r.get("no_defect") is True]
-        if len(marked) != 1 or marked[0] is not reading:
+        rivals = [r for r in readings if r.get("is_true") is not True and r.get("form") == "meaning_only"]
+        if len(rivals) != 1:
             found.append(
-                f"{name}: exactly one meaning-only reading, the drift reading, must be marked no_defect: true"
+                f"{name}: without world-fixed rivals it needs exactly one meaning-only reading other than "
+                f"the true one, not {len(rivals)}, so it is re-authored"
             )
+        elif rivals[0] is not reading:
+            found.append(f"{name}: the drift reading must be its only meaning-only reading other than the true one")
         if _blank(drift.get("reference_claim")):
             found.append(f"{name}: a meaning-only drift reading needs the reference claim a person would state under it")
     if "reference_claim" in drift:
@@ -189,7 +197,10 @@ def _reach(name: str, d: dict, schema: dict[str, Schema] | None) -> tuple[list[s
         )
     columns = (schema or {}).get(d.get("database"), {}).get(relation["table"])
     if columns is None:
-        warnings.append(f"{name}: column positions not checked, no schema for {d.get('database')}.{relation['table']}")
+        warnings.append(
+            f"{name}: column positions not checked, no schema for {d.get('database')}.{relation['table']} "
+            f"(give its path under databases:, or fetch the release with `uv run python -m warrant.data.fetch`)"
+        )
         return [], warnings
     # ponytail: numeric means a declared numeric type; the vendored search reads values, so a number
     # stored in a TEXT column would be missed. Read the values instead if a database ever needs it.
@@ -215,6 +226,11 @@ def _defect(raw: dict, schema: dict[str, Schema] | None) -> tuple[list[str], lis
     errors += _touches(name, raw)
     errors += _readings(name, raw)
     errors += _drift(name, raw)
+    readings = raw.get("readings") if isinstance(raw.get("readings"), list) else []
+    warnings += [
+        f"{name}: reading {r.get('id')!r} carries no_defect, which the drift-reading rule no longer uses; remove it"
+        for r in readings if isinstance(r, dict) and "no_defect" in r
+    ]
     if kind == ClaimKind.COVERAGE and not isinstance(raw.get("cut_tables"), list):
         errors.append(f"{name}: a coverage defect must declare cut_tables (`[]` when no related table is cut)")
     if kind == ClaimKind.COLUMN_FORMULA:
@@ -299,9 +315,17 @@ def read_schema(path: Path) -> Schema:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, type=Path, help="the freeze (configuration) file")
+    parser.add_argument("--release", type=Path, default=RELEASE_CONFIG,
+                        help="the release configuration, used when the freeze gives no databases: paths")
     args = parser.parse_args(argv)
     raw = yaml.safe_load(args.config.read_text())
-    paths = {name: (args.config.parent / p).resolve() for name, p in (raw.get("databases") or {}).items()}
+    if raw.get("databases"):
+        paths = {name: (args.config.parent / p).resolve() for name, p in raw["databases"].items()}
+    else:
+        release = Release.from_yaml(args.release)
+        named = {d.get("database") for d in raw.get("defects") or [] if isinstance(d, dict)}
+        paths = {name: release.local_dir() / name / f"{name}_template.sqlite"
+                 for name in release.databases if name in named}
     schema = {name: read_schema(p) for name, p in paths.items() if p.is_file()} or None
     errors, warnings = validate(raw, schema)
     for line in errors:
