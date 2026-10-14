@@ -1,0 +1,114 @@
+"""Type 3 FIELD - meaning, unit, precision, direction.
+
+Every check here compares something the vendor *declared* against something the
+data *shows*. Two typical patterns in legacy exports:
+
+  SCHEDSTART is declared DATETIME and holds DD-MON-YY. An agent that computes
+  hours between two such values gets zero every time.
+
+  WOPRIORITY is documented as 0-100 with 0 lowest, but is used as a small range
+  that behaves in the opposite direction. Direction is settled by the
+  behavioural probe in probe.py, not here; this detector records only the range
+  contradiction.
+"""
+from __future__ import annotations
+
+from warrant.battery.gloss.detect import Context, quote
+from warrant.battery.gloss.dictionary import DeclaredField
+from warrant.battery.gloss.evidence import make_evidence
+from warrant.battery.gloss.model import Assertion, AssertionType, Finding, Tier
+
+# Oracle DD-MON-YY and ISO date-only. Both mean the same thing for an agent:
+# there is no time-of-day information, whatever the declared type promises.
+_DATE_ONLY_PATTERNS = (
+    r"^\d{1,2}-[A-Za-z]{3}-\d{2,4}$",
+    r"^\d{4}-\d{2}-\d{2}$",
+)
+_TIME_BEARING_TYPES = ("DATETIME", "TIMESTAMP")
+_NUMERIC_TYPES = ("INTEGER", "DECIMAL", "FLOAT", "SMALLINT", "BIGINT", "AMOUNT")
+
+
+class FieldDetector:
+    type = AssertionType.FIELD
+
+    def run(self, ctx: Context) -> list[Finding]:
+        findings: list[Finding] = []
+        for column in ctx.columns:
+            declared = ctx.dictionary.get(column) if ctx.dictionary else None
+            if declared:
+                findings += self._precision(ctx, column, declared)
+                findings += self._range(ctx, column, declared)
+            findings += self._encoding(ctx, column)
+        return findings
+
+    def _precision(self, ctx, column, declared: DeclaredField) -> list[Finding]:
+        if declared.maxtype not in _TIME_BEARING_TYPES:
+            return []
+        col = quote(column)
+        matches = " OR ".join(f"regexp_matches({col}, '{p}')"
+                              for p in _DATE_ONLY_PATTERNS)
+        sql = (
+            f"SELECT COUNT(*), SUM(CASE WHEN {matches} THEN 1 ELSE 0 END) "
+            f"FROM {quote(ctx.table)} WHERE {col} IS NOT NULL AND {col} <> ''"
+        )
+        evidence = make_evidence(ctx.conn, sql, ctx.today)
+        total, date_only = (int(v) if v is not None else 0
+                            for v in evidence.expected)
+        if not total or date_only != total:
+            return []
+        return [Finding(Assertion(
+            type=self.type, subject=ctx.subject(column),
+            statement=(
+                f"Declared {declared.maxtype} but every one of the {total:,} "
+                f"populated values is date-only, so the true precision is one day. "
+                f"Any duration computed in hours or minutes from this column is "
+                f"meaningless."
+            ),
+            tier=Tier.MEASURED, evidence=(evidence,),
+        ), impact=1.0)]
+
+    def _range(self, ctx, column, declared: DeclaredField) -> list[Finding]:
+        documented = declared.documented_range()
+        if documented is None or declared.maxtype not in _NUMERIC_TYPES:
+            return []
+        col = quote(column)
+        sql = (f"SELECT MIN(TRY_CAST({col} AS DOUBLE)), "
+               f"MAX(TRY_CAST({col} AS DOUBLE)) FROM {quote(ctx.table)}")
+        evidence = make_evidence(ctx.conn, sql, ctx.today)
+        lo, hi = evidence.expected
+        if lo is None or hi is None:
+            return []
+        doc_lo, doc_hi = documented
+        if lo >= doc_lo and hi <= doc_hi and (hi - lo) >= 0.5 * (doc_hi - doc_lo):
+            return []  # observed range fills the documented one; nothing notable
+        return [Finding(Assertion(
+            type=self.type, subject=ctx.subject(column),
+            statement=(
+                f"Documented range is {doc_lo}-{doc_hi}; observed values run "
+                f"{lo:g} to {hi:g}. The documented range describes the vendor's "
+                f"field, not this organisation's use of it, so any reasoning that "
+                f"relies on the documented scale is unsafe."
+            ),
+            tier=Tier.MEASURED, evidence=(evidence,),
+        ))]
+
+    def _encoding(self, ctx, column) -> list[Finding]:
+        """Non-breaking spaces read as whitespace to a human and as an ordinary
+        character to string matching, so they break joins and GROUP BY silently."""
+        col = quote(column)
+        sql = (f"SELECT COUNT(*) FROM {quote(ctx.table)} "
+               f"WHERE {col} LIKE '%' || chr(160) || '%'")
+        evidence = make_evidence(ctx.conn, sql, ctx.today)
+        hits = int(evidence.expected)
+        if hits == 0:
+            return []
+        return [Finding(Assertion(
+            type=self.type, subject=ctx.subject(column),
+            statement=(
+                f"{hits:,} values contain a non-breaking space (U+00A0). It looks "
+                f"like a space but does not compare equal to one, so exact matches, "
+                f"joins, and GROUP BY on this column split silently. Normalise "
+                f"before comparing."
+            ),
+            tier=Tier.MEASURED, evidence=(evidence,),
+        ), impact=hits / ctx.row_count if ctx.row_count else 0.0)]

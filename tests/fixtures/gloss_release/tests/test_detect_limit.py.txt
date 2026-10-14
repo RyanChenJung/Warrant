@@ -1,0 +1,63 @@
+from gloss.detect import build_context
+from gloss.detect.limit import LimitDetector
+from gloss.dictionary import load_dictionary
+from gloss.evidence import verify
+from gloss.model import AssertionType, Tier
+
+
+def _run(mini_conn, mini_paths, tmp_path, grain_filter=None):
+    d = load_dictionary(mini_paths["dict"], "WORKORDER", tmp_path / "c")
+    ctx = build_context(mini_conn, "wo_history", "2026-08-23", dictionary=d)
+    ctx.grain_filter = grain_filter
+    return LimitDetector().run(ctx)
+
+
+def test_finds_the_fully_empty_column(mini_conn, mini_paths, tmp_path):
+    findings = _run(mini_conn, mini_paths, tmp_path)
+    empty = [f for f in findings if "entirely empty" in f.assertion.statement]
+    assert [f.assertion.subject for f in empty] == ["wo_history.OWNERGROUP"]
+    assert empty[0].assertion.type is AssertionType.LIMIT
+    assert empty[0].assertion.tier is Tier.MEASURED
+    assert empty[0].question is None  # nothing for a human to settle
+
+
+def test_every_assertion_carries_re_runnable_sql(mini_conn, mini_paths, tmp_path):
+    for f in _run(mini_conn, mini_paths, tmp_path):
+        assert verify(mini_conn, f.assertion.evidence[0]).status == "PASS"
+
+
+def test_reports_the_high_null_column_with_a_question(mini_conn, mini_paths, tmp_path):
+    findings = _run(mini_conn, mini_paths, tmp_path)
+    nulls = [f for f in findings if f.assertion.subject == "wo_history.ASSETNUM"
+             and "Empty in" in f.assertion.statement]
+    assert len(nulls) == 1
+    assert "25.0%" in nulls[0].assertion.statement
+    assert nulls[0].question is not None
+    assert nulls[0].question.proposed_answer          # P4
+    assert len(nulls[0].question.options) >= 2
+
+
+def test_grain_filter_changes_the_null_denominator(mini_conn, mini_paths, tmp_path):
+    # The whole point of GRAIN: over all 20 rows ASSETNUM is 25% null, but over the
+    # 10 work-order rows it is 30%.
+    findings = _run(mini_conn, mini_paths, tmp_path, grain_filter="ISTASK = '0'")
+    nulls = [f for f in findings if f.assertion.subject == "wo_history.ASSETNUM"
+             and "Empty in" in f.assertion.statement]
+    assert "30.0%" in nulls[0].assertion.statement
+
+
+def test_reports_columns_absent_from_the_official_dictionary(mini_conn, mini_paths,
+                                                             tmp_path):
+    findings = _run(mini_conn, mini_paths, tmp_path)
+    undoc = [f for f in findings if "no entry in the official dictionary"
+             in f.assertion.statement]
+    subjects = {f.assertion.subject for f in undoc}
+    assert "wo_history.DESCRIPTION" in subjects
+    assert "wo_history.WOPRIORITY" not in subjects
+
+
+def test_no_dictionary_means_no_undocumented_findings(mini_conn):
+    ctx = build_context(mini_conn, "wo_history", "2026-08-23")
+    findings = LimitDetector().run(ctx)
+    assert not [f for f in findings
+                if "official dictionary" in f.assertion.statement]

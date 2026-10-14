@@ -1,0 +1,62 @@
+import duckdb
+
+from gloss.detect import build_context
+from gloss.detect.rule import RuleDetector, numeric_columns
+from gloss.evidence import verify
+from gloss.model import AssertionType, Tier
+
+
+def _run(costs_conn):
+    return RuleDetector().run(build_context(costs_conn, "costs", "2026-08-23"))
+
+
+def test_numeric_columns_are_recognised_through_varchar_storage(costs_conn):
+    ctx = build_context(costs_conn, "costs", "2026-08-23")
+    assert set(numeric_columns(ctx)) == {
+        "WONUM", "ACTLABCOST", "ACTMATCOST", "ACTTOTALCOST"}
+
+
+def test_discovers_the_additive_identity(costs_conn):
+    got = [f for f in _run(costs_conn) if "equals" in f.assertion.statement
+           and f.assertion.subject == "costs.ACTTOTALCOST"]
+    assert len(got) == 1
+    s = got[0].assertion.statement
+    assert "ACTLABCOST" in s and "ACTMATCOST" in s
+    assert got[0].assertion.type is AssertionType.RULE
+    assert got[0].assertion.tier is Tier.MEASURED
+
+
+def test_reports_the_share_and_names_the_shortfall(costs_conn):
+    a = [f for f in _run(costs_conn) if "equals" in f.assertion.statement
+         and f.assertion.subject == "costs.ACTTOTALCOST"][0]
+    s = a.assertion.statement
+    assert "80.0%" in s              # 4 of 5 rows
+    assert "component" in s          # the missing third term is called out
+
+
+def test_a_partial_identity_asks_what_the_remainder_is(costs_conn):
+    f = [f for f in _run(costs_conn) if "equals" in f.assertion.statement
+         and f.assertion.subject == "costs.ACTTOTALCOST"][0]
+    assert f.question is not None
+    assert f.question.proposed_answer
+    assert f.question.cost_seconds <= 30
+
+
+def test_an_exact_identity_still_asks_about_intent():
+    conn = duckdb.connect()
+    conn.execute("CREATE TABLE t AS SELECT * FROM (VALUES "
+                 "('1','2','3'),('2','3','5'),('4','1','5')) x(a,b,c)")
+    got = [f for f in RuleDetector().run(build_context(conn, "t", "2026-08-23"))
+           if "equals" in f.assertion.statement and f.assertion.subject == "t.c"]
+    assert len(got) == 1
+    assert "100.0%" in got[0].assertion.statement
+    # Arithmetic proves what the formula is, not that it is intended. A formula
+    # with a component nobody expected is exactly one a human should lay eyes
+    # on, so an exact identity still ships a question.
+    assert got[0].question is not None
+    assert "intended" in got[0].question.text
+
+
+def test_every_assertion_carries_re_runnable_sql(costs_conn):
+    for f in _run(costs_conn):
+        assert verify(costs_conn, f.assertion.evidence[0]).status == "PASS"
