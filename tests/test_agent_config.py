@@ -50,8 +50,7 @@ def test_the_bedrock_client_takes_its_region_from_the_configuration(tmp_path):
 @pytest.mark.parametrize("region", ["", "region-placeholder", "us-east", "US-EAST-1"])
 def test_a_region_that_is_not_a_region_is_refused_before_any_call(region):
     """A region reaches Bedrock through the host name, so a bad one would only look like a
-    connection failure, on every call of the run. The committed configuration carries a
-    placeholder, so a run refuses to start until the lead's real region is filled in (#26)."""
+    connection failure, on every call of the run."""
     with pytest.raises(ValueError, match="not an AWS region"):
         client(ModelConfig(provider="bedrock", model="m", region=region))
 
@@ -64,8 +63,8 @@ def test_an_unknown_provider_is_rejected():
 def test_the_write_line_configuration_carries_the_model_block(write_line_config):
     config = load_config(write_line_config)
     assert config.model.provider == "bedrock"
-    assert config.model.model == "anthropic.claude-model-placeholder"
-    assert config.model.region == "region-placeholder"
+    assert config.model.model == "anthropic.claude-sonnet-5"
+    assert config.model.region == "us-east-1"
 
 
 def test_temperature_is_absent_unless_the_configuration_sets_it(tmp_path):

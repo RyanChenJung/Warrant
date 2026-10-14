@@ -39,11 +39,10 @@ def test_the_smoke_command_rejects_a_question_the_configuration_does_not_name(wr
 def test_the_smoke_command_reports_a_misconfigured_model_without_calling_it(
     write_line_config, monkeypatch, capsys
 ):
-    """The committed configuration still carries a placeholder region, so this is the real path.
-
-    The real client factory is put back: it refuses the region before building anything, so this
-    still reaches no network.
-    """
+    """The real client factory is put back: it refuses the region before building anything, so this
+    still reaches no network."""
+    text = write_line_config.read_text()
+    write_line_config.write_text(text.replace("region: us-east-1", "region: region-placeholder"))
     monkeypatch.setattr("warrant.agent.claude.client", real_client)
 
     exit_code = smoke.main(["--config", str(write_line_config), "--question", "open-orders"])
