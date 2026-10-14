@@ -1,0 +1,29 @@
+# Write-line configuration with one column-formula defect on the work-order fixture (#35): a data
+# change that makes the total cost the labour and parts costs added together. Paths are relative to
+# this file.
+databases:
+  workorders: workorders.sqlite
+rules: [empty, all_person]
+runs: 1
+defects:
+  - id: total-is-labor-and-parts
+    database: workorders
+    slot: {claim_kind: column_formula, subject: workorders.total_cost}
+    touches: {workorders: [total_cost]}
+    transformation:
+      - UPDATE workorders SET total_cost = ROUND(labor_cost + parts_cost, 2)
+    reference_claim: >-
+      A work order's total cost is its labour cost and its parts cost added together, and nothing
+      else.
+    relation: {table: workorders, target: total_cost, form: sum, operands: [labor_cost, parts_cost]}
+questions:
+  - id: closed-cost-with-parts
+    database: workorders
+    defect: total-is-labor-and-parts
+    text: What have the closed work orders cost in all, parts included?
+    gold_sql: SELECT SUM(total_cost) FROM workorders WHERE status = 'CLOSED'
+  - id: task-hours
+    database: workorders
+    defect: null
+    text: How many task hours have been logged in all?
+    gold_sql: SELECT SUM(hours) FROM tasks
