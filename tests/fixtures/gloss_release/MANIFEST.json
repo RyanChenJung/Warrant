@@ -17,6 +17,7 @@
     "gloss/dictionary.py": "5b40cdc5bd3f8dfa8cc20986f3f38cbb3d40a3c0",
     "gloss/evidence.py": "ba9821b516eae1da689cf6d2ba2204ee2de10335",
     "gloss/model.py": "a0a49dea39f1de6ba55b56fc3ac77a5259bbd820",
+    "gloss/probe.py": "147c1c1f6938a4faa78fdccbce272699a94314d4",
     "gloss/source.py": "2bd6a6dd2655970cd25b1dae8a476c8fa1031694",
     "tests/conftest.py": "bec68e7c8b1b4a4bec80328ea5ffd86222ac0a12",
     "tests/test_detect_field.py": "62318ba1ba835e093a543960c88355b73e6e0d38",
@@ -26,6 +27,7 @@
     "tests/test_detect_rule.py": "86dbf2428c9a267d6187eca21cf8b2c818621c61",
     "tests/test_detect_rule_identities.py": "181778f550b5d44115bce289fdffcae305d0e34b",
     "tests/test_detect_scope.py": "6b7e18fd1122520b08c1173d55b3be8aeca7a9c1",
-    "tests/test_detect_value.py": "fc19f1a1220e14cb0a9eaa2f1831634b68d12292"
+    "tests/test_detect_value.py": "fc19f1a1220e14cb0a9eaa2f1831634b68d12292",
+    "tests/test_probe.py": "04de8f343db5dbaf45dfb49fa5cca404bf9fdc6e"
   }
 }

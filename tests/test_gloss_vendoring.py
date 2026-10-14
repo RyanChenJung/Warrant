@@ -139,6 +139,18 @@ def test_the_vendored_copy_holds_the_release_files_and_no_other_module():
     assert found == set(MODULES)
 
 
+def test_every_import_inside_the_vendored_copy_finds_a_vendored_module():
+    package = REPO / "warrant" / "battery" / "gloss"
+    missing = []
+    for path in sorted(package.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(VENDORED_PACKAGE):
+                target = package.joinpath(*node.module.removeprefix(VENDORED_PACKAGE).split("."))
+                if not (target.with_suffix(".py").exists() or (target / "__init__.py").exists()):
+                    missing.append(f"{path.relative_to(REPO)}:{node.lineno} {node.module}")
+    assert missing == []
+
+
 def test_the_vendored_copy_carries_the_release_licence():
     assert vendored_path("LICENSE").read_bytes() == reference_path("LICENSE").read_bytes()
     assert "MIT License" in vendored_path("LICENSE").read_text()
