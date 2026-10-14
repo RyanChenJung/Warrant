@@ -274,16 +274,26 @@ def validate(raw: dict, schema: dict[str, dict[str, list[tuple[str, str]]]] | No
     return errors, warnings
 
 
-def read_schema(path: Path) -> dict[str, list[tuple[str, str]]]:
-    """Table -> [(column, declared type)] of a SQLite file, opened read-only."""
+def read_schema(path: Path) -> Schema:
+    """Table -> [(column, declared type)] of a SQLite file, in table order.
+
+    The file's connection refuses PRAGMA (see `connect_read_only`), so the CREATE statements are read
+    with a SELECT and replayed on an empty in-memory database, whose PRAGMA gives the columns.
+    """
     con = connect_read_only(path)
     try:
-        names = [n for (n,) in con.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
-        return {n: [(c[1], c[2]) for c in con.execute(f'PRAGMA table_info("{n}")')] for n in names}
-    except sqlite3.Error:
-        return {}
+        statements = con.execute("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND sql IS NOT NULL ORDER BY name").fetchall()
     finally:
         con.close()
+    scratch = sqlite3.connect(":memory:")
+    try:
+        schema = {}
+        for name, sql in statements:
+            scratch.execute(sql)
+            schema[name] = [(c[1], c[2]) for c in scratch.execute(f'PRAGMA table_info("{name}")')]
+        return schema
+    finally:
+        scratch.close()
 
 
 def main(argv=None) -> int:

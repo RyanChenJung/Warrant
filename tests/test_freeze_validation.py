@@ -242,6 +242,15 @@ def test_a_column_outside_the_first_twelve_numeric_columns_is_flagged(freeze):
     assert mentions(validate(freeze, schema)[1], "first 12 numeric columns")
 
 
+def test_a_column_in_the_twelfth_numeric_position_is_inside_the_reach(freeze):
+    inside = [(f"c{i}", NUMERIC) for i in range(8)] + [("walletsum", NUMERIC), ("availsum", NUMERIC),
+                                                       ("frozensum", NUMERIC), ("margsum", NUMERIC)]
+    assert validate(freeze, {"crypto": {"accountbalances": inside}}) == ([], [])
+    outside = inside[:8] + [("pad", NUMERIC)] + inside[8:]  # margsum moves to position 13
+    warnings = validate(freeze, {"crypto": {"accountbalances": outside}})[1]
+    assert len(warnings) == 1 and "margsum" in warnings[0]
+
+
 def test_text_columns_do_not_take_a_numeric_position(freeze):
     schema = {"crypto": {"accountbalances": [(f"c{i}", "TEXT") for i in range(12)]
                          + [("walletsum", NUMERIC), ("availsum", NUMERIC), ("frozensum", NUMERIC), ("margsum", NUMERIC)]}}
@@ -363,6 +372,18 @@ def test_the_command_reads_a_schema_from_a_database_that_exists(tmp_path, capsys
     assert main(["--config", str(write(tmp_path, freeze))]) == 0
     out = capsys.readouterr().out
     assert "warning" in out and "ratio" in out
+
+
+def test_the_command_runs_the_position_check_on_a_schema_read_from_disk(tmp_path, capsys, freeze):
+    database = tmp_path / "crypto.sqlite"
+    con = sqlite3.connect(database)
+    columns = ", ".join(f"c{i} REAL" for i in range(12))
+    con.execute(f"CREATE TABLE accountbalances (accountid TEXT, {columns}, walletsum REAL, availsum REAL, frozensum REAL, margsum REAL)")
+    con.close()
+    freeze["databases"] = {"crypto": "crypto.sqlite"}
+    assert main(["--config", str(write(tmp_path, freeze))]) == 0
+    out = capsys.readouterr().out
+    assert "first 12 numeric columns" in out and "not checked" not in out
 
 
 def test_the_write_line_configuration_carries_the_freeze_fields_when_present(tmp_path, freeze):
