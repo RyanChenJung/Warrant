@@ -1,0 +1,27 @@
+# Write-line configuration with one value-meaning defect on the work-order fixture (#35): the two
+# site codes swapped. Paths are relative to this file.
+databases:
+  workorders: workorders.sqlite
+rules: [empty, all_person]
+runs: 1
+defects:
+  - id: sites-swapped
+    database: workorders
+    slot: {claim_kind: value_meaning, subject: workorders.site}
+    touches: {workorders: [site]}
+    transformation:
+      - UPDATE workorders SET site = CASE site WHEN 'NORTH' THEN 'SOUTH' WHEN 'SOUTH' THEN 'NORTH' END
+    reference_claim: >-
+      The site codes are swapped: 'NORTH' marks the work orders at the southern site and 'SOUTH'
+      those at the northern site.
+questions:
+  - id: north-orders
+    database: workorders
+    defect: sites-swapped
+    text: How many work orders are at the northern site?
+    gold_sql: SELECT COUNT(*) FROM workorders WHERE site = 'SOUTH'
+  - id: task-hours
+    database: workorders
+    defect: null
+    text: How many task hours have been logged in all?
+    gold_sql: SELECT SUM(hours) FROM tasks

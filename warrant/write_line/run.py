@@ -14,6 +14,7 @@ from warrant.agent.interface import Agent, AnswerRequest, ResponseKind, Usage
 from warrant.agent.tools import ReadOnlySQL
 from warrant.config import data_dir
 from warrant.data.sqlite import query, query_with_columns, schema
+from warrant.defects.audit import Audit
 from warrant.defects.inject import Defect, inject
 from warrant.scoring.classify import (
     TOLERANCE,
@@ -67,6 +68,8 @@ class WriteLineResult:
     gold: dict[str, GoldAnswer]
     stores: dict[str, KnowledgeStore]
     injected: dict[str, Path]
+    # Per defect, what its transformation did to the injected copy (#35).
+    audits: dict[str, Audit]
 
 
 def _person_claim(defect: Defect) -> Claim:
@@ -135,10 +138,11 @@ def run(
     The tolerance and the refusal check belong to the global part of the freeze (#33), which will
     supply them; until then the defaults are the spec's.
     """
-    injected = {
-        name: inject(clean, work_dir / f"{name}.sqlite", [d for d in config.defects if d.database == name])
-        for name, clean in config.databases.items()
-    }
+    injected, audits = {}, {}
+    for name, clean in config.databases.items():
+        injected[name] = work_dir / f"{name}.sqlite"
+        for a in inject(clean, injected[name], [d for d in config.defects if d.database == name]):
+            audits[a.defect] = a
     # A question whose correct response is a refusal has no gold answer.
     gold = {
         q.id: GoldAnswer(q.id, q.gold_sql, *query_with_columns(injected[q.database], q.gold_sql))
@@ -215,6 +219,7 @@ def run(
         gold=gold,
         stores=stores,
         injected=injected,
+        audits=audits,
     )
 
 

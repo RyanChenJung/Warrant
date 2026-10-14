@@ -3,11 +3,13 @@
 A defect's freeze fields (#33) are optional here; `warrant.freeze.validate` requires them of a freeze.
 """
 
+import json
 import shutil
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from warrant.defects.audit import Audit, audit, snapshot
 from warrant.store.claims import Slot
 
 
@@ -26,16 +28,23 @@ class Defect:
     drift_reading: dict | None = None
 
 
-def inject(clean: Path, dest: Path, defects: list[Defect]) -> Path:
-    """Copy the clean database to dest and apply each defect's transformation, in the order given."""
+def inject(clean: Path, dest: Path, defects: list[Defect]) -> list[Audit]:
+    """Copy the clean database to dest and apply each defect's transformation, in the order given.
+
+    Each defect's audit record (#35) is returned and written beside the copy, as `<name>.audit.json`.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(clean, dest)
     con = sqlite3.connect(dest)
+    audits = []
     try:
         with con:
             for defect in defects:
+                before, changes = snapshot(con), con.total_changes
                 for statement in defect.transformation:
                     con.execute(statement)
+                audits.append(audit(con, defect, before, snapshot(con), con.total_changes - changes))
     finally:
         con.close()
-    return dest
+    dest.with_suffix(".audit.json").write_text(json.dumps([asdict(a) for a in audits], indent=2) + "\n")
+    return audits
