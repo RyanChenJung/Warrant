@@ -7,9 +7,10 @@ DERIVED_HEADING = "### Data derived from LiveSQLBench-Base-Lite"
 
 
 def derived_paths() -> list[str]:
-    """The paths the README's list of derived data names, in backticks at the start of each item."""
+    """The paths the README's list of derived data names: those in backticks before each item's colon."""
     section = README.split(DERIVED_HEADING, 1)[1].split("\n#", 1)[0]
-    return [path for line in section.splitlines() for path in re.findall(r"^- `([^`]+)`", line)]
+    items = re.split(r"\n- ", "\n" + section)[1:]
+    return [path for item in items for path in re.findall(r"`([^`]+)`", item.split(":", 1)[0])]
 
 
 def test_the_readme_attributes_the_dataset_to_its_authors_under_its_licence():
