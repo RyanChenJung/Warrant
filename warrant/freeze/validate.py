@@ -19,6 +19,7 @@ from pathlib import Path
 
 import yaml
 
+from warrant.battery.settings import Normalisation
 from warrant.data.fetch import DEFAULT_CONFIG as RELEASE_CONFIG
 from warrant.data.release import Release
 from warrant.data.sqlite import connect_read_only
@@ -268,6 +269,11 @@ def _global(part) -> list[str]:
     if not isinstance(part, dict) or not part:
         return ["the freeze has no global part"]
     found = [f"the global part has no {k}" for k in GLOBAL_KEYS if _blank(part.get(k))]
+    if isinstance(part.get("battery"), dict):
+        try:
+            Normalisation.parse(part["battery"].get("normalisation"))
+        except ValueError as e:
+            found.append(f"the global part's {e}")
     if isinstance(part.get("confirmatory_test"), dict):
         found += _confirmatory_test(part["confirmatory_test"])
     return found
