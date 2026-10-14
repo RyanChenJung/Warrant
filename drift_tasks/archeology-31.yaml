@@ -1,0 +1,111 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 6. Entry: archeology 31 (Environmental Impact Factor (EIF)).
+# Old value: 10 (the offset added to ESI in the denominator). New value: 12. Direction used: up (drawn).
+# Restating entries changed: none (no other entry states the ESI offset of EIF).
+# Entries built on (unchanged): 3, 7, 0, 1.
+# Gold results: pre-drift 9.6081, post-drift 19.8698 (1125 scan/environment pairs).
+# Fixed after checking: the question states that the average is over scan and reading pairs.
+id: archeology-31-environmental-impact-factor
+database: archeology
+question: Taking each pair of a scan's point cloud and an environment reading at the scan's site as one case, what is the average Environmental Impact Factor (EIF) over all such pairs?
+drift_type: documented
+entries:
+- id: 31
+  oracle_definition: EIF = \frac{SQS}{\text{ESI} + 12} \times 100, \text{ where SQS is the Scan Quality Score and ESI is the Environmental Suitability Index. Values closer to 100 indicate minimal environmental interference with data acquisition.}
+  stored_answer: EIF = \frac{SQS}{\text{ESI} + 10} \times 100, \text{ where SQS is the Scan Quality Score and ESI is the Environmental Suitability Index. Values closer to 100 indicate minimal environmental interference with data acquisition.}
+- id: 3
+  oracle_definition: SQS = \left(\frac{10}{SRI}\right)^{1.5} \times \left(\frac{SCE}{100}\right) \times \left(1 - \frac{NoiseDb}{30}\right)^2, \text{ where higher values indicate exponentially better overall scan quality with emphasis on resolution.}
+  stored_answer: SQS = \left(\frac{10}{SRI}\right)^{1.5} \times \left(\frac{SCE}{100}\right) \times \left(1 - \frac{NoiseDb}{30}\right)^2, \text{ where higher values indicate exponentially better overall scan quality with emphasis on resolution.}
+- id: 7
+  oracle_definition: ESI = 100 - 2.5 \times \left|AmbicTemp - 20\right| - \left|\frac{HumePct - 50}{2}\right|^{1.5} - \frac{600}{IllumeLux + 100}, \text{ where higher values indicate more ideal scanning conditions adjusted for relative importance.}
+  stored_answer: ESI = 100 - 2.5 \times \left|AmbicTemp - 20\right| - \left|\frac{HumePct - 50}{2}\right|^{1.5} - \frac{600}{IllumeLux + 100}, \text{ where higher values indicate more ideal scanning conditions adjusted for relative importance.}
+- id: 0
+  oracle_definition: SRI = \frac{\log_{10}(ScanResolMm \times 10^3)}{\log_{10}(PointDense)} \times 5, \text{ where lower values indicate higher quality resolution and more balanced scanning parameters.}
+  stored_answer: SRI = \frac{\log_{10}(ScanResolMm \times 10^3)}{\log_{10}(PointDense)} \times 5, \text{ where lower values indicate higher quality resolution and more balanced scanning parameters.}
+- id: 1
+  oracle_definition: SCE = CoverPct \times \left(1 + \frac{LapPct}{100} \times \left(1 - \frac{CoverPct}{100}\right)\right), \text{ where higher values indicate more effective coverage with appropriate overlap.}
+  stored_answer: SCE = CoverPct \times \left(1 + \frac{LapPct}{100} \times \left(1 - \frac{CoverPct}{100}\right)\right), \text{ where higher values indicate more effective coverage with appropriate overlap.}
+pre_drift:
+  knowledge_base:
+  - id: 31
+    version: 1
+    knowledge: Environmental Impact Factor (EIF)
+    description: Quantifies how environmental conditions affected scan quality using statistical correlation analysis.
+    definition: EIF = \frac{SQS}{\text{ESI} + 10} \times 100, \text{ where SQS is the Scan Quality Score and ESI is the Environmental Suitability Index. Values closer to 100 indicate minimal environmental interference with data acquisition.}
+    type: calculation_knowledge
+    children_knowledge:
+    - 3
+    - 7
+  - id: 3
+    version: 1
+    knowledge: Scan Quality Score (SQS)
+    description: Comprehensive quality metric combining resolution, coverage, and noise factors with weighted importance.
+    definition: SQS = \left(\frac{10}{SRI}\right)^{1.5} \times \left(\frac{SCE}{100}\right) \times \left(1 - \frac{NoiseDb}{30}\right)^2, \text{ where higher values indicate exponentially better overall scan quality with emphasis on resolution.}
+    type: calculation_knowledge
+    children_knowledge:
+    - 0
+    - 1
+  - id: 7
+    version: 1
+    knowledge: Environmental Suitability Index (ESI)
+    description: Evaluates how suitable environmental conditions were for scanning operations using weighted parameters.
+    definition: ESI = 100 - 2.5 \times \left|AmbicTemp - 20\right| - \left|\frac{HumePct - 50}{2}\right|^{1.5} - \frac{600}{IllumeLux + 100}, \text{ where higher values indicate more ideal scanning conditions adjusted for relative importance.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 0
+    version: 1
+    knowledge: Scan Resolution Index (SRI)
+    description: A sophisticated compound index measuring the overall resolution quality of a scan based on resolution and point density.
+    definition: SRI = \frac{\log_{10}(ScanResolMm \times 10^3)}{\log_{10}(PointDense)} \times 5, \text{ where lower values indicate higher quality resolution and more balanced scanning parameters.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 1
+    version: 1
+    knowledge: Scan Coverage Effectiveness (SCE)
+    description: Measures how effectively a scan covers its target area considering both coverage percentage and overlap redundancy.
+    definition: SCE = CoverPct \times \left(1 + \frac{LapPct}{100} \times \left(1 - \frac{CoverPct}{100}\right)\right), \text{ where higher values indicate more effective coverage with appropriate overlap.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: WITH pc AS (SELECT TRIM(arcref) AS arcref, TRIM(crewref) AS crewref, LOG10(scanresolmm * 1000) / LOG10(pointdense) * 5 AS sri, coverpct * (1 + lappct / 100.0 * (1 - coverpct / 100.0)) AS sce, noisedb FROM scanpointcloud), sqs AS (SELECT arcref, crewref, POWER(10.0 / sri, 1.5) * (sce / 100.0) * POWER(1 - noisedb / 30.0, 2) AS sqs FROM pc), esi AS (SELECT TRIM(zoneref) AS zoneref, 100 - 2.5 * ABS(ambictemp - 20) - POWER(ABS((humepct - 50) / 2.0), 1.5) - 600.0 / (illumelux + 100) AS esi FROM scanenvironment) SELECT AVG(q.sqs / (e.esi + 10) * 100) AS avg_eif FROM scans s JOIN sqs q ON q.arcref = TRIM(s.arcref) AND q.crewref = TRIM(s.crewref) JOIN esi e ON e.zoneref = TRIM(s.zoneref)
+post_drift:
+  knowledge_base:
+  - id: 31
+    version: 2
+    knowledge: Environmental Impact Factor (EIF)
+    description: Quantifies how environmental conditions affected scan quality using statistical correlation analysis.
+    definition: EIF = \frac{SQS}{\text{ESI} + 12} \times 100, \text{ where SQS is the Scan Quality Score and ESI is the Environmental Suitability Index. Values closer to 100 indicate minimal environmental interference with data acquisition.}
+    type: calculation_knowledge
+    children_knowledge:
+    - 3
+    - 7
+  - id: 3
+    version: 1
+    knowledge: Scan Quality Score (SQS)
+    description: Comprehensive quality metric combining resolution, coverage, and noise factors with weighted importance.
+    definition: SQS = \left(\frac{10}{SRI}\right)^{1.5} \times \left(\frac{SCE}{100}\right) \times \left(1 - \frac{NoiseDb}{30}\right)^2, \text{ where higher values indicate exponentially better overall scan quality with emphasis on resolution.}
+    type: calculation_knowledge
+    children_knowledge:
+    - 0
+    - 1
+  - id: 7
+    version: 1
+    knowledge: Environmental Suitability Index (ESI)
+    description: Evaluates how suitable environmental conditions were for scanning operations using weighted parameters.
+    definition: ESI = 100 - 2.5 \times \left|AmbicTemp - 20\right| - \left|\frac{HumePct - 50}{2}\right|^{1.5} - \frac{600}{IllumeLux + 100}, \text{ where higher values indicate more ideal scanning conditions adjusted for relative importance.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 0
+    version: 1
+    knowledge: Scan Resolution Index (SRI)
+    description: A sophisticated compound index measuring the overall resolution quality of a scan based on resolution and point density.
+    definition: SRI = \frac{\log_{10}(ScanResolMm \times 10^3)}{\log_{10}(PointDense)} \times 5, \text{ where lower values indicate higher quality resolution and more balanced scanning parameters.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  - id: 1
+    version: 1
+    knowledge: Scan Coverage Effectiveness (SCE)
+    description: Measures how effectively a scan covers its target area considering both coverage percentage and overlap redundancy.
+    definition: SCE = CoverPct \times \left(1 + \frac{LapPct}{100} \times \left(1 - \frac{CoverPct}{100}\right)\right), \text{ where higher values indicate more effective coverage with appropriate overlap.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: WITH pc AS (SELECT TRIM(arcref) AS arcref, TRIM(crewref) AS crewref, LOG10(scanresolmm * 1000) / LOG10(pointdense) * 5 AS sri, coverpct * (1 + lappct / 100.0 * (1 - coverpct / 100.0)) AS sce, noisedb FROM scanpointcloud), sqs AS (SELECT arcref, crewref, POWER(10.0 / sri, 1.5) * (sce / 100.0) * POWER(1 - noisedb / 30.0, 2) AS sqs FROM pc), esi AS (SELECT TRIM(zoneref) AS zoneref, 100 - 2.5 * ABS(ambictemp - 20) - POWER(ABS((humepct - 50) / 2.0), 1.5) - 600.0 / (illumelux + 100) AS esi FROM scanenvironment) SELECT AVG(q.sqs / (e.esi + 12) * 100) AS avg_eif FROM scans s JOIN sqs q ON q.arcref = TRIM(s.arcref) AND q.crewref = TRIM(s.crewref) JOIN esi e ON e.zoneref = TRIM(s.zoneref)

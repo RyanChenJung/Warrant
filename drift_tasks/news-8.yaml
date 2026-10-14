@@ -1,0 +1,34 @@
+# Documented drift task for #43, drafted with Claude Code.
+# Draw position: 33 (seed 20261015). Entry: news 8 (occupationFactor).
+# Old value: 1.5 ('Professional'). New value: 1.8. Direction used: up (drawn).
+# Restating entries changed: none (no other news entry states the Professional occupation factor).
+# Entries built on: none (children_knowledge is -1).
+# Gold results: pre-drift 1.09114688128773, post-drift 1.16388329979879.
+id: news-8-occupation-factor
+database: news
+question: What is the average occupation factor across all users?
+drift_type: documented
+entries:
+  - id: 8
+    oracle_definition: '''Professional'' = 1.8, ''Retired'' = 1.2, ''Student'' = 0.7, ''Other'' = 1.0. These values are based on segmentation assumptions or business rules.'
+    stored_answer: '''Professional'' = 1.5, ''Retired'' = 1.2, ''Student'' = 0.7, ''Other'' = 1.0. These values are based on segmentation assumptions or business rules.'
+pre_drift:
+  knowledge_base:
+    - id: 8
+      version: 1
+      knowledge: occupationFactor
+      description: A multiplier that reflects how user occupation contributes to their demographic value.
+      definition: '''Professional'' = 1.5, ''Retired'' = 1.2, ''Student'' = 0.7, ''Other'' = 1.0. These values are based on segmentation assumptions or business rules.'
+      type: value_illustration
+      children_knowledge: -1
+  gold_sql: SELECT AVG(CASE TRIM(occulbl) WHEN 'Professional' THEN 1.5 WHEN 'Retired' THEN 1.2 WHEN 'Student' THEN 0.7 WHEN 'Other' THEN 1.0 END) AS avg_occupation_factor FROM users
+post_drift:
+  knowledge_base:
+    - id: 8
+      version: 2
+      knowledge: occupationFactor
+      description: A multiplier that reflects how user occupation contributes to their demographic value.
+      definition: '''Professional'' = 1.8, ''Retired'' = 1.2, ''Student'' = 0.7, ''Other'' = 1.0. These values are based on segmentation assumptions or business rules.'
+      type: value_illustration
+      children_knowledge: -1
+  gold_sql: SELECT AVG(CASE TRIM(occulbl) WHEN 'Professional' THEN 1.8 WHEN 'Retired' THEN 1.2 WHEN 'Student' THEN 0.7 WHEN 'Other' THEN 1.0 END) AS avg_occupation_factor FROM users

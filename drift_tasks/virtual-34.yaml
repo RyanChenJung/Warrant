@@ -1,0 +1,53 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 26. Entry: virtual 34 (Gift Impact Quotient (GIQ)).
+# Old value: 100 (the GIQ divisor). New value: 120. Direction used: up (drawn).
+# Restating entries changed: none.
+# Entries built on (unchanged): 7.
+# Gold results: pre-drift 12023.1987972, post-drift 10019.332331.
+id: virtual-34-gift-impact-quotient
+database: virtual
+question: What is the average Gift Impact Quotient (GIQ) over all interaction records?
+drift_type: documented
+entries:
+- id: 34
+  oracle_definition: GIQ = \frac{giftvalusd \times gifttot}{120}, \text{ producing an amplified measure of gifting significance by combining both quantity and monetary value.}
+  stored_answer: GIQ = \frac{giftvalusd \times gifttot}{100}, \text{ producing an amplified measure of gifting significance by combining both quantity and monetary value.}
+- id: 7
+  oracle_definition: 'gifttot represents the total number of gifts sent by fans, typically classified as: fewer than 10 is considered minimal gifting, 10-50 represents moderate support, and above 50 indicates substantial support; giftvalusd represents the USD value of gifts, generally $1-5 for small support, $5-20 for moderate support, $20-100 for large support, and above $100 for super support. Both metrics combined assess a fan''s economic support level.'
+  stored_answer: 'gifttot represents the total number of gifts sent by fans, typically classified as: fewer than 10 is considered minimal gifting, 10-50 represents moderate support, and above 50 indicates substantial support; giftvalusd represents the USD value of gifts, generally $1-5 for small support, $5-20 for moderate support, $20-100 for large support, and above $100 for super support. Both metrics combined assess a fan''s economic support level.'
+pre_drift:
+  knowledge_base:
+  - id: 34
+    version: 1
+    knowledge: Gift Impact Quotient (GIQ)
+    description: Evaluates the relative impact of a fan's gifting behavior considering both volume and value
+    definition: GIQ = \frac{giftvalusd \times gifttot}{100}, \text{ producing an amplified measure of gifting significance by combining both quantity and monetary value.}
+    type: calculation_knowledge
+    children_knowledge:
+    - 7
+  - id: 7
+    version: 1
+    knowledge: interactions.gifttot_interactions.giftvalusd
+    description: Explains the statistical significance of gift quantity and value
+    definition: 'gifttot represents the total number of gifts sent by fans, typically classified as: fewer than 10 is considered minimal gifting, 10-50 represents moderate support, and above 50 indicates substantial support; giftvalusd represents the USD value of gifts, generally $1-5 for small support, $5-20 for moderate support, $20-100 for large support, and above $100 for super support. Both metrics combined assess a fan''s economic support level.'
+    type: value_illustration
+    children_knowledge: -1
+  gold_sql: SELECT AVG(giftvalusd * gifttot / 100.0) FROM interactions
+post_drift:
+  knowledge_base:
+  - id: 34
+    version: 2
+    knowledge: Gift Impact Quotient (GIQ)
+    description: Evaluates the relative impact of a fan's gifting behavior considering both volume and value
+    definition: GIQ = \frac{giftvalusd \times gifttot}{120}, \text{ producing an amplified measure of gifting significance by combining both quantity and monetary value.}
+    type: calculation_knowledge
+    children_knowledge:
+    - 7
+  - id: 7
+    version: 1
+    knowledge: interactions.gifttot_interactions.giftvalusd
+    description: Explains the statistical significance of gift quantity and value
+    definition: 'gifttot represents the total number of gifts sent by fans, typically classified as: fewer than 10 is considered minimal gifting, 10-50 represents moderate support, and above 50 indicates substantial support; giftvalusd represents the USD value of gifts, generally $1-5 for small support, $5-20 for moderate support, $20-100 for large support, and above $100 for super support. Both metrics combined assess a fan''s economic support level.'
+    type: value_illustration
+    children_knowledge: -1
+  gold_sql: SELECT AVG(giftvalusd * gifttot / 120.0) FROM interactions

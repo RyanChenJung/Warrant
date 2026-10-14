@@ -1,0 +1,56 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 41 (seed 20261015). Entry: polar 14 (Communication Zone Status).
+# Old value: 7 (the CRI threshold for 'Reliable Coverage'). New value: 6. Direction used: down (drawn).
+# Restating entries changed: none (no other polar entry states CRI > 7; entry 45 (CNRA) uses its
+# own CRI > 0.8 and CRI > 0.6 for another term; entry 14's description states no number).
+# Unit: pieces of equipment; each has one communication row and one cabin row (1000 each), and
+# cabincommref and cabineqref give the same pairing. No beacon is 'Inactive' in the data.
+# Gold results: pre-drift [(13,)], post-drift [(17,)].
+# Entries built on (unchanged in both views): 4.
+id: polar-14-communication-zone-status
+database: polar
+question: How many pieces of equipment meet the equipment conditions for 'Reliable Coverage' under the Communication Zone Status?
+drift_type: documented
+entries:
+- id: 14
+  oracle_definition: A zone is classified as having 'Reliable Coverage' when equipment within it maintains a CRI > 6, has active satellite connections (signalmetrics.satellite_status = 'Connected'), and supports emergency beacon functionality (emergencybeaconstatus != 'Inactive').
+  stored_answer: A zone is classified as having 'Reliable Coverage' when equipment within it maintains a CRI > 7, has active satellite connections (signalmetrics.satellite_status = 'Connected'), and supports emergency beacon functionality (emergencybeaconstatus != 'Inactive').
+- id: 4
+  oracle_definition: CRI = \begin{cases} 0 & \text{if antennastatus = 'Error'} \\ 5 & \text{if antennastatus = 'Warning'} \\ 10 & \text{if antennastatus = 'Normal'} \\ 0 & \text{otherwise} \end{cases} \times (1 - \frac{signalmetrics.latency\_ms}{1000}), \text{ where lower latency and better antenna status result in higher reliability.}
+  stored_answer: CRI = \begin{cases} 0 & \text{if antennastatus = 'Error'} \\ 5 & \text{if antennastatus = 'Warning'} \\ 10 & \text{if antennastatus = 'Normal'} \\ 0 & \text{otherwise} \end{cases} \times (1 - \frac{signalmetrics.latency\_ms}{1000}), \text{ where lower latency and better antenna status result in higher reliability.}
+pre_drift:
+  knowledge_base:
+  - id: 14
+    version: 1
+    knowledge: Communication Zone Status
+    description: Evaluates the communication coverage and reliability in different operational zones.
+    definition: A zone is classified as having 'Reliable Coverage' when equipment within it maintains a CRI > 7, has active satellite connections (signalmetrics.satellite_status = 'Connected'), and supports emergency beacon functionality (emergencybeaconstatus != 'Inactive').
+    type: domain_knowledge
+    children_knowledge:
+    - 4
+  - id: 4
+    version: 1
+    knowledge: Communication Reliability Index (CRI)
+    description: Assesses the reliability of communication systems based on signal metrics and antenna status.
+    definition: CRI = \begin{cases} 0 & \text{if antennastatus = 'Error'} \\ 5 & \text{if antennastatus = 'Warning'} \\ 10 & \text{if antennastatus = 'Normal'} \\ 0 & \text{otherwise} \end{cases} \times (1 - \frac{signalmetrics.latency\_ms}{1000}), \text{ where lower latency and better antenna status result in higher reliability.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(DISTINCT m.commeqref) AS reliable_coverage_equipment FROM communication m JOIN cabinenvironment c ON c.cabineqref = m.commeqref WHERE (CASE WHEN m.antennastatus = 'Error' THEN 0 WHEN m.antennastatus = 'Warning' THEN 5 WHEN m.antennastatus = 'Normal' THEN 10 ELSE 0 END) * (1 - CAST(json_extract(m.signalmetrics, '$.latency_ms') AS REAL) / 1000.0) > 7 AND json_extract(m.signalmetrics, '$.satellite_status') = 'Connected' AND c.emergencybeaconstatus <> 'Inactive'
+post_drift:
+  knowledge_base:
+  - id: 14
+    version: 2
+    knowledge: Communication Zone Status
+    description: Evaluates the communication coverage and reliability in different operational zones.
+    definition: A zone is classified as having 'Reliable Coverage' when equipment within it maintains a CRI > 6, has active satellite connections (signalmetrics.satellite_status = 'Connected'), and supports emergency beacon functionality (emergencybeaconstatus != 'Inactive').
+    type: domain_knowledge
+    children_knowledge:
+    - 4
+  - id: 4
+    version: 1
+    knowledge: Communication Reliability Index (CRI)
+    description: Assesses the reliability of communication systems based on signal metrics and antenna status.
+    definition: CRI = \begin{cases} 0 & \text{if antennastatus = 'Error'} \\ 5 & \text{if antennastatus = 'Warning'} \\ 10 & \text{if antennastatus = 'Normal'} \\ 0 & \text{otherwise} \end{cases} \times (1 - \frac{signalmetrics.latency\_ms}{1000}), \text{ where lower latency and better antenna status result in higher reliability.}
+    type: calculation_knowledge
+    children_knowledge: -1
+  gold_sql: SELECT COUNT(DISTINCT m.commeqref) AS reliable_coverage_equipment FROM communication m JOIN cabinenvironment c ON c.cabineqref = m.commeqref WHERE (CASE WHEN m.antennastatus = 'Error' THEN 0 WHEN m.antennastatus = 'Warning' THEN 5 WHEN m.antennastatus = 'Normal' THEN 10 ELSE 0 END) * (1 - CAST(json_extract(m.signalmetrics, '$.latency_ms') AS REAL) / 1000.0) > 6 AND json_extract(m.signalmetrics, '$.satellite_status') = 'Connected' AND c.emergencybeaconstatus <> 'Inactive'

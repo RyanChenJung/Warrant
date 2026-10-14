@@ -1,0 +1,58 @@
+# Documented drift task (#43), drafted with Claude Code.
+# Draw position: 17. Entry: virtual 5 (engagement.engrate).
+# Old value: 0.200 (upper end of the low-engagement band). New value: 0.240. Direction used: up (drawn).
+# The range bounds 0 and 1.000 before it describe the scale of engrate, not a threshold.
+# Restating entries changed: 5 itself (moderate band start 0.201 becomes 0.241, the same boundary),
+# 23 (Churn Candidate: engrate < 0.2 becomes engrate < 0.240).
+# Entries built on (unchanged): none (entry 5 has no children_knowledge).
+# Gold results: pre-drift 194, post-drift 224.
+# Fixed after checking: the question counts engagement records, since 7 fans have two records.
+id: virtual-5-engagement-rate
+database: virtual
+question: How many engagement records show low engagement according to their engagement rate?
+drift_type: documented
+entries:
+- id: 5
+  oracle_definition: Engagement rate (engrate) typically ranges from 0 to 1.000, with higher values indicating more active fans. 0-0.240 represents low engagement (viewing only without participation), 0.241-0.500 indicates moderate engagement (occasional comments and likes), 0.501-0.800 shows high engagement (frequent comments and sharing), and 0.801-1.000 represents ultra-high engagement (comprehensive deep participation in content co-creation). Platforms generally consider rates above 0.500 as quality fans.
+  stored_answer: Engagement rate (engrate) typically ranges from 0 to 1.000, with higher values indicating more active fans. 0-0.200 represents low engagement (viewing only without participation), 0.201-0.500 indicates moderate engagement (occasional comments and likes), 0.501-0.800 shows high engagement (frequent comments and sharing), and 0.801-1.000 represents ultra-high engagement (comprehensive deep participation in content co-creation). Platforms generally consider rates above 0.500 as quality fans.
+- id: 23
+  oracle_definition: A fan with RRF > 3.5, lastlogdt more than 20 days in the past, and engrate < 0.240, requiring immediate retention efforts.
+  stored_answer: A fan with RRF > 3.5, lastlogdt more than 20 days in the past, and engrate < 0.2, requiring immediate retention efforts.
+pre_drift:
+  knowledge_base:
+  - id: 5
+    version: 1
+    knowledge: engagement.engrate
+    description: Explains the calculation basis and business significance of fan engagement rate
+    definition: Engagement rate (engrate) typically ranges from 0 to 1.000, with higher values indicating more active fans. 0-0.200 represents low engagement (viewing only without participation), 0.201-0.500 indicates moderate engagement (occasional comments and likes), 0.501-0.800 shows high engagement (frequent comments and sharing), and 0.801-1.000 represents ultra-high engagement (comprehensive deep participation in content co-creation). Platforms generally consider rates above 0.500 as quality fans.
+    type: value_illustration
+    children_knowledge: -1
+  - id: 23
+    version: 1
+    knowledge: Churn Candidate
+    description: Identifies fans at immediate risk of platform abandonment
+    definition: A fan with RRF > 3.5, lastlogdt more than 20 days in the past, and engrate < 0.2, requiring immediate retention efforts.
+    type: domain_knowledge
+    children_knowledge:
+    - 5
+    - 13
+  gold_sql: SELECT COUNT(*) FROM engagement WHERE engrate <= 0.200
+post_drift:
+  knowledge_base:
+  - id: 5
+    version: 2
+    knowledge: engagement.engrate
+    description: Explains the calculation basis and business significance of fan engagement rate
+    definition: Engagement rate (engrate) typically ranges from 0 to 1.000, with higher values indicating more active fans. 0-0.240 represents low engagement (viewing only without participation), 0.241-0.500 indicates moderate engagement (occasional comments and likes), 0.501-0.800 shows high engagement (frequent comments and sharing), and 0.801-1.000 represents ultra-high engagement (comprehensive deep participation in content co-creation). Platforms generally consider rates above 0.500 as quality fans.
+    type: value_illustration
+    children_knowledge: -1
+  - id: 23
+    version: 2
+    knowledge: Churn Candidate
+    description: Identifies fans at immediate risk of platform abandonment
+    definition: A fan with RRF > 3.5, lastlogdt more than 20 days in the past, and engrate < 0.240, requiring immediate retention efforts.
+    type: domain_knowledge
+    children_knowledge:
+    - 5
+    - 13
+  gold_sql: SELECT COUNT(*) FROM engagement WHERE engrate <= 0.240
