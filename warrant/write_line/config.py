@@ -6,8 +6,7 @@ from pathlib import Path
 import yaml
 
 from warrant.agent.config import ModelConfig, load_model_config
-from warrant.defects.inject import Defect
-from warrant.store.claims import ClaimKind, Slot
+from warrant.defects.inject import Defect, load_defect
 
 
 @dataclass(frozen=True)
@@ -66,22 +65,7 @@ def load_config(path: Path) -> Config:
     raw = yaml.safe_load(path.read_text())
     return Config(
         databases={name: (path.parent / db).resolve() for name, db in raw["databases"].items()},
-        defects=tuple(
-            Defect(
-                id=d["id"],
-                database=d["database"],
-                slot=Slot(ClaimKind(d["slot"]["claim_kind"]), d["slot"]["subject"]),
-                transformation=tuple(d["transformation"]),
-                reference_claim=d["reference_claim"],
-                touches=d.get("touches"),
-                thresholds=tuple(str(t) for t in d.get("thresholds", ())),
-                cut_tables=tuple(d["cut_tables"]) if "cut_tables" in d else None,
-                relation=d.get("relation"),
-                readings=tuple(d.get("readings", ())),
-                drift_reading=d.get("drift_reading"),
-            )
-            for d in raw["defects"]
-        ),
+        defects=tuple(load_defect(d) for d in raw["defects"]),
         questions=tuple(_question(q) for q in raw["questions"]),
         rules=tuple(raw["rules"]),
         runs=int(raw["runs"]),

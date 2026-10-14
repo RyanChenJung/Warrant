@@ -3,12 +3,16 @@
 docs/thesis/
 
 # Databases live in the data directory outside the repo ($WARRANT_DATA_DIR) and are never
-# committed; only tiny test fixtures are.
+# committed; only tiny test fixtures are, and those as SQL that the tests build databases from.
 *.sqlite
 *.sqlite3
 *.db
 *.duckdb
 !tests/fixtures/**
+tests/fixtures/**/*.sqlite
+tests/fixtures/**/*.sqlite3
+tests/fixtures/**/*.db
+tests/fixtures/**/*.duckdb
 
 # Secrets (model access stays in a local AWS profile or environment variables)
 .env

@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from warrant.defects.audit import Audit, audit, snapshot
-from warrant.store.claims import Slot
+from warrant.store.claims import ClaimKind, Slot
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,23 @@ class Defect:
     relation: dict | None = None
     readings: tuple[dict, ...] = ()
     drift_reading: dict | None = None
+
+
+def load_defect(d: dict) -> Defect:
+    """A defect as read from YAML: a write-line configuration's or a freeze's."""
+    return Defect(
+        id=d["id"],
+        database=d["database"],
+        slot=Slot(ClaimKind(d["slot"]["claim_kind"]), d["slot"]["subject"]),
+        transformation=tuple(d["transformation"]),
+        reference_claim=d["reference_claim"],
+        touches=d.get("touches"),
+        thresholds=tuple(str(t) for t in d.get("thresholds", ())),
+        cut_tables=tuple(d["cut_tables"]) if "cut_tables" in d else None,
+        relation=d.get("relation"),
+        readings=tuple(d.get("readings", ())),
+        drift_reading=d.get("drift_reading"),
+    )
 
 
 def inject(clean: Path, dest: Path, defects: list[Defect]) -> list[Audit]:
