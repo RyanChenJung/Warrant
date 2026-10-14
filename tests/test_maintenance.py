@@ -8,6 +8,7 @@ the same; only the knowledge-base entry and the gold SQL change.
 import dataclasses
 import json
 import re
+import shutil
 
 import pytest
 import yaml
@@ -188,7 +189,7 @@ def test_the_stored_answer_holds_the_pre_drift_value_in_both_states_with_no_warr
     stores = [r.store for r in agent.requests if r.tools == ()]
     assert len(stores) == 2 and stores[0] == stores[1]
     (claim,) = stores[0].claims
-    assert claim.statement == "A large work order is one whose total cost is over 500."
+    assert claim.statement == "A work order is large when its total cost is over 500."
     assert claim.slot.subject == LARGE
     assert claim.warrant == WarrantKind.NONE
     assert claim.toulmin == Toulmin()
@@ -299,8 +300,19 @@ def test_the_validator_accepts_the_fixture_task(maintenance_config, capsys):
         ),
         (spend_over(500), "DELETE FROM workorders WHERE total_cost > 800", "post_drift gold SQL is not a read-only query"),
         (spend_over(500), "CREATE TEMP TABLE large AS SELECT 1", "post_drift gold SQL is not a read-only query"),
+        # The no-drift control needs an answer too (#43).
+        (spend_over(5000), spend_over(800), "its pre-drift result is empty"),
+        # A count over no rows is a single 0, which tells nothing about the drift (#43).
+        (
+            "SELECT COUNT(*) FROM workorders WHERE total_cost > 500",
+            "SELECT COUNT(*) FROM workorders WHERE total_cost > 5000",
+            "its post-drift result is empty",
+        ),
     ],
-    ids=["equal", "equal-within-the-tolerance", "empty", "only-null", "null-per-group", "a-write", "no-result"],
+    ids=[
+        "equal", "equal-within-the-tolerance", "empty", "only-null", "null-per-group", "a-write", "no-result",
+        "pre-drift-empty", "a-zero-count",
+    ],
 )
 def test_the_validator_rejects_an_invalid_task_and_leaves_the_database_unchanged(
     maintenance_config, workorders_db, capsys, pre_drift, post_drift, reason
@@ -399,6 +411,72 @@ def test_the_validator_rejects_a_task_that_leaves_out_another_entry_in_the_slot_
     assert f"{TASK}: knowledge-base entry 3 is in the slot of entry 0 but is not one of its entries" in out
 
 
+def task_entry(field, value):
+    """A change to a task file that sets a field of its one entry."""
+
+    def change(raw):
+        raw["entries"][0][field] = value
+
+    return change
+
+
+def without_version(entry):
+    return {k: v for k, v in entry.items() if k != "version"}
+
+
+@pytest.mark.parametrize(
+    "change, reason",
+    [
+        (view(BEFORE, without_version(large_order(1, 500))), "its pre_drift view of entry 0 has no version"),
+        # Before drift the view is the release's entry, word for word, at version 1.
+        (view(BEFORE, large_order(1, 450)), "its pre_drift view of entry 0 is not the released entry"),
+        (view(BEFORE, large_order(2, 500)), "its pre_drift view of entry 0 is version 2, not 1"),
+        (view(AFTER, large_order(3, 800)), "entry 0 changes, so its version goes from 1 to 2, not to 3"),
+        (view(AFTER, large_order(2, 500)), "entry 0 does not change, so its version stays 1, not 2"),
+        (view(AFTER, large_order(1, 500)), "no entry changes between its two views"),
+        (
+            view(AFTER, {**large_order(2, 800), "knowledge": "Big work order"}),
+            "entry 0 changes in knowledge; only its definition and description may change",
+        ),
+        (
+            task_entry("oracle_definition", "A work order is large when it costs over 900."),
+            "entry 0's oracle definition is not its post_drift definition",
+        ),
+        (
+            task_entry("stored_answer", "A large work order is one whose total cost is over 500."),
+            "entry 0's stored answer is not its pre_drift definition",
+        ),
+    ],
+    ids=[
+        "no-version", "an-edited-pre-drift-entry", "a-pre-drift-version-2", "a-version-jump", "a-version-bump-alone",
+        "no-change", "a-renamed-entry", "another-oracle-definition", "a-paraphrased-stored-answer",
+    ],
+)
+def test_the_validator_rejects_a_task_whose_views_misstate_the_release_or_its_versions(
+    maintenance_config, capsys, change, reason
+):
+    edit_task(maintenance_config, change)
+
+    assert validate.main(["--config", str(maintenance_config)]) == 1
+    out = capsys.readouterr().out
+    assert f"{TASK}: " in out and reason in out
+
+
+def test_the_validator_accepts_a_task_that_lists_an_entry_it_builds_on_unchanged(maintenance_config, capsys):
+    # The entry the changed one builds on is listed so that every condition has it, the same in both views (#43).
+    hours = json.loads((maintenance_config.parent / "workorders_kb.jsonl").read_text().splitlines()[2])
+
+    def builds_on_task_hours(raw):
+        raw["entries"].append({"id": 2, "oracle_definition": hours["definition"], "stored_answer": hours["definition"]})
+        for state in (BEFORE, AFTER):
+            raw[state]["knowledge_base"].append({**hours, "version": 1})
+
+    edit_task(maintenance_config, builds_on_task_hours)
+
+    assert validate.main(["--config", str(maintenance_config)]) == 0
+    assert "1 of 1 tasks valid" in capsys.readouterr().out
+
+
 def test_the_run_refuses_an_undocumented_task_while_a_view_cannot_mark_an_entry_removed_or_under_revision(
     maintenance_config,
 ):
@@ -424,4 +502,40 @@ def test_two_task_files_with_one_id_are_refused_before_any_task_is_validated_or_
     assert exited.value.code == 2
     assert f"task ids used more than once: {TASK}" in capsys.readouterr().err
     with pytest.raises(ValueError, match=f"task ids used more than once: {TASK}"):
+        load_config(maintenance_config)
+
+
+# A committed configuration cannot carry local paths, so it names the release and its databases (#43).
+
+
+def by_release(config_path, tmp_path, monkeypatch, names):
+    """Fetch the work-order fixture as a one-database release into a data directory, and rewrite the
+    configuration to name its databases instead of giving their paths."""
+    monkeypatch.setenv("WARRANT_DATA_DIR", str(tmp_path / "data"))
+    (config_path.parent / "release.yaml").write_text("dataset: example/release\nrevision: abc123\ndatabases: [workorders]\n")
+    root = tmp_path / "data" / "livesqlbench-base-lite" / "abc123" / "workorders"
+    root.mkdir(parents=True)
+    shutil.copy(config_path.parent / "workorders.sqlite", root / "workorders_template.sqlite")
+    shutil.copy(config_path.parent / "workorders_kb.jsonl", root / "workorders_kb.jsonl")
+    raw = yaml.safe_load(config_path.read_text())
+    del raw["knowledge_bases"]
+    raw.update(release="release.yaml", databases=names)
+    config_path.write_text(yaml.safe_dump(raw))
+    return root
+
+
+def test_a_configuration_can_name_its_databases_in_the_fetched_release(maintenance_config, tmp_path, monkeypatch, capsys):
+    root = by_release(maintenance_config, tmp_path, monkeypatch, ["workorders"])
+
+    config = load_config(maintenance_config)
+    assert config.databases == {"workorders": root / "workorders_template.sqlite"}
+    assert config.knowledge_bases == {"workorders": root / "workorders_kb.jsonl"}
+    assert validate.main(["--config", str(maintenance_config)]) == 0
+    assert "1 of 1 tasks valid" in capsys.readouterr().out
+
+
+def test_a_configuration_naming_a_database_the_release_lacks_is_refused(maintenance_config, tmp_path, monkeypatch):
+    by_release(maintenance_config, tmp_path, monkeypatch, ["workorders", "warehouse"])
+
+    with pytest.raises(ValueError, match="not in the release: warehouse"):
         load_config(maintenance_config)

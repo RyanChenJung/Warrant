@@ -16,7 +16,7 @@ entries:
     oracle_definition: A work order is large when its total cost is over 800.
     # The stored answer: the pre-drift value copied from the old entry, without its source or
     # version. The fixture supplies it until #45 builds stored answers.
-    stored_answer: A large work order is one whose total cost is over 500.
+    stored_answer: A work order is large when its total cost is over 500.
 # Each state's knowledge-base view and gold SQL. The view holds exactly the task's entries in the
 # release's knowledge-base format, each with its version; every other entry stays as released.
 pre_drift:
