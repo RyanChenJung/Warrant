@@ -18,6 +18,12 @@ SCHEMA = {
 }
 
 
+@pytest.fixture(autouse=True)
+def no_fetched_release(tmp_path, monkeypatch):
+    """An empty data directory, so no test reads a release this machine happens to have fetched."""
+    monkeypatch.setenv("WARRANT_DATA_DIR", str(tmp_path / "data"))
+
+
 @pytest.fixture
 def freeze():
     return yaml.safe_load(FREEZE.read_text())
@@ -145,14 +151,47 @@ def test_a_convention_drift_reading_without_its_reference_claim_is_rejected(free
     assert mentions(errors_of(freeze), "reference claim")
 
 
-def test_a_meaning_only_drift_reading_must_be_marked_no_defect(freeze):
-    del reading(defect(freeze, "seeing-recode"), "three-is-best")["no_defect"]
-    assert mentions(errors_of(freeze), "no_defect")
+def test_the_true_reading_is_world_fixed_and_owns_the_recoding(freeze):
+    """As amended on #34: the true reading's database is the injected copy (#36)."""
+    d = defect(freeze, "seeing-recode")
+    true = reading(d, "one-is-best")
+    assert true["form"] == "world_fixed" and true["transformation"] == d["transformation"]
 
 
-def test_two_no_defect_readings_are_rejected(freeze):
-    reading(defect(freeze, "seeing-recode"), "one-is-best")["no_defect"] = True
-    assert mentions(errors_of(freeze), "no_defect")
+def two_meaning_only_rivals(freeze):
+    d = defect(freeze, "seeing-recode")
+    d["readings"].append({
+        "id": "two-is-best", "statement": "The code '2' is the best seeing.", "form": "meaning_only",
+        "kind": "convention", "transformation": [], "holds": False, "is_true": False,
+    })
+    return d
+
+
+def test_two_meaning_only_rivals_are_rejected_even_with_one_marked_no_defect(freeze):
+    """Branch (b) as amended on #34: a defect with more than one meaning-only reading other than the
+    true one is re-authored, whatever its marks say."""
+    d = two_meaning_only_rivals(freeze)
+    reading(d, "three-is-best")["no_defect"] = True
+    assert mentions(errors_of(freeze), "re-authored")
+
+
+def test_the_only_meaning_only_rival_is_the_drift_reading_without_any_mark(freeze):
+    d = two_meaning_only_rivals(freeze)
+    d["readings"].remove(reading(d, "three-is-best"))
+    d["drift_reading"]["reading"] = "two-is-best"
+    assert validate(freeze, SCHEMA) == ([], [])
+
+
+def test_meaning_only_readings_do_not_count_when_world_fixed_rivals_choose_the_drift_reading(freeze):
+    d = defect(freeze, "orders-cut")
+    d["readings"].append({**reading(d, "kept-elsewhere"), "id": "archived"})
+    assert errors_of(freeze) == []
+
+
+def test_a_leftover_no_defect_mark_is_flagged_not_rejected(freeze):
+    reading(defect(freeze, "seeing-recode"), "three-is-best")["no_defect"] = True
+    errors, warnings = validate(freeze, SCHEMA)
+    assert errors == [] and mentions(warnings, "three-is-best") and mentions(warnings, "no_defect")
 
 
 def test_a_reading_without_a_transformation_key_is_rejected(freeze):
@@ -166,14 +205,14 @@ def test_an_explicit_empty_transformation_is_accepted(freeze):
 
 
 def test_a_meaning_only_reading_with_a_transformation_is_rejected(freeze):
-    reading(defect(freeze, "seeing-recode"), "one-is-best")["transformation"] = ["UPDATE t SET c = 1"]
+    reading(defect(freeze, "seeing-recode"), "three-is-best")["transformation"] = ["UPDATE t SET c = 1"]
     assert mentions(errors_of(freeze), "meaning-only")
 
 
 def test_a_meaning_only_reading_must_declare_convention_or_provenance(freeze):
-    del reading(defect(freeze, "seeing-recode"), "one-is-best")["kind"]
+    del reading(defect(freeze, "seeing-recode"), "three-is-best")["kind"]
     assert mentions(errors_of(freeze), "convention or provenance")
-    reading(defect(freeze, "seeing-recode"), "one-is-best")["kind"] = "habit"
+    reading(defect(freeze, "seeing-recode"), "three-is-best")["kind"] = "habit"
     assert mentions(errors_of(freeze), "convention or provenance")
 
 
@@ -260,11 +299,6 @@ def test_text_columns_do_not_take_a_numeric_position(freeze):
 def test_without_a_schema_the_position_check_is_reported_as_skipped(freeze):
     errors, warnings = validate(freeze, None)
     assert errors == [] and mentions(warnings, "not checked")
-
-
-def test_a_column_formula_defect_must_declare_its_relation(freeze):
-    del defect(freeze, "wallet-sum")["relation"]
-    assert mentions(errors_of(freeze), "relation")
 
 
 def test_a_column_formula_defect_must_declare_its_relation(freeze):
@@ -384,6 +418,44 @@ def test_the_command_runs_the_position_check_on_a_schema_read_from_disk(tmp_path
     assert main(["--config", str(write(tmp_path, freeze))]) == 0
     out = capsys.readouterr().out
     assert "first 12 numeric columns" in out and "not checked" not in out
+
+
+# A committed freeze cannot carry local paths, so without `databases:` the clean databases come from
+# the release as fetched into the data directory (#36).
+
+
+def fake_release(tmp_path, columns):
+    """A one-database release config, and its crypto template in the data directory when columns are given."""
+    release = tmp_path / "release.yaml"
+    release.write_text("dataset: example/release\nrevision: abc123\ndatabases: [crypto, alien]\n")
+    if columns is not None:
+        root = tmp_path / "data" / "livesqlbench-base-lite" / "abc123" / "crypto"
+        root.mkdir(parents=True)
+        con = sqlite3.connect(root / "crypto_template.sqlite")
+        con.execute(f"CREATE TABLE accountbalances (accountid TEXT, {columns})")
+        con.close()
+    return release
+
+
+def test_without_database_paths_the_command_reads_the_schema_from_the_fetched_release(tmp_path, capsys, freeze):
+    padding = ", ".join(f"c{i} REAL" for i in range(12))
+    release = fake_release(tmp_path, f"{padding}, walletsum REAL, availsum REAL, frozensum REAL, margsum REAL")
+    assert main(["--config", str(write(tmp_path, freeze)), "--release", str(release)]) == 0
+    out = capsys.readouterr().out
+    assert "first 12 numeric columns" in out and "not checked" not in out
+
+
+def test_a_freeze_matching_the_fetched_release_has_no_warnings(tmp_path, capsys, freeze):
+    release = fake_release(tmp_path, "walletsum REAL, availsum REAL, frozensum REAL, margsum REAL")
+    assert main(["--config", str(write(tmp_path, freeze)), "--release", str(release)]) == 0
+    assert "0 errors, 0 warnings" in capsys.readouterr().out
+
+
+def test_without_the_fetched_release_the_position_check_is_reported_as_skipped(tmp_path, capsys, freeze):
+    release = fake_release(tmp_path, None)
+    assert main(["--config", str(write(tmp_path, freeze)), "--release", str(release)]) == 0
+    out = capsys.readouterr().out
+    assert "not checked" in out and "warrant.data.fetch" in out
 
 
 def test_the_write_line_configuration_carries_the_freeze_fields_when_present(tmp_path, freeze):

@@ -99,9 +99,9 @@ defects:
     readings:
       - id: one-is-best
         statement: The code '1' is the best seeing and '3' the worst.
-        form: meaning_only
-        kind: convention
-        transformation: []
+        form: world_fixed
+        transformation:
+          - UPDATE observatories SET seeingprofile = CASE seeingprofile WHEN 'Excellent' THEN '1' WHEN 'Good' THEN '2' ELSE '3' END
         holds: true
         is_true: true
       - id: three-is-best
@@ -111,7 +111,6 @@ defects:
         transformation: []
         holds: false
         is_true: false
-        no_defect: true
     drift_reading:
       reading: three-is-best
       reference_claim: The seeing profile is graded with the codes '1', '2' and '3', and '3' is the best.
