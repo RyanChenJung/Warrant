@@ -176,6 +176,32 @@ One line each in related work:
   declarations (Searle 2010) rests only on a review so far; read the primary text before relying on
   it.
 
+## Where our terms come from (added 2026-10-17)
+
+Each term borrows a concept from the literature; the exact definitions in `CONTEXT.md` are ours.
+In the paper, cite the source where the concept comes in, and present our definition as an
+operational definition ("adapted from ...") in Methodology.
+
+| Our term | Borrowed concept | Source | What is ours |
+|---|---|---|---|
+| Warrant (the project name, the four warrant kinds) | Epistemic warrant: what makes a true belief count as knowledge | Plantinga (1993) | The four kinds (data, record, testimony, declaration) and when each applies |
+| Claim, and its record | Toulmin's layout of an argument | Toulmin (1958/2003) | The slots filled from battery logs and readings |
+| Inference rule | Toulmin's "warrant"; empirical vs institutional warrants | Toulmin (1958/2003); Freeman (2005) | Renamed so that "warrant" keeps the epistemic sense |
+| Declaration warrant | Declarations; "X counts as Y in C" | Searle (1976, 1995) | Applied to conventions no check can settle |
+| Testimony warrant | Knowledge from what others tell us (epistemology of testimony) | Burge (1993); Lackey (2008); Goldberg (2010) | Applied to facts the battery leaves open |
+| Record warrant | (none) | ADR 0009's stipulation that the knowledge base is the authoritative record | All of it |
+| Reading | Possible worlds: the set of databases consistent with what is known | Imieliński & Lipski (1984); Abiteboul, Kanellakis & Grahne (1991) | A reading written down as a database transformation, before injection |
+| Settled | Certain answers; point identification; noise-free selective classification | Abiteboul, Kanellakis & Grahne (1991); Libkin (2016); Manski (2003); El-Yaniv & Wiener (2010) | Settled relative to a frozen check battery |
+| Check battery | Data profiling | Abedjan, Golab & Naumann (2015) | The frozen set of vendored Gloss detectors |
+| Settlement rule | (none) | - | All of it: the write rule built on identification (ADR 0005) |
+
+"Identification" itself is an established concept (Manski 2003, in econometrics; certain answers in
+databases); this project did not invent it. What is new is using it as a rule for which claims an
+agent may write (ADR 0005, Consequences). Epistemology is a field, not one paper; the epistemic
+sense of "warrant" is cited to Plantinga (1993), and testimony to the three works above.
+Per the citation notes below, trace "certain answers" to Abiteboul, Kanellakis & Grahne (1991) or
+Libkin (2016); Imieliński & Lipski (1984) give the possible-worlds semantics.
+
 ## Citation notes from the check
 
 - Manski's own term is "identification region"; "identified set" is later usage.
@@ -194,12 +220,16 @@ One line each in related work:
 - Abedjan, Z., Golab, L., & Naumann, F. (2015). Profiling relational data: A survey. *The VLDB Journal* 24(4), 557-581. https://doi.org/10.1007/s00778-015-0389-y
 - Abiteboul, S., Kanellakis, P., & Grahne, G. (1991). On the representation and querying of sets of possible worlds. *Theoretical Computer Science* 78, 159-187.
 - Anscombe, G. E. M. (1958). On brute facts. *Analysis* 18(3), 69-72. https://doi.org/10.1093/analys/18.3.69
+- Burge, T. (1993). Content preservation. *The Philosophical Review* 102(4), 457-488. https://doi.org/10.2307/1523046
 - El-Yaniv, R., & Wiener, Y. (2010). On the foundations of noise-free selective classification. *JMLR* 11, 1605-1641. https://jmlr.org/papers/v11/el-yaniv10a.html
 - Eriksson, O., Johannesson, P., & Bergholtz, M. (2018). Institutional ontology for conceptual modeling. *Journal of Information Technology* 33(2), 105-123. https://doi.org/10.1057/s41265-018-0053-2
 - Freeman, J. B. (2005). Systematizing Toulmin's warrants: An epistemic approach. *Argumentation* 19(3), 331-346. https://doi.org/10.1007/s10503-005-4420-0
 - Fügener, A., Walzner, D. D., & Gupta, A. (2026). Roles of artificial intelligence in collaboration with humans. *Management Science* 72(1), 538-557. https://doi.org/10.1287/mnsc.2024.05684
+- Goldberg, S. C. (2010). *Relying on Others: An Essay in Epistemology*. Oxford University Press.
 - Habernal, I., & Gurevych, I. (2017). Argumentation mining in user-generated web discourse. *Computational Linguistics* 43(1), 125-179. https://doi.org/10.1162/COLI_a_00276
+- Imieliński, T., & Lipski, W. (1984). Incomplete information in relational databases. *Journal of the ACM* 31(4), 761-791. https://doi.org/10.1145/1634.1886
 - Jones, A. J. I., & Sergot, M. (1996). A formal characterisation of institutionalised power. *Logic Journal of the IGPL* 4(3), 427-443. https://doi.org/10.1093/jigpal/4.3.427
+- Lackey, J. (2008). *Learning from Words: Testimony as a Source of Knowledge*. Oxford University Press.
 - Libkin, L. (2016). Certain answers as objects and knowledge. *Artificial Intelligence* 232, 1-19. https://doi.org/10.1016/j.artint.2015.11.004
 - Manski, C. F. (2003). *Partial Identification of Probability Distributions*. Springer. https://doi.org/10.1007/b97478
 - Manski, C. F. (2010). Policy analysis with incredible certitude. NBER Working Paper 16207. https://www.nber.org/papers/w16207
