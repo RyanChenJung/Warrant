@@ -34,6 +34,8 @@ column meanings or knowledge-base entries, are licensed under CC BY-SA 4.0
 - `freeze/`: the freeze files with the defect specifications (#34).
 - `docs/research/2026-10-11-week-one-database-check.md` and
   `docs/research/week-one-database-check.json`: the week-one check of the candidate databases (#59).
+- `docs/research/2026-10-13-clean-scan.md`, `docs/research/clean-scan.json` and
+  `docs/research/clean-scan-runtimes.json`: the clean-database scan of the battery (#30).
 - `drift_tasks/`: the maintenance line's documented drift tasks, with edited knowledge-base entries
   (#43).
 - `tests/fixtures/freeze_valid.yaml`: example defect specifications for the freeze validation tests.
