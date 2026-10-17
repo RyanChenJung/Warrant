@@ -100,6 +100,22 @@ _Avoid_: unverified claim, tentative claim, guess
 
 ### Allocation
 
+**Knowledge store**:
+The claims an agent is given when it answers questions about a dataset. Each allocation rule
+produces its own store.
+_Avoid_: memory, knowledge base (a database's knowledge base is documentation, not a store)
+
+**Write**:
+To author a claim and put it into a knowledge store as known. Both the agent and a person can write
+a claim; an allocation rule decides whose claim is written for each slot.
+_Avoid_: generate, save, store (as a verb)
+
+**Slot**:
+A claim kind together with one subject that an injected defect declares: a table for coverage, a
+column for value meaning, a named quantity for column formula. A store holds at most one claim per
+slot, and an agent claim fills a slot when its kind and subject match exactly.
+_Avoid_: cell, position, target
+
 **Allocation rule**:
 A rule that decides, for each claim, who may write it into the knowledge store: the agent, a person,
 or both. Six are compared: an empty store, everything from a person, everything from the agent, the
