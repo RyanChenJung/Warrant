@@ -253,7 +253,11 @@ def test_the_command_builds_and_records_the_commit_it_runs_from(repo, tmp_path, 
     assert record["injected"]["workorders"] == record["readings"]["site-recode"]["one-is-north"]
     assert record["drift"]["site-recode"] == {"reading": "two-is-north", "type": "convention", "expected": "convention"}
     assert record["drift"]["short-tasks-cut"] == {"reading": "nothing-cut", "type": "data_part", "expected": "data_part"}
-    assert str(tmp_path) not in record_path.read_text()  # no local path goes into a committed file
+    # The remote's URL, so that a clone whose origin is a fork shows in the record (#99 review).
+    assert record["remote_url"] == str(tmp_path / "remote.git")
+    # No other local path goes into a committed file: neither the copies' folder nor the clean copy.
+    text = record_path.read_text()
+    assert str(tmp_path / "out") not in text and str(tmp_path / "workorders.sqlite") not in text
     assert git(repo, "rev-list", "--count", "HEAD") == commits
     assert git(repo, "status", "--porcelain") == "?? injections/"
 

@@ -241,6 +241,8 @@ def main(argv=None) -> int:
     record = {
         "commit": commit,
         "remote": PUBLIC_REMOTE,
+        # The URL, not only the name: a clone whose origin is a fork passes the guard too.
+        "remote_url": _git(repo, "remote", "get-url", PUBLIC_REMOTE).stdout.strip(),
         "branch": PUBLIC_BRANCH,
         "freeze": freeze.relative_to(repo).as_posix(),
         "freeze_sha256": sha256(freeze),
