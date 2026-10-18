@@ -183,6 +183,11 @@ def guard(repo: Path, freeze: Path, remote: str = PUBLIC_REMOTE, branch: str = P
         raise Refused(f"git status failed: {status.stderr.strip()}")
     if status.stdout.strip():
         raise Refused(f"the freeze folder has uncommitted or ignored files:\n{status.stdout.rstrip()}")
+    # The record says the run came from its commit, so the code, configs and battery must be that
+    # commit's too. Untracked files elsewhere, such as an earlier run's record, are no part of it.
+    changed = _git(repo, "diff", "--name-only", "HEAD")
+    if changed.returncode or changed.stdout.strip():
+        raise Refused(f"tracked files differ from HEAD:\n{changed.stdout.rstrip() or changed.stderr.strip()}")
     fetch = _git(repo, "fetch", "--quiet", remote, branch)
     if fetch.returncode:
         raise Refused(f"could not fetch {remote}/{branch}, so the commit cannot be checked: {fetch.stderr.strip()}")

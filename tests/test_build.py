@@ -294,6 +294,34 @@ def test_an_ignored_file_in_the_freeze_folder_is_refused(repo, tmp_path, capsys)
     refused(repo, tmp_path, capsys, "freeze/draft.yaml")
 
 
+def tracked_code(repo):
+    """A file outside freeze/, committed and pushed, standing in for the code and configs."""
+    code = repo / "warrant" / "defects.py"
+    code.parent.mkdir()
+    code.write_text("STEP = 1\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "Code")
+    git(repo, "push", "-q", "origin", "main")
+    return code
+
+
+@pytest.mark.parametrize("staged", [False, True])
+def test_an_uncommitted_change_outside_the_freeze_folder_is_refused(repo, tmp_path, capsys, staged):
+    """The record says the run came from its commit, so no tracked file may differ from it (#99 review)."""
+    code = tracked_code(repo)
+    code.write_text("STEP = 2\n")
+    if staged:
+        git(repo, "add", str(code))
+    refused(repo, tmp_path, capsys, "warrant/defects.py")
+
+
+def test_an_untracked_file_outside_the_freeze_folder_does_not_refuse(repo, tmp_path):
+    """An earlier run's record, not yet committed, is untracked and must not block the next run."""
+    (repo / "injections").mkdir()
+    (repo / "injections" / "earlier.json").write_text("{}\n")
+    assert inject_command(repo, tmp_path) == 0
+
+
 def test_a_commit_not_on_the_public_remote_is_refused(repo, tmp_path, capsys):
     """Criterion 6: committed but not pushed."""
     (repo / "notes.txt").write_text("local only\n")
