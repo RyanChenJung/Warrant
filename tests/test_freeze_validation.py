@@ -1,4 +1,6 @@
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -334,6 +336,22 @@ def test_an_empty_global_value_fails(freeze):
     assert mentions(errors_of(freeze), "judge")
 
 
+@pytest.mark.parametrize("value", ["rounded", {"counts": "keep"}, {"counts": "half", "percentages": "keep"}])
+def test_an_unknown_battery_normalisation_fails(freeze, value):
+    freeze["global"]["battery"]["normalisation"] = value
+    assert mentions(errors_of(freeze), "normalisation")
+
+
+def test_a_battery_without_a_normalisation_fails(freeze):
+    del freeze["global"]["battery"]["normalisation"]
+    assert mentions(errors_of(freeze), "normalisation")
+
+
+def test_a_configured_battery_normalisation_is_accepted(freeze):
+    freeze["global"]["battery"]["normalisation"] = {"counts": "round", "percentages": "drop"}
+    assert errors_of(freeze) == []
+
+
 def test_a_global_part_without_the_confirmatory_test_fails(freeze):
     del freeze["global"]["confirmatory_test"]
     errors = errors_of(freeze)
@@ -472,3 +490,11 @@ def test_the_write_line_configuration_carries_the_freeze_fields_when_present(tmp
     assert config.defects[0].readings[0]["id"] == "three-terms"
     assert config.defects[1].cut_tables == ()
     assert config.global_part["fixed_date"] == "2026-10-12"
+
+
+def test_validation_does_not_import_the_battery():
+    """Validation reads only the file: importing it loads neither DuckDB nor the vendored detectors."""
+    code = ("import sys, warrant.freeze.validate; "
+            "print(sorted(m for m in sys.modules if m == 'duckdb' or m.startswith('warrant.battery.gloss')))")
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == "[]"

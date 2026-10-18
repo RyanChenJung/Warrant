@@ -75,3 +75,21 @@ def maintenance_config(workorders_db):
     next to a freshly built work-order database."""
     shutil.copytree(FIXTURES / "maintenance", workorders_db.parent, dirs_exist_ok=True)
     return workorders_db.parent / "config.yaml"
+
+
+@pytest.fixture
+def shop_release(tmp_path):
+    """A fetched release directory holding one database, `shop`, laid out as LiveSQLBench-Base-Lite:
+    the clean SQLite copy, column meanings and a knowledge base (#30)."""
+    root = tmp_path / "release"
+    folder = root / "shop"
+    folder.mkdir(parents=True)
+    con = sqlite3.connect(folder / "shop_template.sqlite")
+    con.executescript((FIXTURES / "battery_scan.sql").read_text())
+    con.commit()
+    con.close()
+    meanings = {"shop|Orders|Status": "Possible categories: Filled, Cancelled.",
+                "shop|Orders|Total": "Net plus tax plus shipping."}
+    (folder / "shop_column_meaning_base.json").write_text(json.dumps(meanings))
+    (folder / "shop_kb.jsonl").write_text(json.dumps({"id": 0, "knowledge": "Total", "definition": "Net + Tax"}) + "\n")
+    return root
