@@ -41,6 +41,15 @@ REPO = Path(__file__).resolve().parents[2]
 # with the project lead, so it is one constant here and a flag on the command.
 RECORD_DIR = Path("injections")
 PUBLIC_REMOTE, PUBLIC_BRANCH = "origin", "main"
+# Files the OS writes into a folder, which no one chose to keep: the freeze-folder check skips them,
+# by exact name, and nothing else (#99).
+OS_METADATA = (".DS_Store", "Thumbs.db", "desktop.ini")
+OS_METADATA_PREFIX = "._"  # macOS AppleDouble files
+
+
+def _os_metadata(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    return name in OS_METADATA or name.startswith(OS_METADATA_PREFIX)
 
 
 class DriftType(StrEnum):
@@ -190,11 +199,13 @@ def guard(repo: Path, freeze: Path, remote: str = PUBLIC_REMOTE, branch: str = P
         raise Refused(f"the freeze file {freeze.name} is not committed")
     if _git(repo, "diff", "--quiet", "HEAD", "--", str(freeze)).returncode:
         raise Refused(f"the freeze has uncommitted changes: {freeze.name}")
-    status = _git(repo, "status", "--porcelain", "--untracked-files=all", "--ignored", "--", str(freeze.parent))
+    status = _git(repo, "status", "--porcelain", "-z", "--untracked-files=all", "--ignored", "--", str(freeze.parent))
     if status.returncode:
         raise Refused(f"git status failed: {status.stderr.strip()}")
-    if status.stdout.strip():
-        raise Refused(f"the freeze folder has uncommitted or ignored files:\n{status.stdout.rstrip()}")
+    # Each entry is "XY path"; paths are given whole with -z, so the names compare exactly.
+    found = [entry for entry in status.stdout.split("\0") if entry and not _os_metadata(entry[3:])]
+    if found:
+        raise Refused("the freeze folder has uncommitted or ignored files:\n" + "\n".join(found))
     # The record says the run came from its commit, so the code, configs and battery must be that
     # commit's too. Untracked files elsewhere, such as an earlier run's record, are no part of it.
     changed = _git(repo, "diff", "--name-only", "HEAD")

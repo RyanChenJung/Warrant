@@ -12,8 +12,9 @@ the first commit that records an injection. Agreed on #36:
 
 1. **Merge the freeze PR** into `main` on GitHub.
 2. **Pull `main`** and stay on it, with a clean working tree: no tracked file may differ from `HEAD`,
-   and `freeze/` may hold no untracked or ignored file (delete a stray `.DS_Store`; remove a draft
-   kept in `.git/info/exclude`).
+   and `freeze/` may hold no untracked or ignored file (remove a draft kept in `.git/info/exclude`).
+   OS metadata files are skipped by exact name: `.DS_Store`, `._*`, `Thumbs.db` and `desktop.ini`.
+   Any other file in `freeze/` blocks the run.
 3. **Fetch the release** if it is not in the data directory yet: `uv run python -m warrant.data.fetch`.
 4. **Run the command from `main`:**
 

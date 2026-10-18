@@ -223,6 +223,7 @@ def repo(tmp_path, workorders_db, git_env, monkeypatch):
     raw = yaml.safe_load(TWO_DEFECTS.read_text())
     raw["global"] = yaml.safe_load((FIXTURES / "freeze_valid.yaml").read_text())["global"]
     raw["databases"] = {"workorders": str(workorders_db)}  # outside the repository
+    shutil.copy(ROOT / ".gitignore", work / ".gitignore")
     (work / "freeze").mkdir()
     (work / "freeze" / "freeze.yaml").write_text(yaml.safe_dump(raw, sort_keys=False))
     git(work, "add", ".")
@@ -333,6 +334,29 @@ def test_an_untracked_file_outside_the_freeze_folder_does_not_refuse(repo, tmp_p
     (repo / "injections").mkdir()
     (repo / "injections" / "earlier.json").write_text("{}\n")
     assert inject_command(repo, tmp_path) == 0
+
+
+OS_METADATA = [".DS_Store", "._freeze.yaml", "Thumbs.db", "desktop.ini", "sub/.DS_Store"]
+
+
+@pytest.mark.parametrize("name", OS_METADATA)
+def test_os_metadata_files_in_the_freeze_folder_are_skipped(repo, tmp_path, name):
+    """Files the OS writes, which no one chose to keep, do not block a run (Ryan, #99)."""
+    path = repo / "freeze" / name
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(b"\0metadata")
+    assert git(repo, "status", "--porcelain", "--untracked-files=all", "--ignored", "--", "freeze") != ""
+    assert inject_command(repo, tmp_path) == 0
+
+
+@pytest.mark.parametrize("name", [".env", "scratch.db", ".DS_Store.bak", "notes.txt"])
+def test_any_other_ignored_or_untracked_file_in_the_freeze_folder_still_blocks_the_run(repo, tmp_path, capsys, name):
+    (repo / "freeze" / name).write_text("kept by someone\n")
+    (repo / "freeze" / ".DS_Store").write_bytes(b"\0metadata")  # skipped, so the refusal names only the other file
+    assert inject_command(repo, tmp_path) == 1
+    out = capsys.readouterr().out
+    assert f"freeze/{name}" in out and "freeze/.DS_Store\n" not in out
+    assert not (tmp_path / "out").exists() and not (repo / "injections").exists()
 
 
 def test_a_commit_not_on_the_public_remote_is_refused(repo, tmp_path, capsys):
