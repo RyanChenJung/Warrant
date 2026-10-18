@@ -254,14 +254,22 @@ def main(argv=None) -> int:
         _write(path, {**record, "outcome": "failed", "error": str(error)})
         print(f"failed after injection started: {error}\nrecord written to {path.relative_to(repo)} for you to commit")
         return 1
+    expected = {d.id: d.drift_reading.get("expected_drift_type") for d in defects if d.drift_reading}
+    drift = {d: {"reading": r, "type": t.value, "expected": expected.get(d)} for d, (r, t) in built.drift.items()}
+    mismatched = [d for d, v in drift.items() if v["expected"] is not None and v["expected"] != v["type"]]
     _write(path, {
         **record,
-        "outcome": "built",
+        "outcome": "drift_type_mismatch" if mismatched else "built",
         "injected": built.injected,
         "readings": built.readings,
-        "drift": {d: {"reading": r, "type": t.value} for d, (r, t) in built.drift.items()},
+        "drift": drift,
         "audits": [asdict(a) for a in built.audits],
     })
+    for d in mismatched:
+        print(f"drift type mismatch: defect {d!r} declares {drift[d]['expected']}, its drift reading gives {drift[d]['type']}")
+    if mismatched:
+        print(f"record written to {path.relative_to(repo)} for you to commit")
+        return 1
     print(f"built {len(set(built.injected.values()) | {h for r in built.readings.values() for h in r.values()})} "
           f"databases in {out / 'copies'}; record written to {path.relative_to(repo)} for you to commit")
     return 0

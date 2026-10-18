@@ -56,7 +56,7 @@ defects:
         transformation: []
         holds: false
         is_true: false
-    drift_reading: {reading: as-released}
+    drift_reading: {reading: as-released, expected_drift_type: data_part}
   - id: orders-cut
     database: crypto
     slot: {claim_kind: coverage, subject: orders}
@@ -88,7 +88,7 @@ defects:
         transformation: []
         holds: true
         is_true: false
-    drift_reading: {reading: nothing-cut}
+    drift_reading: {reading: nothing-cut, expected_drift_type: data_part}
   - id: seeing-recode
     database: alien
     slot: {claim_kind: value_meaning, subject: observatories.seeingprofile}
@@ -113,4 +113,5 @@ defects:
         is_true: false
     drift_reading:
       reading: three-is-best
+      expected_drift_type: convention
       reference_claim: The seeing profile is graded with the codes '1', '2' and '3', and '3' is the best.

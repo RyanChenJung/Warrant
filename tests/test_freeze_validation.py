@@ -202,6 +202,24 @@ def test_meaning_only_readings_do_not_count_when_world_fixed_rivals_choose_the_d
     assert errors_of(freeze) == []
 
 
+def test_an_unknown_expected_drift_type_is_rejected(freeze):
+    defect(freeze, "wallet-sum")["drift_reading"]["expected_drift_type"] = "data-part"
+    assert mentions(errors_of(freeze), "expected_drift_type")
+
+
+def test_a_missing_expected_drift_type_is_flagged_not_rejected(freeze):
+    del defect(freeze, "wallet-sum")["drift_reading"]["expected_drift_type"]
+    errors, warnings = validate(freeze, SCHEMA)
+    assert errors == [] and mentions(warnings, "wallet-sum") and mentions(warnings, "expected_drift_type")
+
+
+def test_the_validator_knows_the_builders_drift_types():
+    from warrant.defects.build import DriftType
+    from warrant.freeze.validate import DRIFT_TYPES
+
+    assert set(DRIFT_TYPES) == {t.value for t in DriftType}
+
+
 def test_a_leftover_no_defect_mark_is_flagged_not_rejected(freeze):
     reading(defect(freeze, "seeing-recode"), "three-is-best")["no_defect"] = True
     errors, warnings = validate(freeze, SCHEMA)

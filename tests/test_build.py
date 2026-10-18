@@ -251,8 +251,8 @@ def test_the_command_builds_and_records_the_commit_it_runs_from(repo, tmp_path, 
     assert record["commit"] == git(repo, "rev-parse", "HEAD") and record["outcome"] == "built"
     assert record["remote"] == "origin" and record["freeze"] == "freeze/freeze.yaml"
     assert record["injected"]["workorders"] == record["readings"]["site-recode"]["one-is-north"]
-    assert record["drift"]["site-recode"] == {"reading": "two-is-north", "type": "convention"}
-    assert record["drift"]["short-tasks-cut"] == {"reading": "nothing-cut", "type": "data_part"}
+    assert record["drift"]["site-recode"] == {"reading": "two-is-north", "type": "convention", "expected": "convention"}
+    assert record["drift"]["short-tasks-cut"] == {"reading": "nothing-cut", "type": "data_part", "expected": "data_part"}
     assert str(tmp_path) not in record_path.read_text()  # no local path goes into a committed file
     assert git(repo, "rev-list", "--count", "HEAD") == commits
     assert git(repo, "status", "--porcelain") == "?? injections/"
@@ -407,6 +407,18 @@ def test_a_run_that_fails_after_injecting_still_leaves_a_record(repo, tmp_path, 
     record = json.loads(record_path.read_text())
     assert record["outcome"] == "failed" and "injected copy" in record["error"]
     assert record["commit"] == git(repo, "rev-parse", "HEAD")
+
+
+def test_a_drift_type_other_than_the_declared_one_is_reported(repo, tmp_path, capsys):
+    """The record keeps both, so a wrong declaration shows (#99 review)."""
+    commit_freeze(repo, lambda raw: raw["defects"][1]["drift_reading"].update(expected_drift_type="data_part"))
+    assert inject_command(repo, tmp_path) == 1
+    out = capsys.readouterr().out
+    assert "site-recode" in out and "convention" in out and "data_part" in out
+    (record_path,) = (repo / "injections").iterdir()
+    record = json.loads(record_path.read_text())
+    assert record["outcome"] == "drift_type_mismatch"
+    assert record["drift"]["site-recode"] == {"reading": "two-is-north", "type": "convention", "expected": "data_part"}
 
 
 def test_the_two_defect_fixture_is_a_valid_freeze_apart_from_its_global_part():

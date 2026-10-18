@@ -37,6 +37,8 @@ CONFIRMATORY_KEYS = ("statistic", "pairing", "question_set", "error_coding", "fa
 PRIMARY_FAILURE_RULE = "pairs_where_both_rules_scored"
 SCORED_EXCLUDES = ("failure_after_retries", "clarification_request")
 SENSITIVITY = ("failures_as_wrong", "clarifications_as_wrong")
+# The drift types the builder computes (`warrant.defects.build.DriftType`), which a drift reading may declare.
+DRIFT_TYPES = ("convention", "data_part")
 
 # The vendored identity search finds target = sum of two or three of a table's first 12 numeric columns.
 MAX_NUMERIC_COLUMNS = 12
@@ -231,6 +233,13 @@ def _defect(raw: dict, schema: dict[str, Schema] | None) -> tuple[list[str], lis
     errors += _touches(name, raw)
     errors += _readings(name, raw)
     errors += _drift(name, raw)
+    drift = raw.get("drift_reading")
+    if isinstance(drift, dict):
+        expected = drift.get("expected_drift_type")
+        if expected is None:
+            warnings.append(f"{name}: its drift reading declares no expected_drift_type, so the build cannot check it")
+        elif expected not in DRIFT_TYPES:
+            errors.append(f"{name}: expected_drift_type {expected!r} is not one of {', '.join(DRIFT_TYPES)}")
     readings = raw.get("readings") if isinstance(raw.get("readings"), list) else []
     warnings += [
         f"{name}: reading {r.get('id')!r} carries no_defect, which the drift-reading rule no longer uses; remove it"

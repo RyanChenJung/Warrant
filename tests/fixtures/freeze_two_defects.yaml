@@ -40,7 +40,7 @@ defects:
         transformation: []
         holds: true
         is_true: false
-    drift_reading: {reading: nothing-cut}
+    drift_reading: {reading: nothing-cut, expected_drift_type: data_part}
   - id: site-recode
     database: workorders
     slot: {claim_kind: value_meaning, subject: workorders.site}
@@ -65,4 +65,5 @@ defects:
         is_true: false
     drift_reading:
       reading: two-is-north
+      expected_drift_type: convention
       reference_claim: The site codes in workorders.site are '2' for the north site and '1' for the south site.
