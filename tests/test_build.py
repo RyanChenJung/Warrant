@@ -272,6 +272,28 @@ def test_an_uncommitted_file_in_the_freeze_folder_is_refused(repo, tmp_path, cap
     refused(repo, tmp_path, capsys, "uncommitted")
 
 
+def ignored_freeze(repo):
+    """A freeze file kept out of git with .git/info/exclude, as a draft is before the freeze commit."""
+    draft = repo / "freeze" / "draft.yaml"
+    draft.write_text((repo / "freeze" / "freeze.yaml").read_text())
+    (repo / ".git" / "info" / "exclude").write_text("freeze/draft.yaml\n")
+    assert git(repo, "status", "--porcelain", "--untracked-files=all") == ""
+    return draft
+
+
+def test_a_freeze_file_that_git_ignores_is_refused(repo, tmp_path, capsys):
+    """Ryan's case on #99: an excluded draft shows in no `git status`, but was never committed."""
+    draft = ignored_freeze(repo)
+    assert main(["--freeze", str(draft), "--repo", str(repo), "--out", str(tmp_path / "out")]) == 1
+    assert "not committed" in capsys.readouterr().out
+    assert not (tmp_path / "out").exists() and not (repo / "injections").exists()
+
+
+def test_an_ignored_file_in_the_freeze_folder_is_refused(repo, tmp_path, capsys):
+    ignored_freeze(repo)
+    refused(repo, tmp_path, capsys, "freeze/draft.yaml")
+
+
 def test_a_commit_not_on_the_public_remote_is_refused(repo, tmp_path, capsys):
     """Criterion 6: committed but not pushed."""
     (repo / "notes.txt").write_text("local only\n")

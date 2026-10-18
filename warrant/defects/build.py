@@ -172,11 +172,17 @@ def guard(repo: Path, freeze: Path, remote: str = PUBLIC_REMOTE, branch: str = P
     The commit comes from git itself, never from $WARRANT_REPO_COMMIT, so a run cannot claim a commit
     it does not run from. Only the remote's main branch counts: a squash merge deletes the PR branch.
     """
-    status = _git(repo, "status", "--porcelain", "--untracked-files=all", "--", str(freeze), str(freeze.parent))
+    # The freeze file must be in HEAD as it is on disk; `git status` alone lists no ignored file, and a
+    # draft kept in .git/info/exclude would pass it without ever being committed.
+    if _git(repo, "ls-files", "--error-unmatch", "--", str(freeze)).returncode:
+        raise Refused(f"the freeze file {freeze.name} is not committed")
+    if _git(repo, "diff", "--quiet", "HEAD", "--", str(freeze)).returncode:
+        raise Refused(f"the freeze has uncommitted changes: {freeze.name}")
+    status = _git(repo, "status", "--porcelain", "--untracked-files=all", "--ignored", "--", str(freeze.parent))
     if status.returncode:
         raise Refused(f"git status failed: {status.stderr.strip()}")
     if status.stdout.strip():
-        raise Refused(f"the freeze has uncommitted changes:\n{status.stdout.rstrip()}")
+        raise Refused(f"the freeze folder has uncommitted or ignored files:\n{status.stdout.rstrip()}")
     fetch = _git(repo, "fetch", "--quiet", remote, branch)
     if fetch.returncode:
         raise Refused(f"could not fetch {remote}/{branch}, so the commit cannot be checked: {fetch.stderr.strip()}")
