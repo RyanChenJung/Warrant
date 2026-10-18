@@ -413,6 +413,22 @@ def test_a_run_that_fails_after_injecting_still_leaves_a_record(repo, tmp_path, 
     assert record["commit"] == git(repo, "rev-parse", "HEAD")
 
 
+def test_a_run_interrupted_while_injecting_still_leaves_a_record(repo, tmp_path, monkeypatch):
+    """Ctrl-C raises KeyboardInterrupt, which is no Exception; the run must still leave its record,
+    and the interrupt still stops the command (#99 review)."""
+
+    def interrupted(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("warrant.defects.build.inject", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        inject_command(repo, tmp_path)
+    (record_path,) = (repo / "injections").iterdir()
+    record = json.loads(record_path.read_text())
+    assert record["outcome"] == "failed" and record["error"] == "KeyboardInterrupt"
+    assert record["commit"] == git(repo, "rev-parse", "HEAD")
+
+
 def test_a_drift_type_other_than_the_declared_one_is_reported(repo, tmp_path, capsys):
     """The record keeps both, so a wrong declaration shows (#99 review)."""
     commit_freeze(repo, lambda raw: raw["defects"][1]["drift_reading"].update(expected_drift_type="data_part"))

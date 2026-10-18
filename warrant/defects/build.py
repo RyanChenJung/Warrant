@@ -252,9 +252,12 @@ def main(argv=None) -> int:
     path = repo / args.record_dir / f"{commit[:12]}-{freeze.stem}.json"
     try:
         built = build(defects, clean, out)
-    except Exception as error:  # the record must exist for any run that reached inject()
-        _write(path, {**record, "outcome": "failed", "error": str(error)})
-        print(f"failed after injection started: {error}\nrecord written to {path.relative_to(repo)} for you to commit")
+    except BaseException as error:  # the record must exist for any run that reached inject(), Ctrl-C too
+        reason = str(error) or type(error).__name__
+        _write(path, {**record, "outcome": "failed", "error": reason})
+        print(f"failed after injection started: {reason}\nrecord written to {path.relative_to(repo)} for you to commit")
+        if not isinstance(error, Exception):
+            raise
         return 1
     expected = {d.id: d.drift_reading.get("expected_drift_type") for d in defects if d.drift_reading}
     drift = {d: {"reading": r, "type": t.value, "expected": expected.get(d)} for d, (r, t) in built.drift.items()}
