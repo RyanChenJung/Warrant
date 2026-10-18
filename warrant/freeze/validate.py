@@ -105,8 +105,12 @@ def _readings(name: str, d: dict) -> list[str]:
                 found.append(f"{rid} is world-fixed, so it declares no kind")
         else:
             found.append(f"{rid} has form {form!r}, not meaning_only or world_fixed")
-    if sum(r.get("is_true") is True for r in readings) != 1:
+    true = [r for r in readings if r.get("is_true") is True]
+    if len(true) != 1:
         found.append(f"{name}: it must have exactly one true reading")
+    elif true[0].get("form") != "world_fixed" or true[0].get("transformation") != d.get("transformation"):
+        # Its database must be the injected copy (#36), so it is built with the defect's own statements.
+        found.append(f"{name}: its true reading must be world-fixed and own the defect's transformation")
     return found
 
 

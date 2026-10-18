@@ -165,6 +165,15 @@ def test_a_meaning_only_true_reading_is_refused(workorders_db, tmp_path):
                     for r in recode.readings]
     with pytest.raises(ValueError, match="world-fixed"):
         build([coverage, with_readings(recode, meaning_only)], {"workorders": workorders_db}, tmp_path / "out")
+    assert not (tmp_path / "out").exists()  # refused before anything was copied (#99 review)
+
+
+def test_a_true_reading_that_does_not_own_the_transformation_is_refused_before_anything_is_copied(workorders_db, tmp_path):
+    coverage, recode = defects_of()
+    other = [{**r, "transformation": ["DELETE FROM tasks WHERE hours < 2"]} if r["is_true"] else r for r in coverage.readings]
+    with pytest.raises(ValueError, match="own the defect's transformation"):
+        build([with_readings(coverage, other), recode], {"workorders": workorders_db}, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
 
 
 def test_a_true_reading_whose_database_differs_from_the_injected_copy_is_refused(workorders_db, tmp_path):
@@ -239,7 +248,7 @@ def test_the_command_builds_and_records_the_commit_it_runs_from(repo, tmp_path, 
     assert inject_command(repo, tmp_path) == 0
     (record_path,) = (repo / "injections").iterdir()
     record = json.loads(record_path.read_text())
-    assert record["commit"] == git(repo, "rev-parse", "HEAD")
+    assert record["commit"] == git(repo, "rev-parse", "HEAD") and record["outcome"] == "built"
     assert record["remote"] == "origin" and record["freeze"] == "freeze/freeze.yaml"
     assert record["injected"]["workorders"] == record["readings"]["site-recode"]["one-is-north"]
     assert record["drift"]["site-recode"] == {"reading": "two-is-north", "type": "convention"}
@@ -360,6 +369,44 @@ def test_an_invalid_freeze_is_refused(repo, tmp_path, capsys):
     git(repo, "commit", "-q", "-am", "Break the freeze")
     git(repo, "push", "-q", "origin", "main")
     refused(repo, tmp_path, capsys, "judge")
+
+
+def commit_freeze(repo, change):
+    """Change the committed freeze, then commit and push it, so the guard lets the run through."""
+    freeze = repo / "freeze" / "freeze.yaml"
+    raw = yaml.safe_load(freeze.read_text())
+    change(raw)
+    freeze.write_text(yaml.safe_dump(raw, sort_keys=False))
+    git(repo, "commit", "-q", "-am", "Change the freeze")
+    git(repo, "push", "-q", "origin", "main")
+
+
+def test_a_meaning_only_true_reading_is_refused_before_anything_is_copied(repo, tmp_path, capsys):
+    def meaning_only(raw):
+        true = raw["defects"][1]["readings"][0]
+        true.update(form="meaning_only", kind="convention", transformation=[])
+
+    commit_freeze(repo, meaning_only)
+    refused(repo, tmp_path, capsys, "world-fixed")
+
+
+def test_a_run_that_fails_after_injecting_still_leaves_a_record(repo, tmp_path, capsys):
+    """Transformations that depend on their order pass validation but fail the build after injection
+    started; the record must show that run, so that no injection goes unrecorded (#99 review)."""
+    after_recode = "DELETE FROM tasks WHERE wonum IN (SELECT wonum FROM workorders WHERE site = 'NORTH')"
+
+    def order_dependent(raw):
+        coverage = raw["defects"][0]
+        coverage["transformation"] = [after_recode]
+        coverage["readings"][0]["transformation"] = [after_recode]
+
+    commit_freeze(repo, order_dependent)
+    assert inject_command(repo, tmp_path) == 1
+    assert "injected copy" in capsys.readouterr().out
+    (record_path,) = (repo / "injections").iterdir()
+    record = json.loads(record_path.read_text())
+    assert record["outcome"] == "failed" and "injected copy" in record["error"]
+    assert record["commit"] == git(repo, "rev-parse", "HEAD")
 
 
 def test_the_two_defect_fixture_is_a_valid_freeze_apart_from_its_global_part():

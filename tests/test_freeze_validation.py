@@ -169,6 +169,18 @@ def two_meaning_only_rivals(freeze):
     return d
 
 
+def test_a_meaning_only_true_reading_is_rejected(freeze):
+    """The true reading owns the defect's transformation (#34), so it is world-fixed (#99 review)."""
+    true = reading(defect(freeze, "seeing-recode"), "one-is-best")
+    true.update(form="meaning_only", kind="convention", transformation=[])
+    assert mentions(errors_of(freeze), "world-fixed and own the defect's transformation")
+
+
+def test_a_true_reading_with_a_transformation_other_than_the_defects_is_rejected(freeze):
+    reading(defect(freeze, "wallet-sum"), "three-terms")["transformation"] = ["UPDATE accountbalances SET walletsum = 0"]
+    assert mentions(errors_of(freeze), "world-fixed and own the defect's transformation")
+
+
 def test_two_meaning_only_rivals_are_rejected_even_with_one_marked_no_defect(freeze):
     """Branch (b) as amended on #34: a defect with more than one meaning-only reading other than the
     true one is re-authored, whatever its marks say."""

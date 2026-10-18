@@ -121,13 +121,29 @@ def _apply(clean: Path, dest: Path, statements: list[str]) -> Path:
     return dest
 
 
+def _true_reading_problems(defects: list[Defect]) -> list[str]:
+    """The check `warrant.freeze.validate` makes, repeated so that `build` refuses before copying anything."""
+    found = []
+    for d in defects:
+        for r in d.readings:
+            if r["is_true"] and (r["form"] != "world_fixed" or tuple(r["transformation"]) != d.transformation):
+                found.append(f"defect {d.id!r}: its true reading {r['id']!r} must be world-fixed and own the defect's transformation")
+    return found
+
+
 def build(defects: list[Defect], clean: dict[str, Path], out: Path) -> Built:
-    """Inject each database's defects and build every reading's database; the clean copies are only read."""
+    """Inject each database's defects and build every reading's database; the clean copies are only read.
+
+    Every check that needs no database runs before anything is copied.
+    """
+    problems = _true_reading_problems(defects) + [
+        f"no clean copy for database {name!r}" for name in dict.fromkeys(d.database for d in defects) if name not in clean
+    ]
+    if problems:
+        raise ValueError("; ".join(problems))
     work = out / "building"
     injected, readings, drift, audits = {}, {}, {}, []
     for name in dict.fromkeys(d.database for d in defects):
-        if name not in clean:
-            raise ValueError(f"no clean copy for database {name!r}")
         mine = [d for d in defects if d.database == name]
         audits += inject(clean[name], work / f"{name}.injected.sqlite", mine)
         injected[name] = _keep(work / f"{name}.injected.sqlite", out)
@@ -137,10 +153,6 @@ def build(defects: list[Defect], clean: dict[str, Path], out: Path) -> Built:
             others = [s for o in mine if o is not d for s in o.transformation]
             readings[d.id] = {}
             for r in d.readings:
-                if r["is_true"] and r["form"] != "world_fixed":
-                    raise ValueError(
-                        f"defect {d.id!r}: its true reading {r['id']!r} must be world-fixed and own the defect's transformation"
-                    )
                 if r["form"] == "meaning_only":
                     readings[d.id][r["id"]] = injected[name]
                     continue
@@ -220,10 +232,12 @@ def main(argv=None) -> int:
         missing = [name for name, path in clean.items() if not path.is_file()]
         if missing:
             raise Refused(f"no clean copy of {', '.join(missing)}; fetch the release with `uv run python -m warrant.data.fetch`")
-        built = build([load_defect(d) for d in raw["defects"]], clean, out)
+        defects = [load_defect(d) for d in raw["defects"]]
     except (Refused, ValueError) as error:
         print(f"refused: {error}")
         return 1
+    # From here on the run injects, so it leaves a record whatever happens, and the first recorded
+    # injection is the first injection (ADR 0007).
     record = {
         "commit": commit,
         "remote": PUBLIC_REMOTE,
@@ -232,17 +246,30 @@ def main(argv=None) -> int:
         "freeze_sha256": sha256(freeze),
         "built_at": datetime.now(timezone.utc).isoformat(),
         "clean": {name: content_hash(path) for name, path in clean.items()},
+    }
+    path = repo / args.record_dir / f"{commit[:12]}-{freeze.stem}.json"
+    try:
+        built = build(defects, clean, out)
+    except Exception as error:  # the record must exist for any run that reached inject()
+        _write(path, {**record, "outcome": "failed", "error": str(error)})
+        print(f"failed after injection started: {error}\nrecord written to {path.relative_to(repo)} for you to commit")
+        return 1
+    _write(path, {
+        **record,
+        "outcome": "built",
         "injected": built.injected,
         "readings": built.readings,
         "drift": {d: {"reading": r, "type": t.value} for d, (r, t) in built.drift.items()},
         "audits": [asdict(a) for a in built.audits],
-    }
-    path = repo / args.record_dir / f"{commit[:12]}-{freeze.stem}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(record, indent=2, default=str) + "\n")
+    })
     print(f"built {len(set(built.injected.values()) | {h for r in built.readings.values() for h in r.values()})} "
           f"databases in {out / 'copies'}; record written to {path.relative_to(repo)} for you to commit")
     return 0
+
+
+def _write(path: Path, record: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, indent=2, default=str) + "\n")
 
 
 if __name__ == "__main__":
