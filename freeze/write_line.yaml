@@ -1,0 +1,397 @@
+# The write-line freeze (#34). Nothing is injected before its commit is on the public remote
+# (ADR 0007). Values are the decisions on #34 (rounds 1 to 3 of 2026-10-12, and the value-meaning
+# amendment and the further decisions of 2026-10-13), the experiment model decided on #26, and the
+# decisions of 2026-10-18 and 19 on the judge (its calls, runs and parsing, the validation's
+# comparison and its settings) and on sampling (#34), in #33's format (`python -m
+# warrant.freeze.validate --config <this file>`), with the base draft they amended where they are
+# silent. The confounding rule's reading of "touches" by the declared touches was added on
+# 2026-10-14, after #30's clean scan, and adopted by the lead on 2026-10-17. freeze/NOTE.md records
+# how all of these were reached, the design trials before the freeze and the checks before the
+# commit, including the confounding check against the clean scan.
+#
+# Table and column names, codes and counts in this file come from LiveSQLBench-Base-Lite
+# (birdsql/livesqlbench-base-lite-sqlite, CC BY-SA 4.0); this file is licensed under CC BY-SA 4.0,
+# see LICENSE-DATA.
+release:
+  config: configs/livesqlbench-base-lite.yaml
+  revision: 0664a2f28555faa0dd2947c8c23288df79bcc06b
+  # The clean databases, checked against configs/livesqlbench-base-lite.sha256.
+  sha256:
+    crypto: 49103c15d930b290298ac52e2f965877f3caacde6c5269c6c798e596b4c7a5e1
+    alien: e160643c9abb43ba69917532f2654637e677460df25678f9daecdefb416046ed
+global:
+  battery:
+    checks: >-
+      the eight checks of Gloss's run_all, in its order (warrant/battery/gloss/detect/__init__.py),
+      per table, called one by one by warrant.battery.run (#30) rather than through run_all, so that
+      the link detector alone also gets the declared keys
+    detectors: >-
+      the vendored Gloss detectors, public release b5025fb, with the declared-key pairing added to
+      detect/link.py (warrant/battery/gloss/VENDORING.md)
+    documentation: none is passed to the checks
+    today: the fixed date
+    normalisation: exact
+    normalised_record: >-
+      {check: assertion type, subject, statement, evidence: [[evidence SQL with whitespace runs
+      collapsed, evidence result as JSON]]}, sorted by canonical JSON (sort_keys, separators (',',
+      ':'), ensure_ascii=False; the evidence result serialised the same way), duplicates kept
+    dropped: everything else, including measured_at, valid_from, valid_to, tier, author, ids, questions, impact and conflicts_with
+    kept_exactly: [counts, percentages, per-code frequencies, example values]
+    cannot_tell_apart: the two readings' normalised lists are byte-identical
+    pairing: declared_child_to_parent
+    pairing_detail: same-named columns as released, plus each declared foreign key from child to parent only
+    peers: declared_foreign_keys
+    peers_detail: the tables linked by a declared foreign key, in either direction
+    export_floats: positional notation
+  fixed_date: "2026-10-12"
+  duckdb_version: "1.5.5"
+  python_version: "3.13"
+  seeds: {matched_asks_tie_break: 20261012, bootstrap: 20261013, judge_reading_order: 20261014}
+  reading_databases: >-
+    All defects of a database are injected into one copy of its clean database, in the declared
+    order: the injected copy. A world-fixed reading's database is the clean database with the other
+    defects of the same database applied through their true transformations, then the reading's own
+    transformation. A meaning-only reading has no transformation of its own and shares the injected
+    copy. Content hashes are taken over a canonical dump (schema plus each table's rows, sorted), not
+    over file bytes.
+  drift_reading_rule: >-
+    A defect's drift reading is its no-defect reading: the reading in its reading set, other than
+    the true one, under which the defect was never made. (a) If the reading set has world-fixed
+    readings other than the true one, it is the world-fixed reading whose own transformation is
+    empty (`[]`, written out); its database is the clean database with only the other defects of the
+    same database applied through their true transformations. (b) Otherwise it is the reading set's
+    only meaning-only reading other than the true one; a defect with more than one such reading is
+    re-authored. The rule reads only declared forms, transformations and reading statements, never
+    battery output. A defect is re-authored if the rule selects no reading, more than one, the true
+    reading, or a reading under which the reference claim holds. No other drift reading may be
+    declared. The drift type follows by content hash: data-part drift if the drift reading's
+    database differs from the injected copy, convention drift otherwise.
+  confounding_rule: >-
+    A clean-scan finding (#30) disqualifies a defect only if it is on a table or column the defect
+    touches, bears on the defect's claim kind, and appears unchanged in the true reading's battery
+    output. "On a table or column the defect touches" follows the declared touches: a finding on a
+    column counts if that column is listed or the table is touched as a whole (`*`); a finding on
+    the table itself counts if the table is touched. The claim kind a finding bears on is its
+    assertion type's under the clean scan's mapping (CLAIM_KINDS in warrant/data/clean_scan.py).
+  claim_writing:
+    business_terms: >-
+      only the named quantities the probe questions use (such as "wallet balance", "total fees"); no
+      population or code term of any defect
+    grounding: >-
+      the term list points "wallet balance" to accountbalances.walletsum; that grounding is held
+      fixed and stays outside the reading set
+    sampling: >-
+      the model's default, whose temperature is above 0 (anthropic.claude-sonnet-5 rejects a
+      non-default temperature, top_p or top_k, so none is sent); effort, thinking and max_tokens are
+      fixed, committed and pushed to the public repository before the first model call on this
+      freeze's defects or claims (the pilot, the judge's validation or claim writing, whichever
+      comes first)
+  outcome_rule:
+    contributions: >-
+      Per claim kind, over its defect probes (not the controls): A = mean per-question
+      accuracy(everything from the agent) - accuracy(empty store); P = mean per-question
+      accuracy(everything from a person) - accuracy(everything from the agent), over questions with
+      at least one scored run in both conditions.
+    cutoff: 0.25
+    applied_to: point estimates
+    outcomes: >-
+      agent alone if A >= c and P < c; both if A >= c and P >= c; person only if A < c and P >= c;
+      otherwise no measurable contribution, which agrees with no prediction
+    bootstrap: {over: questions, runs_averaged_within_question: true, resamples: 10000, level: 0.95, method: percentile, seed: bootstrap}
+    near_cutoff: an interval containing c is flagged "near the cutoff" and does not change the outcome
+  per_kind_combination: >-
+    the prediction all claims of the kind share, else mixed, and a mixed kind is not compared in H1
+    (one claim per kind here)
+  judge:
+    operation: the judge operation, three calls per slot claim
+    model: >-
+      anthropic.claude-sonnet-5 on Amazon Bedrock in us-east-1, the experiment model (#26, #97), the
+      same model that writes the claims it judges
+    sampling: >-
+      none sent: the model rejects a non-default temperature, top_p or top_k, so it runs at its
+      default sampling and one call's labels are not guaranteed to repeat
+    settings: >-
+      effort, thinking and max_tokens are those fixed for claim writing, by the same deadline
+      (claim_writing.sampling)
+    valid_call: >-
+      a call's answer is the first JSON object in its text output, with labels matched exactly
+      (holds, fails, not_addressed, in lower case); a call that fails, or whose answer does not give
+      exactly one of those labels for every reading letter and no other key, is discarded and
+      re-sent, at most three extra calls per claim; the number of re-sent calls is reported
+    runs: >-
+      each claim is judged in one run: its three valid calls and any re-sent calls are the only judge
+      calls on it, and every answer is kept with the run; a judge run repeated for any reason is
+      reported with all its outputs, and the first complete run is the one used
+    combination: >-
+      for each reading, the label at least two valid calls give; a reading on which the three calls
+      give three different labels, or that has no label two valid calls share after the extra calls,
+      is not_addressed, since the judge does not settle the claim on it. These splits are counted and
+      reported, those on the true reading of agent claims separately: there a split makes a claim
+      incomplete instead of a wrong write, so a split never turns a claim into a wrong write, though
+      splits on any reading can move the confidence ranking and with it which slots keep the agent's
+      claim. The curve of wrong writes is also reported, descriptively, with the ranking unchanged
+      and those true-reading splits counted as wrong writes when at least one valid call gives
+      fails. The combined labels are the judge's labels wherever they are used (agreement,
+      wrong writes, validation, audit). The share of (claim, reading) pairs on which the three calls
+      do not all agree is reported, for agent claims and validation claims separately; with one
+      shared reading order it measures repeat instability, not order effects
+    rubric: freeze/judge_rubric.md
+    input: >-
+      the claim, its slot and the slot's reading statements in the slot's reading order, with no
+      indication of which reading is true, of the forms or of the holds flags
+    reading_order: >-
+      for each slot in order of (database, claim kind, subject), the slot's reading ids in declared
+      order shuffled by one random.Random(judge seed); the order is drawn once per slot and shared by
+      every claim on it and by all three calls
+    profile: [holds, fails, not_addressed]
+    same_profile_agrees: true
+    identical_strings_agree_without_a_call: true
+    wrong_write: an agent claim that fails on the true reading; not addressed on it is reported as incomplete
+    validation: >-
+      before the first claim-writing call, the judge's outputs on every reference claim are compared
+      with the frozen holds flags on every reading (holds true expects holds, holds false expects
+      fails, and not_addressed, a split included, is a mismatch either way), and each drift-reading
+      statement's outputs on two readings only: holds on its own drift reading and fails on the true
+      reading; the other readings settle no expected output for it. Mismatches are reported, not
+      fixed
+    audit: >-
+      a teammate who did not author the defects labels every slot claim blind; agreement is
+      reported and the judge's labels stand
+  confidence_combination:
+    order: lexicographic, higher is more confident, each later key breaking ties of the earlier
+    keys:
+      - agreement: >-
+          the share of claim-writing samples 2 to 10 whose claim on the slot agrees with sample 1's;
+          no claim counts as disagreeing; a slot where sample 1 has no claim ranks least confident
+      - mean_confidence: the mean self-reported confidence of sample 1 and the samples agreeing with it
+      - seeded_permutation: >-
+          the slots in order of (database, claim kind, subject) shuffled by random.Random(matched-asks
+          seed); earlier is more confident
+  matched_asks:
+    scope: all_slots_pooled
+    k: settlement_ask_count, fixed when the predictions are committed
+    expected_k: 2
+    selection: the confidence rule writes the reference claim on its k least confident slots and the agent's claim on the rest
+    tie_break: seeded_permutation
+    curve: k = 0 to 3 is reported
+  numeric_tolerance: 0.01
+  numeric_floor: 1.0e-9
+  refusal_check: >-
+    the missing-piece field names a recorded term, matched at a word start and case-insensitively,
+    and the alternative is not empty; otherwise the refusal is a wrong answer, bucketed inadequate
+    refusal. The terms, with spelling variants such as cancelled and canceled, are committed with
+    the question. Refusing an answerable probe is an over-refusal.
+  confirmatory_test:
+    statistic:
+      name: sum_of_question_differences
+      sign: confidence_minus_settlement
+      per_question: d_q, the mean over the question's kept pairs of e_confidence - e_settlement
+      "on": the non-zero d_q
+      test: exact_sign_flip
+      tails: one_sided
+      tail: upper, p = the share of the 2^n sign assignments with T* >= T
+      alpha: 0.05
+    pairing: {by: question, runs_per_question: 3, run_matching: same_index, question_without_kept_pair: drops out}
+    question_set: >-
+      Q*, the defect probes of the slots the two rules fill from different sources, fixed when the
+      stores are composed
+    error_coding: [wrong_answer, inadequate_refusal, unanswerable_answered, over_refusal]
+    failures:
+      primary: pairs_where_both_rules_scored
+      scored_excludes: [failure_after_retries, clarification_request]
+      sensitivity: [failures_as_wrong, clarifications_as_wrong, all_defect_probes]
+      sensitivity_role: descriptive
+      report_failure_rate_per_rule: true
+      report_clarification_rate_per_rule: true
+    also_reported: [two_sided_p, mean d_q with the outcome rule's bootstrap interval]
+    rules_coincide: >-
+      if the two rules' stores are identical, no test runs and the result is "rules coincide; H3 not
+      tested at write time", with the slot ranking and no re-run under another seed
+defects:
+  # crypto, in declared injection order: the column formula, then the coverage defect.
+  - id: wallet-sum
+    database: crypto
+    slot: {claim_kind: column_formula, subject: accountbalances.walletsum}
+    declared_as: data_change
+    touches: {accountbalances: [walletsum]}
+    # Expected audit: 1,000 rows updated; the relation holds on 1,000 of 1,000 rows (largest
+    # residual 2.3e-10); smallest walletsum 63,890.72, none negative.
+    transformation:
+      - UPDATE accountbalances SET walletsum = ROUND(availsum + frozensum + margsum, 2)
+    reference_claim: >-
+      The wallet balance walletsum in accountbalances includes the margin balance: it is the
+      available balance availsum plus the frozen balance frozensum plus the margin balance margsum.
+    relation: {table: accountbalances, target: walletsum, form: sum, operands: [availsum, frozensum, margsum]}
+    readings:
+      - id: with-margin
+        statement: >-
+          The wallet balance walletsum is the available balance availsum plus the frozen balance
+          frozensum plus the margin balance margsum: margin is part of the wallet.
+        form: world_fixed
+        transformation:
+          - UPDATE accountbalances SET walletsum = ROUND(availsum + frozensum + margsum, 2)
+        holds: true
+        is_true: true
+      # The no-defect reading: accountbalances as released (its database is the clean one with
+      # orders-cut applied).
+      - id: without-margin
+        statement: >-
+          The wallet balance walletsum in accountbalances is the available balance availsum plus the
+          frozen balance frozensum; the margin balance margsum is kept outside it.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+      - id: without-frozen
+        statement: >-
+          The wallet balance walletsum is the available balance availsum plus the margin balance
+          margsum; the frozen balance frozensum is kept outside it.
+        form: world_fixed
+        transformation:
+          - UPDATE accountbalances SET walletsum = ROUND(availsum + margsum, 2)
+        holds: false
+        is_true: false
+      - id: with-unrealised-pnl
+        statement: >-
+          The wallet balance walletsum is an equity figure: the available balance availsum plus the
+          frozen balance frozensum plus the unrealised profit and loss unrealline.
+        form: world_fixed
+        transformation:
+          - UPDATE accountbalances SET walletsum = ROUND(availsum + frozensum + unrealline, 2)
+        holds: false
+        is_true: false
+      - id: four-terms
+        statement: >-
+          The wallet balance walletsum is the available balance availsum plus the frozen balance
+          frozensum plus the margin balance margsum plus the unrealised profit and loss unrealline.
+        form: world_fixed
+        transformation:
+          - UPDATE accountbalances SET walletsum = ROUND(availsum + frozensum + margsum + unrealline, 2)
+        holds: false
+        is_true: false
+    drift_reading: {reading: without-margin, expected_drift_type: data_part}
+
+  - id: orders-cut
+    database: crypto
+    slot: {claim_kind: coverage, subject: orders}
+    touches: {orders: ["*"]}
+    # Expected audit: orders goes from 999 to 733 rows; orderexecutions, fees and riskandmargin keep
+    # 1,000 rows each, 266 of them then without their order; 267 of 1,000 users then have no order.
+    transformation:
+      - DELETE FROM orders WHERE orderflow = 'Cancelled'
+    cut_tables: []
+    kept_tables: [orderexecutions, fees, riskandmargin, users]
+    reference_claim: >-
+      The orders table only holds orders that were not cancelled. Cancelled orders are missing from
+      it, but their executions, fees and risk records are still in orderexecutions, fees and
+      riskandmargin.
+    readings:
+      - id: cancelled-cut
+        statement: >-
+          The orders table leaves out the cancelled orders; their executions, fees and risk records
+          were kept in orderexecutions, fees and riskandmargin.
+        form: world_fixed
+        transformation:
+          - DELETE FROM orders WHERE orderflow = 'Cancelled'
+        holds: true
+        is_true: true
+      # The no-defect reading: orders as released, holding every order (its database is the clean
+      # one with wallet-sum applied).
+      - id: nothing-cut
+        statement: The orders table holds every order, cancelled orders included.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+      - id: cut-with-children
+        statement: >-
+          Cancelled orders were removed together with their executions, fees and risk records.
+        form: world_fixed
+        transformation:
+          - DELETE FROM orderexecutions WHERE ordersmark IN (SELECT recordvault FROM orders WHERE orderflow = 'Cancelled')
+          - DELETE FROM fees WHERE orderslink IN (SELECT recordvault FROM orders WHERE orderflow = 'Cancelled')
+          - DELETE FROM riskandmargin WHERE ordervault IN (SELECT recordvault FROM orders WHERE orderflow = 'Cancelled')
+          - DELETE FROM orders WHERE orderflow = 'Cancelled'
+        holds: false
+        is_true: false
+      - id: filled-cut
+        statement: >-
+          The orders table leaves out the filled orders; their executions, fees and risk records were
+          kept in orderexecutions, fees and riskandmargin.
+        form: world_fixed
+        transformation:
+          - DELETE FROM orders WHERE orderflow = 'Filled'
+        holds: false
+        is_true: false
+      # Meaning-only: they share the injected copy. They are the three answers the vendored link
+      # check's own unmatched-rows question offers (retired or historical records, records from a
+      # system not present here, data-entry errors); the wording under which the reference claim
+      # fails is the authors'.
+      - id: archived
+        statement: >-
+          The executions, fees and risk records with no order belong to older orders archived out of
+          the orders table whatever their status; the exchange has no cancelled status.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: false
+        is_true: false
+      - id: other-system
+        statement: >-
+          The orders table is complete for this exchange; the executions, fees and risk records with
+          no order belong to orders kept in another system that is not present here.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: false
+        is_true: false
+      - id: mistyped
+        statement: >-
+          The orders table is complete; the executions, fees and risk records with no order carry
+          mistyped order references.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: false
+        is_true: false
+    drift_reading: {reading: nothing-cut, expected_drift_type: data_part}
+
+  # alien.
+  - id: seeing-recode
+    database: alien
+    slot: {claim_kind: value_meaning, subject: observatories.seeingprofile}
+    touches: {observatories: [seeingprofile]}
+    # Expected audit: 963 rows recoded, Excellent to '1' (315), Good to '2' (357), Poor to '3' (291);
+    # no NULLs.
+    transformation:
+      - UPDATE observatories SET seeingprofile = CASE seeingprofile WHEN 'Excellent' THEN '1' WHEN 'Good' THEN '2' WHEN 'Poor' THEN '3' END
+    reference_claim: >-
+      The seeing grades in observatories.seeingprofile run from '1', the best seeing, through '2', to
+      '3', the worst.
+    readings:
+      - id: one-is-best
+        statement: >-
+          The seeing grades in observatories.seeingprofile run from '1', the best seeing, through '2',
+          to '3', the worst.
+        form: world_fixed
+        transformation:
+          - UPDATE observatories SET seeingprofile = CASE seeingprofile WHEN 'Excellent' THEN '1' WHEN 'Good' THEN '2' WHEN 'Poor' THEN '3' END
+        holds: true
+        is_true: true
+      # The no-defect reading under branch (b): the only other reading, differing on a convention.
+      # Meaning-only, so it shares the injected copy.
+      - id: three-is-best
+        statement: >-
+          The seeing grades in observatories.seeingprofile run from '3', the best seeing, through '2',
+          to '1', the worst.
+        form: meaning_only
+        kind: convention
+        transformation: []
+        holds: false
+        is_true: false
+    drift_reading:
+      reading: three-is-best
+      expected_drift_type: convention
+      reference_claim: >-
+        The seeing grades in observatories.seeingprofile run from '3', the best seeing, through '2',
+        to '1', the worst.
