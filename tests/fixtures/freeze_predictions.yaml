@@ -1,0 +1,164 @@
+# A whole freeze for the predicted outcomes (#37), with the global part of freeze_valid.yaml. Both
+# databases are copies of the work-order fixture, so that a coverage defect can cut work orders in
+# one while the other defects touch work-order columns in the other. Expected predictions:
+#   tasks-short-cut    coverage        agent alone  (its only rival the battery misses holds)
+#   open-orders-cut    coverage        both         (child rows left on the same-named key wonum)
+#   total-is-sum       column formula  agent alone  (a data change the identity search finds)
+#   site-swap          value meaning   person only  (a swapped code; both readings share one database)
+# so coverage is mixed. Paths are relative to this file.
+databases:
+  plant: workorders.sqlite
+  depot: workorders.sqlite
+global:
+  battery:
+    normalisation: exact
+    pairing: declared_child_to_parent
+    peers: declared_foreign_keys
+  fixed_date: "2026-10-12"
+  duckdb_version: "1.5.5"
+  seeds: {matched_asks_tie_break: 20261012, bootstrap: 20261013, judge_reading_order: 20261014}
+  drift_reading_rule: the no-defect reading, chosen from declared forms, transformations and statements only
+  outcome_rule: {cutoff: 0.25, bootstrap: {resamples: 10000, level: 0.95}}
+  per_kind_combination: the prediction all claims of the kind share, else mixed
+  judge: {temperature: 0, profile: [holds, fails, not_addressed], same_profile_agrees: true}
+  confidence_combination: [agreement, mean_confidence, seeded_permutation]
+  matched_asks: {scope: all_slots_pooled, k: settlement_ask_count, tie_break: seeded_permutation}
+  numeric_tolerance: 0.01
+  refusal_check: the missing-piece field names a recorded term and the alternative is not empty
+  confirmatory_test:
+    statistic: {name: sum_of_question_differences, sign: confidence_minus_settlement, test: exact_sign_flip, tails: one_sided, alpha: 0.05}
+    pairing: {by: question, runs_per_question: 3, run_matching: same_index}
+    question_set: defect probes of the slots the two rules fill from different sources
+    error_coding: [wrong_answer, inadequate_refusal, unanswerable_answered, over_refusal]
+    failures:
+      primary: pairs_where_both_rules_scored
+      scored_excludes: [failure_after_retries, clarification_request]
+      sensitivity: [failures_as_wrong, clarifications_as_wrong, all_defect_probes]
+      report_failure_rate_per_rule: true
+defects:
+  - id: tasks-short-cut
+    database: plant
+    slot: {claim_kind: coverage, subject: tasks}
+    touches: {tasks: ["*"]}
+    transformation:
+      - DELETE FROM tasks WHERE hours < 1
+    cut_tables: []
+    reference_claim: The tasks table leaves out the tasks shorter than an hour.
+    readings:
+      - id: under-one-hour-cut
+        statement: Tasks shorter than an hour were cut from the tasks table.
+        form: world_fixed
+        transformation:
+          - DELETE FROM tasks WHERE hours < 1
+        holds: true
+        is_true: true
+      - id: nothing-cut
+        statement: Nothing was cut from the tasks table.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+      - id: kept-elsewhere
+        statement: Short tasks are kept in another system.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: true
+        is_true: false
+    drift_reading: {reading: nothing-cut, expected_drift_type: data_part}
+  - id: open-orders-cut
+    database: depot
+    slot: {claim_kind: coverage, subject: workorders}
+    touches: {workorders: ["*"]}
+    transformation:
+      - DELETE FROM workorders WHERE status = 'OPEN'
+    cut_tables: []
+    reference_claim: >-
+      The work-order table leaves out the open work orders, but their tasks are still in the tasks
+      table.
+    readings:
+      - id: parent-cut
+        statement: Open work orders were cut from the work-order table and their tasks kept.
+        form: world_fixed
+        transformation:
+          - DELETE FROM workorders WHERE status = 'OPEN'
+        holds: true
+        is_true: true
+      - id: nothing-cut
+        statement: Nothing was cut from the work-order table.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+      - id: cut-with-tasks
+        statement: Open work orders were cut from the work-order table together with their tasks.
+        form: world_fixed
+        transformation:
+          - DELETE FROM tasks WHERE wonum IN (SELECT wonum FROM workorders WHERE status = 'OPEN')
+          - DELETE FROM workorders WHERE status = 'OPEN'
+        holds: false
+        is_true: false
+      - id: mistyped-references
+        statement: Some tasks carry mistyped work-order numbers; no work order was cut.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: false
+        is_true: false
+    drift_reading: {reading: nothing-cut, expected_drift_type: data_part}
+  - id: total-is-sum
+    database: plant
+    slot: {claim_kind: column_formula, subject: workorders.total_cost}
+    touches: {workorders: [total_cost]}
+    transformation:
+      - UPDATE workorders SET total_cost = ROUND(labor_cost + parts_cost, 2)
+    reference_claim: A work order's total cost is its labour cost and its parts cost added together.
+    relation: {table: workorders, target: total_cost, form: sum, operands: [labor_cost, parts_cost]}
+    readings:
+      - id: labour-and-parts
+        statement: The total cost is the labour cost plus the parts cost.
+        form: world_fixed
+        transformation:
+          - UPDATE workorders SET total_cost = ROUND(labor_cost + parts_cost, 2)
+        holds: true
+        is_true: true
+      - id: labour-only
+        statement: The total cost is the labour cost alone.
+        form: world_fixed
+        transformation:
+          - UPDATE workorders SET total_cost = labor_cost
+        holds: false
+        is_true: false
+      - id: as-released
+        statement: The total cost is as released, with no injected change.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+    drift_reading: {reading: as-released, expected_drift_type: data_part}
+  - id: site-swap
+    database: plant
+    slot: {claim_kind: value_meaning, subject: workorders.site}
+    touches: {workorders: [site]}
+    transformation:
+      - UPDATE workorders SET site = CASE site WHEN 'NORTH' THEN 'SOUTH' WHEN 'SOUTH' THEN 'NORTH' END
+    reference_claim: The site codes in workorders.site are swapped, so 'NORTH' marks the south site and 'SOUTH' the north site.
+    readings:
+      - id: swapped
+        statement: The code 'NORTH' marks the south site and 'SOUTH' the north site.
+        form: world_fixed
+        transformation:
+          - UPDATE workorders SET site = CASE site WHEN 'NORTH' THEN 'SOUTH' WHEN 'SOUTH' THEN 'NORTH' END
+        holds: true
+        is_true: true
+      - id: as-named
+        statement: The code 'NORTH' marks the north site and 'SOUTH' the south site.
+        form: meaning_only
+        kind: convention
+        transformation: []
+        holds: false
+        is_true: false
+    drift_reading:
+      reading: as-named
+      expected_drift_type: convention
+      reference_claim: The site codes in workorders.site mean what they say, 'NORTH' the north site and 'SOUTH' the south site.
