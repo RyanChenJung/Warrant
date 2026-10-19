@@ -12,7 +12,9 @@ from fractions import Fraction
 import pytest
 
 from warrant.agent.interface import AgentOutput, Response, ResponseKind, Usage
+from warrant.scoring.classify import ResponseClass
 from warrant.scoring.stats import (
+    ERRORS,
     SignFlip,
     bootstrap_interval,
     flip_rate,
@@ -446,6 +448,38 @@ def test_runs_are_paired_by_index_and_a_pair_is_kept_only_if_both_rules_scored()
         reversed(records), {"hours", "numbers", "cost", "fees"}, confidence="confidence", settlement="settlement"
     )
     assert differences == {"cost": 1, "hours": -1, "numbers": Fraction(1, 3)}
+
+
+@pytest.mark.parametrize(
+    "errors, unscored, expected",
+    [
+        # Failures as wrong: hours keeps all three pairs, 1 - 0 + 1 - 1 + 0 - 1; fees keeps runs 0
+        # and 1, 1 - 1 + 0 - 1, and drops the clarification request.
+        pytest.param(
+            ERRORS + (ResponseClass.FAILED,), (ResponseClass.CLARIFICATION_REQUEST,),
+            {"hours": 0, "cost": Fraction(1, 1), "fees": Fraction(-1, 2)}, id="failures-as-wrong",
+        ),
+        # Clarifications as wrong: cost keeps all three pairs, 1 - 1 + 1 - 0 + 1 - 0; fees keeps run
+        # 2 only, 1 - 1.
+        pytest.param(
+            ERRORS + (ResponseClass.CLARIFICATION_REQUEST,), (ResponseClass.FAILED,),
+            {"hours": -1, "cost": Fraction(2, 3), "fees": 0}, id="clarifications-as-wrong",
+        ),
+    ],
+)
+def test_the_frozen_sensitivity_analyses_count_failures_or_clarifications_as_errors(errors, unscored, expected):
+    records = [
+        *question_runs("hours", "confidence", "failed", "wrong_answer", "correct_answer"),
+        *question_runs("hours", "settlement", "correct_answer", "failed", "wrong_answer"),
+        *question_runs("cost", "confidence", "clarification_request", "wrong_answer", "over_refusal"),
+        *question_runs("cost", "settlement", "wrong_answer", "correct_answer", "correct_refusal"),
+        *question_runs("fees", "confidence", "failed", "correct_answer", "clarification_request"),
+        *question_runs("fees", "settlement", "wrong_answer", "failed", "wrong_answer"),
+    ]
+    differences = question_differences(
+        records, set(expected), confidence="confidence", settlement="settlement", errors=errors, unscored=unscored
+    )
+    assert differences == expected
 
 
 @pytest.mark.parametrize(
