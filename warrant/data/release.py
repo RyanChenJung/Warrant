@@ -125,16 +125,20 @@ def load_database(release_dir: Path, name: str) -> Database:
     """Load one database of a fetched release: declared foreign keys, column meanings, knowledge base."""
     root = Path(release_dir) / name
     path = root / f"{name}_template.sqlite"
-    con = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    column_meanings = json.loads((root / f"{name}_column_meaning_base.json").read_text())
+    knowledge_base = read_knowledge_base(root / f"{name}_kb.jsonl")
+    return Database(name, path, foreign_keys(path), column_meanings, knowledge_base)
+
+
+def foreign_keys(path: Path) -> list[ForeignKey]:
+    """The foreign keys declared in a SQLite file, a clean copy or any copy of one, read-only."""
+    con = sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True)
     try:
         tables = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
-        foreign_keys = [
+        return [
             ForeignKey(table, column, ref_table, ref_column)
             for table in tables
             for _id, _seq, ref_table, column, ref_column, *_ in con.execute(f'PRAGMA foreign_key_list("{table}")')
         ]
     finally:
         con.close()
-    column_meanings = json.loads((root / f"{name}_column_meaning_base.json").read_text())
-    knowledge_base = read_knowledge_base(root / f"{name}_kb.jsonl")
-    return Database(name, path, foreign_keys, column_meanings, knowledge_base)
