@@ -2,6 +2,8 @@
 
 The builder is tested on small fixtures, never the release. The command's guard (ADR 0007) is tested
 in a temporary repository whose `origin` is a bare repository on disk, so no test reaches the network.
+Only the release check reads the committed freeze and the fetched release, read-only and without the
+command (#107).
 """
 
 import json
@@ -14,9 +16,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from warrant.data.release import sha256
+from warrant.data.release import Release, sha256
 from warrant.defects.build import DriftType, build, content_hash, main
 from warrant.defects.inject import Defect, load_defect
+from warrant.freeze.validate import RELEASE_CONFIG, clean_databases, release_problems
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).parents[1]
@@ -237,8 +240,8 @@ def inject_command(repo, tmp_path, *extra):
                  "--out", str(tmp_path / "out"), *extra])
 
 
-def refused(repo, tmp_path, capsys, reason):
-    assert inject_command(repo, tmp_path) == 1
+def refused(repo, tmp_path, capsys, reason, *extra):
+    assert inject_command(repo, tmp_path, *extra) == 1
     assert reason in capsys.readouterr().out
     assert not (tmp_path / "out").exists() and not (repo / "injections").exists()
 
@@ -463,6 +466,121 @@ def test_a_drift_type_other_than_the_declared_one_is_reported(repo, tmp_path, ca
     record = json.loads(record_path.read_text())
     assert record["outcome"] == "drift_type_mismatch"
     assert record["drift"]["site-recode"] == {"reading": "two-is-north", "type": "convention", "expected": "data_part"}
+
+
+# The release check (#107): before anything is copied, the clean copies must be the release the freeze
+# names under `release:`, by revision and by each template's file SHA-256.
+
+
+def fake_release(tmp_path, workorders_db, revision="abc123"):
+    """A one-database release config and, in the data directory, its template: the work-order fixture."""
+    config = tmp_path / f"release-{revision}.yaml"
+    config.write_text(f"dataset: example/release\nrevision: {revision}\ndatabases: [workorders]\n")
+    template = tmp_path / "data" / "livesqlbench-base-lite" / revision / "workorders" / "workorders_template.sqlite"
+    template.parent.mkdir(parents=True)
+    shutil.copy(workorders_db, template)
+    return config, template
+
+
+@pytest.fixture
+def release(tmp_path, workorders_db):
+    return fake_release(tmp_path, workorders_db)
+
+
+def on_release(release, **block):
+    """A change to the freeze: no databases: paths, and a `release:` block naming the fake release."""
+    config, template = release
+
+    def change(raw):
+        del raw["databases"]
+        raw["release"] = {"config": str(config), "revision": "abc123", "sha256": {"workorders": sha256(template)}, **block}
+
+    return change
+
+
+def test_a_freeze_on_its_release_records_the_revision_and_each_templates_sha256(repo, tmp_path, release):
+    config, template = release
+    commit_freeze(repo, on_release(release))
+    assert inject_command(repo, tmp_path, "--release", str(config)) == 0
+    (record_path,) = (repo / "injections").iterdir()
+    record = json.loads(record_path.read_text())
+    assert record["release"] == {"revision": "abc123", "sha256": {"workorders": sha256(template)}}
+    assert record["clean"] == {"workorders": content_hash(template)}
+
+
+def test_a_release_revision_other_than_the_configurations_is_refused(repo, tmp_path, capsys, release):
+    """The validator only flags it, and the command goes ahead on the validator's warnings (#36)."""
+    commit_freeze(repo, on_release(release, revision="def456"))
+    refused(repo, tmp_path, capsys, "def456", "--release", str(release[0]))
+
+
+def test_a_release_configuration_other_than_the_one_the_freeze_names_is_refused(repo, tmp_path, capsys, workorders_db, release):
+    """Another revision's templates, even with the same file, are not the release the freeze names."""
+    commit_freeze(repo, on_release(release))
+    other, _ = fake_release(tmp_path, workorders_db, revision="def456")
+    refused(repo, tmp_path, capsys, "the one the freeze names", "--release", str(other))
+
+
+def test_a_template_whose_sha256_differs_from_the_freezes_is_refused(repo, tmp_path, capsys, release):
+    config, template = release
+    commit_freeze(repo, on_release(release))
+    con = sqlite3.connect(template)
+    with con:
+        con.execute("DELETE FROM tasks WHERE hours < 1")
+    con.close()
+    refused(repo, tmp_path, capsys, "SHA-256", "--release", str(config))
+
+
+def test_a_database_without_an_entry_in_the_freezes_sha256_is_refused(repo, tmp_path, capsys, release):
+    commit_freeze(repo, on_release(release, sha256={}))
+    refused(repo, tmp_path, capsys, "no entry", "--release", str(release[0]))
+
+
+def test_a_release_block_without_its_revision_is_refused(repo, tmp_path, capsys, release):
+    commit_freeze(repo, on_release(release, revision=None))
+    refused(repo, tmp_path, capsys, "must give its config, its revision", "--release", str(release[0]))
+
+
+def test_a_release_block_whose_config_is_not_a_path_is_refused(repo, tmp_path, capsys, release):
+    commit_freeze(repo, on_release(release, config=["x"]))
+    refused(repo, tmp_path, capsys, "must give its config, its revision", "--release", str(release[0]))
+
+
+def test_a_database_the_release_configuration_does_not_list_is_refused(repo, tmp_path, capsys, release):
+    """Otherwise the run would fail inside build() and leave a failed record, which would be the first
+    injection's (ADR 0007)."""
+    config, _ = release
+    config.write_text("dataset: example/release\nrevision: abc123\ndatabases: [other]\n")
+    commit_freeze(repo, on_release(release))
+    refused(repo, tmp_path, capsys, "does not list it", "--release", str(config))
+
+
+def test_a_freeze_taking_its_clean_copies_from_the_release_without_a_release_block_is_refused(repo, tmp_path, capsys, release):
+    commit_freeze(repo, lambda raw: raw.pop("databases"))
+    refused(repo, tmp_path, capsys, "no release: block", "--release", str(release[0]))
+
+
+def test_a_fixture_freeze_with_its_own_databases_records_their_sha256_and_no_revision(repo, tmp_path, workorders_db):
+    """Its clean copies are its own files, not a release, so there is no `release:` block to check (#107)."""
+    assert inject_command(repo, tmp_path) == 0
+    (record_path,) = (repo / "injections").iterdir()
+    record = json.loads(record_path.read_text())
+    assert record["release"] == {"revision": None, "sha256": {"workorders": sha256(workorders_db)}}
+
+
+COMMITTED = ROOT / "freeze" / "write_line.yaml"
+COMMITTED_RELEASE = yaml.safe_load(COMMITTED.read_text())["release"]
+FETCHED = all(Release.from_yaml(RELEASE_CONFIG).template(db).is_file() for db in COMMITTED_RELEASE["sha256"])
+needs_release = pytest.mark.skipif(not FETCHED, reason="the release is not fetched into the data directory")
+
+
+@needs_release
+def test_the_committed_freeze_matches_the_fetched_release():
+    """The check alone, read-only: the command's first run on this freeze is the first injection (#106)."""
+    raw = yaml.safe_load(COMMITTED.read_text())
+    clean = clean_databases(raw, COMMITTED, RELEASE_CONFIG)
+    assert set(clean) == set(COMMITTED_RELEASE["sha256"])  # every template is checked
+    assert release_problems(raw, ROOT, RELEASE_CONFIG, clean) == []
 
 
 def test_the_two_defect_fixture_is_a_valid_freeze_apart_from_its_global_part():

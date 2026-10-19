@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from warrant.data.release import sha256
 from warrant.freeze.validate import main, validate
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -504,6 +505,41 @@ def test_without_the_fetched_release_the_position_check_is_reported_as_skipped(t
     assert main(["--config", str(write(tmp_path, freeze)), "--release", str(release)]) == 0
     out = capsys.readouterr().out
     assert "not checked" in out and "warrant.data.fetch" in out
+
+
+# The freeze's `release:` names the release its clean copies come from. The validator only flags a
+# draft on another revision, which may be there on purpose; the builder refuses (#107).
+
+
+def release_block(tmp_path, release, revision="abc123"):
+    """A `release:` block naming the fake release by its absolute path, with its crypto template's SHA-256.
+    The alien template is not fetched, so its entry is not checked."""
+    template = tmp_path / "data" / "livesqlbench-base-lite" / "abc123" / "crypto" / "crypto_template.sqlite"
+    return {"config": str(release), "revision": revision, "sha256": {"crypto": sha256(template), "alien": "0" * 64}}
+
+
+def test_a_release_revision_other_than_the_configurations_is_flagged_not_rejected(tmp_path, capsys, freeze):
+    release = fake_release(tmp_path, "walletsum REAL, availsum REAL, frozensum REAL, margsum REAL")
+    freeze["release"] = release_block(tmp_path, release, revision="def456")
+    assert main(["--config", str(write(tmp_path, freeze)), "--release", str(release)]) == 0
+    out = capsys.readouterr().out
+    assert "def456" in out and "abc123" in out and "0 errors, 1 warnings" in out
+
+
+def test_a_template_other_than_the_freezes_is_flagged(tmp_path, capsys, freeze):
+    release = fake_release(tmp_path, "walletsum REAL, availsum REAL, frozensum REAL, margsum REAL")
+    freeze["release"] = release_block(tmp_path, release)
+    freeze["release"]["sha256"]["crypto"] = "0" * 64
+    assert main(["--config", str(write(tmp_path, freeze)), "--release", str(release)]) == 0
+    out = capsys.readouterr().out
+    assert "crypto" in out and "SHA-256" in out and "0 errors, 1 warnings" in out
+
+
+def test_a_freeze_on_its_releases_revision_and_templates_has_no_warnings(tmp_path, capsys, freeze):
+    release = fake_release(tmp_path, "walletsum REAL, availsum REAL, frozensum REAL, margsum REAL")
+    freeze["release"] = release_block(tmp_path, release)
+    assert main(["--config", str(write(tmp_path, freeze)), "--release", str(release)]) == 0
+    assert "0 errors, 0 warnings" in capsys.readouterr().out
 
 
 def test_the_write_line_configuration_carries_the_freeze_fields_when_present(tmp_path, freeze):
