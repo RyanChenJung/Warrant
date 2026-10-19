@@ -246,6 +246,12 @@ def main(argv=None) -> int:
         if not raw.get("databases") and not raw.get("release"):
             raise Refused("the freeze takes its clean copies from the release but has no release: block to check them against")
         clean = clean_databases(raw, freeze, args.release)
+        # A database the defects use but the clean copies lack would fail only inside build(), after
+        # the record of the first injection is written.
+        unlisted = [name for name in dict.fromkeys(d.get("database") for d in raw["defects"]) if name not in clean]
+        if unlisted:
+            source = "the freeze's databases:" if raw.get("databases") else f"the release configuration {args.release}"
+            raise Refused(f"no clean copy of {', '.join(map(str, unlisted))}: {source} does not list it")
         missing = [name for name, path in clean.items() if not path.is_file()]
         if missing:
             raise Refused(f"no clean copy of {', '.join(missing)}; fetch the release with `uv run python -m warrant.data.fetch`")

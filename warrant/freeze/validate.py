@@ -359,7 +359,7 @@ def release_problems(raw: dict, repo: Path, release_config: Path, clean: dict[st
     if not release:
         return []
     if (not isinstance(release, dict) or any(_blank(release.get(k)) for k in ("config", "revision"))
-            or not isinstance(release.get("sha256"), dict)):
+            or not isinstance(release.get("config"), str) or not isinstance(release.get("sha256"), dict)):
         return ["the freeze's release: must give its config, its revision and a sha256 map"]
     named = repo / release["config"]
     if not named.is_file():

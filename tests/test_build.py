@@ -538,7 +538,21 @@ def test_a_database_without_an_entry_in_the_freezes_sha256_is_refused(repo, tmp_
 
 def test_a_release_block_without_its_revision_is_refused(repo, tmp_path, capsys, release):
     commit_freeze(repo, on_release(release, revision=None))
-    refused(repo, tmp_path, capsys, "revision", "--release", str(release[0]))
+    refused(repo, tmp_path, capsys, "must give its config, its revision", "--release", str(release[0]))
+
+
+def test_a_release_block_whose_config_is_not_a_path_is_refused(repo, tmp_path, capsys, release):
+    commit_freeze(repo, on_release(release, config=["x"]))
+    refused(repo, tmp_path, capsys, "must give its config, its revision", "--release", str(release[0]))
+
+
+def test_a_database_the_release_configuration_does_not_list_is_refused(repo, tmp_path, capsys, release):
+    """Otherwise the run would fail inside build() and leave a failed record, which would be the first
+    injection's (ADR 0007)."""
+    config, _ = release
+    config.write_text("dataset: example/release\nrevision: abc123\ndatabases: [other]\n")
+    commit_freeze(repo, on_release(release))
+    refused(repo, tmp_path, capsys, "does not list it", "--release", str(config))
 
 
 def test_a_freeze_taking_its_clean_copies_from_the_release_without_a_release_block_is_refused(repo, tmp_path, capsys, release):
