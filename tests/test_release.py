@@ -10,6 +10,7 @@ from warrant.data.release import (
     ForeignKey,
     Release,
     fetch,
+    foreign_keys,
     load_database,
 )
 
@@ -115,6 +116,12 @@ def test_loader_returns_declared_foreign_keys_including_pairs_whose_names_differ
         ForeignKey("orderlines", "orderid", "orders", "orderid"),
         ForeignKey("orders", "custref", "customers", "custkey"),
     ]
+
+
+def test_the_declared_foreign_keys_are_read_from_any_sqlite_file_without_the_release(tmp_path, download):
+    fetch(RELEASE, tmp_path / "data", download=download)
+    copy = shutil.copy(tmp_path / "data" / "shop" / "shop_template.sqlite", tmp_path / "copy.sqlite")
+    assert foreign_keys(copy) == load_database(tmp_path / "data", "shop").foreign_keys
 
 
 def test_loader_returns_every_column_meaning_and_knowledge_base_entry(tmp_path, download, remote):

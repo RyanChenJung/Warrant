@@ -1,4 +1,5 @@
-"""The write-line entry point: inject, compute gold answers, compose stores, ask the agent, score.
+"""The write-line entry point: build the reading databases, predict, compute gold answers, compose
+stores, ask the agent, score. With `stop_after_prediction` it returns before any agent call (#37).
 
 The tracer bullet (#27) supports two allocation rules, the empty store and everything from a
 person; #50 and #51 add the others.
@@ -15,7 +16,8 @@ from warrant.agent.tools import ReadOnlySQL
 from warrant.config import data_dir
 from warrant.data.sqlite import query, query_with_columns, schema
 from warrant.defects.audit import Audit
-from warrant.defects.inject import Defect, inject
+from warrant.defects.build import build
+from warrant.defects.inject import Defect
 from warrant.scoring.classify import (
     TOLERANCE,
     Bucket,
@@ -32,6 +34,7 @@ from warrant.scoring.classify import (
 from warrant.store.claims import Claim, KnowledgeStore, Source, Toulmin, WarrantKind
 from warrant.store.results import Provenance, append, provenance_for
 from warrant.write_line.config import Config, load_config
+from warrant.write_line.predict import BatterySettings, Predictions, predict
 
 
 @dataclass(frozen=True)
@@ -70,6 +73,8 @@ class WriteLineResult:
     injected: dict[str, Path]
     # Per defect, what its transformation did to the injected copy (#35).
     audits: dict[str, Audit]
+    # The predicted outcomes (#37), when a defect has a reading set.
+    predictions: Predictions | None = None
 
 
 def _person_claim(defect: Defect) -> Claim:
@@ -132,17 +137,28 @@ def run(
     *,
     tolerance: float = TOLERANCE,
     refusal_check: RefusalCheck = rule_based_refusal_check,
+    stop_after_prediction: bool = False,
 ) -> WriteLineResult:
     """Ask every question under every rule `config.runs` times and score the responses.
 
     The tolerance and the refusal check belong to the global part of the freeze (#33), which will
-    supply them; until then the defaults are the spec's.
+    supply them; until then the defaults are the spec's. When a defect has a reading set, the
+    predicted outcomes are computed first, from the global part's battery settings, and with
+    `stop_after_prediction` the run returns them before any agent call.
     """
-    injected, audits = {}, {}
-    for name, clean in config.databases.items():
-        injected[name] = work_dir / f"{name}.sqlite"
-        for a in inject(clean, injected[name], [d for d in config.defects if d.database == name]):
-            audits[a.defect] = a
+    built = build(list(config.defects), config.databases, work_dir)
+    injected = {name: built.copy(content) for name, content in built.injected.items()}
+    audits = {a.defect: a for a in built.audits}
+    predictions = None
+    if any(d.readings for d in config.defects):
+        if config.global_part is None:
+            raise ValueError("defects with reading sets need the global part's battery settings to predict")
+        settings = BatterySettings.from_freeze({"global": config.global_part})
+        predictions = predict(config.defects, built, config.databases, settings, work_dir / "battery")
+    if stop_after_prediction:
+        if predictions is None:
+            raise ValueError("no defect has a reading set, so there is nothing to predict")
+        return WriteLineResult([], {}, {}, {}, {}, {}, injected, audits, predictions)
     # A question whose correct response is a refusal has no gold answer.
     gold = {
         q.id: GoldAnswer(q.id, q.gold_sql, *query_with_columns(injected[q.database], q.gold_sql))
@@ -220,6 +236,7 @@ def run(
         stores=stores,
         injected=injected,
         audits=audits,
+        predictions=predictions,
     )
 
 
