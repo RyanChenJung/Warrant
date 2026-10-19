@@ -10,9 +10,13 @@ and shares the injected copy. Copies are named by a content hash over a canonica
 databases are built once, and they stay in the data directory, never in the repository.
 
 The command refuses to run while the freeze folder has uncommitted changes or while the commit it
-runs from is not on the public remote's main branch, checked after a fetch (ADR 0007). It writes the
-injection record, with that commit, as JSON into the repository for a person to commit; it commits
-nothing itself. `build` never calls git.
+runs from is not on the public remote's main branch, checked after a fetch (ADR 0007). Before copying
+anything it also refuses when the clean copies are not the release the freeze names under `release:`,
+by revision, release configuration and each template's file SHA-256 (#107), and when the freeze takes
+its clean copies from the release with no `release:` to check them against. A fixture freeze that
+gives its own `databases:` paths and no `release:` is not checked against a release, and its record
+names no revision. The command writes the injection record, with the commit, as JSON into the
+repository for a person to commit; it commits nothing itself. `build` never calls git.
 """
 
 import argparse
@@ -34,7 +38,7 @@ from warrant.data.release import sha256
 from warrant.data.sqlite import connect_read_only
 from warrant.defects.audit import Audit
 from warrant.defects.inject import Defect, inject, load_defect
-from warrant.freeze.validate import RELEASE_CONFIG, clean_databases, validate
+from warrant.freeze.validate import RELEASE_CONFIG, clean_databases, release_problems, validate
 
 REPO = Path(__file__).resolve().parents[2]
 # Where the injection record goes, relative to the repository. The location is still being settled
@@ -239,10 +243,16 @@ def main(argv=None) -> int:
         errors, _ = validate(raw)
         if errors:
             raise Refused("the freeze is not valid:\n" + "\n".join(errors))
+        if not raw.get("databases") and not raw.get("release"):
+            raise Refused("the freeze takes its clean copies from the release but has no release: block to check them against")
         clean = clean_databases(raw, freeze, args.release)
         missing = [name for name, path in clean.items() if not path.is_file()]
         if missing:
             raise Refused(f"no clean copy of {', '.join(missing)}; fetch the release with `uv run python -m warrant.data.fetch`")
+        # The validator only flags these, and the command goes ahead on its warnings (#107).
+        problems = release_problems(raw, repo, args.release, clean)
+        if problems:
+            raise Refused("the clean copies are not the release the freeze names:\n" + "\n".join(problems))
         defects = [load_defect(d) for d in raw["defects"]]
     except (Refused, ValueError) as error:
         print(f"refused: {error}")
@@ -259,6 +269,9 @@ def main(argv=None) -> int:
         "freeze_sha256": sha256(freeze),
         "built_at": datetime.now(timezone.utc).isoformat(),
         "clean": {name: content_hash(path) for name, path in clean.items()},
+        # The revision the clean copies were checked against, and their file SHA-256 (#107).
+        "release": {"revision": (raw.get("release") or {}).get("revision"),
+                    "sha256": {name: sha256(path) for name, path in clean.items()}},
     }
     path = repo / args.record_dir / f"{commit[:12]}-{freeze.stem}.json"
     try:

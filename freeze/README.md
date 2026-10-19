@@ -24,8 +24,10 @@ the first commit that records an injection. Agreed on #36:
    ```
 
    It refuses unless the freeze file is committed and unchanged, the working tree is clean, and
-   `HEAD` is on `origin/main` after a fetch. It builds the copies in the data directory, never in the
-   repo, and writes the injection record to `injections/<commit>-<freeze>.json`. It commits nothing.
+   `HEAD` is on `origin/main` after a fetch. Before copying anything it also refuses when the release
+   revision, the release configuration or a clean template's SHA-256 is not the freeze's (`release:`).
+   It builds the copies in the data directory, never in the repo, and writes the injection record to
+   `injections/<commit>-<freeze>.json`. It commits nothing.
    A run that started injecting always leaves a record, with its outcome (`built`, `failed` or
    `drift_type_mismatch`); commit it whatever the outcome.
 5. **Open a PR with only the record** and merge it as soon as CI passes.

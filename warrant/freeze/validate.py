@@ -5,7 +5,8 @@ format of #27, extended). Validation reads only the file, so it needs neither th
 database. The one check that needs a schema, the position of a column-formula's columns among the
 table's numeric columns, takes it as an argument and is reported as skipped when there is none. The
 command reads the schema from the freeze's `databases:` paths or, without them, from the clean
-databases of the release as fetched into the data directory.
+databases of the release as fetched into the data directory, and flags clean copies at hand that are
+not the release the freeze names under `release:` (`release_problems`, which the builder refuses on).
 Content hashes are not computed here (#36).
 
 `validate` returns (errors, warnings): errors make a freeze invalid; warnings only flag.
@@ -21,9 +22,12 @@ import yaml
 
 from warrant.battery.settings import Normalisation
 from warrant.data.fetch import DEFAULT_CONFIG as RELEASE_CONFIG
-from warrant.data.release import Release
+from warrant.data.release import Release, sha256
 from warrant.data.sqlite import connect_read_only
 from warrant.store.claims import ClaimKind
+
+# The repository, which a freeze's `release.config` is relative to.
+REPO = Path(__file__).resolve().parents[2]
 
 # Schema of a database: {table: [(column, declared type), ...]} in table order.
 Schema = dict[str, list[tuple[str, str]]]
@@ -341,6 +345,39 @@ def clean_databases(raw: dict, config: Path, release_config: Path = RELEASE_CONF
     return {name: release.template(name) for name in release.databases if name in named}
 
 
+def release_problems(raw: dict, repo: Path, release_config: Path, clean: dict[str, Path]) -> list[str]:
+    """Why the clean copies may not be the release the freeze names under `release:`; empty when they are.
+
+    The freeze's revision must be the revision of the configuration it names (relative to `repo`),
+    `release_config` must be that configuration, every database the defects use needs an entry under
+    `release.sha256`, and each clean copy in `clean` must have that file SHA-256. The validator flags
+    these, because a draft may be on another revision on purpose; the builder refuses on them (#107).
+    A freeze without `release:` has nothing to check here: its clean copies are its own `databases:`
+    paths, as a fixture's are, and the builder refuses one that has neither.
+    """
+    release = raw.get("release")
+    if not release:
+        return []
+    if (not isinstance(release, dict) or any(_blank(release.get(k)) for k in ("config", "revision"))
+            or not isinstance(release.get("sha256"), dict)):
+        return ["the freeze's release: must give its config, its revision and a sha256 map"]
+    named = repo / release["config"]
+    if not named.is_file():
+        return [f"the release configuration the freeze names, {release['config']}, does not exist"]
+    found = []
+    revision = Release.from_yaml(named).revision
+    if str(release["revision"]) != revision:
+        found.append(f"the freeze's release revision {release['revision']} is not {revision}, the revision of {release['config']}")
+    if Path(release_config).resolve() != named.resolve():
+        found.append(f"the release configuration {release_config} is not {release['config']}, the one the freeze names")
+    for name in dict.fromkeys(d.get("database") for d in raw.get("defects") or [] if isinstance(d, dict)):
+        if name not in release["sha256"]:
+            found.append(f"database {name!r} has no entry under the freeze's release sha256")
+        elif name in clean and (actual := sha256(clean[name])) != release["sha256"][name]:
+            found.append(f"the clean copy of {name!r} has SHA-256 {actual}, not the freeze's {release['sha256'][name]}")
+    return found
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, type=Path, help="the freeze (configuration) file")
@@ -349,8 +386,10 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     raw = yaml.safe_load(args.config.read_text())
     paths = clean_databases(raw, args.config, args.release)
-    schema = {name: read_schema(p) for name, p in paths.items() if p.is_file()} or None
+    present = {name: p for name, p in paths.items() if p.is_file()}
+    schema = {name: read_schema(p) for name, p in present.items()} or None
     errors, warnings = validate(raw, schema)
+    warnings += release_problems(raw, REPO, args.release, present)
     for line in errors:
         print(f"error: {line}")
     for line in warnings:
