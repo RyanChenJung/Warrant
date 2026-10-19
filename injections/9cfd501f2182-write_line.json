@@ -1,0 +1,130 @@
+{
+  "commit": "9cfd501f21826085cd3e348442d4d13985af982a",
+  "remote": "origin",
+  "remote_url": "https://github.com/RyanChenJung/Warrant.git",
+  "branch": "main",
+  "freeze": "freeze/write_line.yaml",
+  "freeze_sha256": "1ccc6ad78da9fab1e333731c7e1a521de47b8421ea6373d111e1be57093a8f8e",
+  "built_at": "2026-10-19T23:03:19.291770+00:00",
+  "clean": {
+    "alien": "6e08ef52fae85dbadc9029f725857ad760cb1fe9d5a77f158ea144ed9ddb861c",
+    "crypto": "76741241a53daeede782210c43810c0071fec6e56d8c3d95071bf8d97d1723c8"
+  },
+  "release": {
+    "revision": "0664a2f28555faa0dd2947c8c23288df79bcc06b",
+    "sha256": {
+      "alien": "e160643c9abb43ba69917532f2654637e677460df25678f9daecdefb416046ed",
+      "crypto": "49103c15d930b290298ac52e2f965877f3caacde6c5269c6c798e596b4c7a5e1"
+    }
+  },
+  "outcome": "built",
+  "injected": {
+    "crypto": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+    "alien": "27f88c603d23a92eb4d84cd060e4d0685fcf7774d8afb28480000a5408be5b21"
+  },
+  "readings": {
+    "wallet-sum": {
+      "with-margin": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+      "without-margin": "ac0f3a4ab46359677872396ddb44a477275d40e86227e4b5fa72ab298bbe4d33",
+      "without-frozen": "e233419def614386b819bd8ad4fa6b9a03df1a80b0df9e26f13c8d09bbde9284",
+      "with-unrealised-pnl": "e99b9a4c52b389ddb402679557da65bf97c0a8e118230fa1b2c02c2511dc15ce",
+      "four-terms": "9f3e510217e82aa52192f62544358b4a95a2dd8edaffcdb926e341fa1ebe4019"
+    },
+    "orders-cut": {
+      "cancelled-cut": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+      "nothing-cut": "8558694443b0f2d07d8cf6c25f06fbd8426a1f18d78ff9d7d0bb0b863a137824",
+      "cut-with-children": "c081e5ecdc291051b1cd729cf4a300a37e579a50ee07d992647f3e2b4bdc2bf9",
+      "filled-cut": "765655f0bb065879b1b39518730fb3cd3edba2d7332924867ab54465a67ef746",
+      "archived": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+      "other-system": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+      "mistyped": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776"
+    },
+    "seeing-recode": {
+      "one-is-best": "27f88c603d23a92eb4d84cd060e4d0685fcf7774d8afb28480000a5408be5b21",
+      "three-is-best": "27f88c603d23a92eb4d84cd060e4d0685fcf7774d8afb28480000a5408be5b21"
+    }
+  },
+  "drift": {
+    "wallet-sum": {
+      "reading": "without-margin",
+      "type": "data_part",
+      "expected": "data_part"
+    },
+    "orders-cut": {
+      "reading": "nothing-cut",
+      "type": "data_part",
+      "expected": "data_part"
+    },
+    "seeing-recode": {
+      "reading": "three-is-best",
+      "type": "convention",
+      "expected": "convention"
+    }
+  },
+  "audits": [
+    {
+      "defect": "wallet-sum",
+      "rows": {
+        "accountbalances": [
+          1000,
+          1000
+        ]
+      },
+      "changed": 1000,
+      "recoding": [],
+      "relation": "walletsum = availsum + frozensum + margsum",
+      "holds": [
+        1000,
+        1000
+      ]
+    },
+    {
+      "defect": "orders-cut",
+      "rows": {
+        "orders": [
+          999,
+          733
+        ]
+      },
+      "changed": 266,
+      "recoding": [],
+      "relation": null,
+      "holds": null
+    },
+    {
+      "defect": "seeing-recode",
+      "rows": {
+        "observatories": [
+          963,
+          963
+        ]
+      },
+      "changed": 963,
+      "recoding": [
+        {
+          "table": "observatories",
+          "column": "seeingprofile",
+          "old": "Good",
+          "new": "2",
+          "rows": 357
+        },
+        {
+          "table": "observatories",
+          "column": "seeingprofile",
+          "old": "Poor",
+          "new": "3",
+          "rows": 291
+        },
+        {
+          "table": "observatories",
+          "column": "seeingprofile",
+          "old": "Excellent",
+          "new": "1",
+          "rows": 315
+        }
+      ],
+      "relation": null,
+      "holds": null
+    }
+  ]
+}

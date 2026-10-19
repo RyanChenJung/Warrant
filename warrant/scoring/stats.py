@@ -7,15 +7,18 @@ silent-error and stale-value flags and its number of escalation calls.
 
 The bootstrap method and the write line's confirmatory test belong to the global part of the freeze
 (#33): until it is wired in, the bootstrap's choices are parameters, with a percentile bootstrap
-over items as the default, and the confirmatory test is left to be built from these pieces. The
-maintenance line's confirmatory test is `mcnemar` on silent errors, paired by task state.
+over items as the default. The write line's confirmatory test is `write_line_test`, the exact
+sign-flip test of global.confirmatory_test in freeze/write_line.yaml, with that file's values as
+defaults except the bootstrap seed, which the caller passes. The maintenance line's confirmatory test is `mcnemar` on silent errors, paired by task
+state.
 """
 
 import math
 import random
-from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections import Counter, defaultdict
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +30,14 @@ Record = Mapping[str, Any]
 
 RESAMPLES = 10_000
 LEVEL = 0.95
+
+# The write line's confirmatory test (global.confirmatory_test). A wrong answer, an inadequate
+# refusal and an answered unanswerable question among them, or an over-refusal is an error; a
+# failure after retries or a clarification request is not scored, and leaves its pair out.
+RUNS_PER_QUESTION = 3
+ERRORS = (ResponseClass.WRONG_ANSWER, ResponseClass.OVER_REFUSAL)
+UNSCORED = (ResponseClass.FAILED, ResponseClass.CLARIFICATION_REQUEST)
+ALPHA = Fraction(1, 20)
 
 # The frontier plot: the frontier in the first categorical colour, single conditions as points in
 # ink, each with its own marker and a label beside it, so no identity rests on colour alone.
@@ -146,6 +157,142 @@ def mcnemar(a: Mapping[str, bool], b: Mapping[str, bool]) -> McNemar:
     n = a_only + b_only
     tail = sum(math.comb(n, k) for k in range(min(a_only, b_only) + 1)) / 2**n
     return McNemar(a_only, b_only, min(1.0, 2 * tail))
+
+
+def question_differences(
+    records: Iterable[Record],
+    questions: Collection[str],
+    *,
+    confidence: str,
+    settlement: str,
+    runs: int = RUNS_PER_QUESTION,
+    errors: Collection[str] = ERRORS,
+    unscored: Collection[str] = UNSCORED,
+) -> dict[str, Fraction]:
+    """Per question of `questions` with a kept pair, d_q: the mean over its kept pairs of
+    e_confidence - e_settlement, as an exact fraction, where e is 1 for an error and 0 otherwise.
+
+    Run r under the confidence rule is paired with run r under the settlement rule, and a pair is
+    kept only if both responses were scored. A question with no kept pair drops out. Each question
+    must have runs 0 to `runs` - 1 once each under both rules; records of other questions and other
+    rules are ignored. `errors` and `unscored` default to the freeze's coding; its descriptive
+    sensitivity analyses pass others: failures as wrong (`errors` plus FAILED, only clarification
+    requests unscored) and clarifications as wrong (`errors` plus CLARIFICATION_REQUEST, only
+    failures unscored).
+    """
+    rules = (confidence, settlement)
+    classes = defaultdict(dict)  # (question, rule) -> {run: response class}
+    repeated = set()
+    for record in records:
+        key = (record["question_id"], record["rule"])
+        if key[0] in questions and key[1] in rules:
+            if record["run"] in classes[key]:
+                repeated.add(key)
+            classes[key][record["run"]] = record["response_class"]
+    incomplete = [
+        f"{q} under {rule}"
+        for q in sorted(questions)
+        for rule in rules
+        if (q, rule) in repeated or classes[(q, rule)].keys() != set(range(runs))
+    ]
+    if incomplete:
+        raise ValueError(f"questions without runs 0 to {runs - 1} once each: {', '.join(incomplete)}")
+    differences = {}
+    for q in sorted(questions):
+        pairs = [(classes[(q, confidence)][r], classes[(q, settlement)][r]) for r in range(runs)]
+        kept = [(c, s) for c, s in pairs if c not in unscored and s not in unscored]
+        if kept:
+            differences[q] = Fraction(sum((c in errors) - (s in errors) for c, s in kept), len(kept))
+    return differences
+
+
+@dataclass(frozen=True)
+class SignFlip:
+    # T, the sum of the non-zero differences, and n, their number.
+    statistic: Fraction
+    n: int
+    # The one-sided upper p and the two-sided p.
+    p_value: Fraction
+    two_sided_p: Fraction
+
+
+def sign_flip_test(differences: Iterable[Fraction]) -> SignFlip | None:
+    """The exact sign-flip test of paired differences, on the non-zero ones.
+
+    The one-sided p is the share of the 2^n assignments of signs to the n non-zero differences whose
+    sum T* is at least their sum T; the two-sided p is the share whose |T*| is at least |T|. Sums
+    are exact fractions, so a T* equal to T is counted however it is reached. None when no
+    difference is non-zero: there is nothing to flip, so no test, rather than a p of 1.
+    """
+    values = [Fraction(d) for d in differences if d != 0]
+    if not values:
+        return None
+    # Each signed sum and the number of assignments that reach it, built one difference at a time.
+    sums = Counter({Fraction(0): 1})
+    for d in values:
+        signed = Counter()
+        for total, count in sums.items():
+            signed[total + d] += count
+            signed[total - d] += count
+        sums = signed
+    t = sum(values)
+    return SignFlip(
+        t,
+        len(values),
+        Fraction(sum(count for total, count in sums.items() if total >= t), 2 ** len(values)),
+        Fraction(sum(count for total, count in sums.items() if abs(total) >= abs(t)), 2 ** len(values)),
+    )
+
+
+@dataclass(frozen=True)
+class WriteLineTest:
+    # d_q per question of the set with a kept pair.
+    differences: dict[str, Fraction]
+    # The sign-flip test on the non-zero d_q, and whether its one-sided p is at most alpha; None and
+    # False when no d_q is non-zero.
+    test: SignFlip | None
+    significant: bool
+    # The mean d_q over every question with a kept pair, zeros included, and its bootstrap interval
+    # over those questions; None when no question has a kept pair.
+    mean: Fraction | None
+    interval: tuple[float, float] | None
+
+
+def write_line_test(
+    records: Iterable[Record],
+    questions: Collection[str],
+    *,
+    confidence: str,
+    settlement: str,
+    seed: int,
+    runs: int = RUNS_PER_QUESTION,
+    alpha: Fraction = ALPHA,
+    resamples: int = RESAMPLES,
+    level: float = LEVEL,
+    errors: Collection[str] = ERRORS,
+    unscored: Collection[str] = UNSCORED,
+) -> WriteLineTest:
+    """The write line's confirmatory test: the confidence rule against the settlement rule on
+    `questions`, the question set Q*, by `question_differences` and `sign_flip_test`.
+
+    The test is one-sided: a small p means more errors under the confidence rule. The mean d_q's
+    interval is the outcome rule's bootstrap, over questions with runs averaged within each; `seed`
+    is the freeze's bootstrap seed, which the caller passes. An empty `questions` is the freeze's
+    rules_coincide case, which the caller reports in the frozen wording; a set whose differences are
+    all zero, or that has no kept pair, also has no test.
+    """
+    differences = question_differences(
+        records, questions, confidence=confidence, settlement=settlement, runs=runs, errors=errors, unscored=unscored
+    )
+    values = list(differences.values())
+    test = sign_flip_test(values)
+    return WriteLineTest(
+        differences,
+        test,
+        test is not None and test.p_value <= alpha,
+        sum(values) / len(values) if values else None,
+        bootstrap_interval([float(d) for d in values], seed=seed, resamples=resamples, level=level),
+    )
 
 
 def _scored(runs: Iterable[Record]) -> list[Record]:
