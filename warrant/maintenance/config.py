@@ -108,7 +108,7 @@ def load_config(path: Path) -> Config:
         if missing:
             raise ValueError(f"{path}: databases not in the release: {', '.join(missing)}")
         root = release.local_dir()
-        databases = {name: root / name / f"{name}_template.sqlite" for name in raw["databases"]}
+        databases = {name: release.template(name) for name in raw["databases"]}
         knowledge_bases = {name: root / name / f"{name}_kb.jsonl" for name in raw["databases"]}
     else:
         databases = {name: resolve(db) for name, db in raw["databases"].items()}

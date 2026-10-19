@@ -37,6 +37,8 @@ CONFIRMATORY_KEYS = ("statistic", "pairing", "question_set", "error_coding", "fa
 PRIMARY_FAILURE_RULE = "pairs_where_both_rules_scored"
 SCORED_EXCLUDES = ("failure_after_retries", "clarification_request")
 SENSITIVITY = ("failures_as_wrong", "clarifications_as_wrong")
+# The drift types the builder computes (`warrant.defects.build.DriftType`), which a drift reading may declare.
+DRIFT_TYPES = ("convention", "data_part")
 
 # The vendored identity search finds target = sum of two or three of a table's first 12 numeric columns.
 MAX_NUMERIC_COLUMNS = 12
@@ -105,8 +107,12 @@ def _readings(name: str, d: dict) -> list[str]:
                 found.append(f"{rid} is world-fixed, so it declares no kind")
         else:
             found.append(f"{rid} has form {form!r}, not meaning_only or world_fixed")
-    if sum(r.get("is_true") is True for r in readings) != 1:
+    true = [r for r in readings if r.get("is_true") is True]
+    if len(true) != 1:
         found.append(f"{name}: it must have exactly one true reading")
+    elif true[0].get("form") != "world_fixed" or true[0].get("transformation") != d.get("transformation"):
+        # Its database must be the injected copy (#36), so it is built with the defect's own statements.
+        found.append(f"{name}: its true reading must be world-fixed and own the defect's transformation")
     return found
 
 
@@ -227,6 +233,13 @@ def _defect(raw: dict, schema: dict[str, Schema] | None) -> tuple[list[str], lis
     errors += _touches(name, raw)
     errors += _readings(name, raw)
     errors += _drift(name, raw)
+    drift = raw.get("drift_reading")
+    if isinstance(drift, dict):
+        expected = drift.get("expected_drift_type")
+        if expected is None:
+            warnings.append(f"{name}: its drift reading declares no expected_drift_type, so the build cannot check it")
+        elif expected not in DRIFT_TYPES:
+            errors.append(f"{name}: expected_drift_type {expected!r} is not one of {', '.join(DRIFT_TYPES)}")
     readings = raw.get("readings") if isinstance(raw.get("readings"), list) else []
     warnings += [
         f"{name}: reading {r.get('id')!r} carries no_defect, which the drift-reading rule no longer uses; remove it"
@@ -318,6 +331,16 @@ def read_schema(path: Path) -> Schema:
         scratch.close()
 
 
+def clean_databases(raw: dict, config: Path, release_config: Path = RELEASE_CONFIG) -> dict[str, Path]:
+    """Each database's clean copy: the freeze's `databases:` paths, relative to the freeze, or, without
+    them, the template files of the release as fetched into the data directory."""
+    if raw.get("databases"):
+        return {name: (config.parent / p).resolve() for name, p in raw["databases"].items()}
+    release = Release.from_yaml(release_config)
+    named = {d.get("database") for d in raw.get("defects") or [] if isinstance(d, dict)}
+    return {name: release.template(name) for name in release.databases if name in named}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, type=Path, help="the freeze (configuration) file")
@@ -325,13 +348,7 @@ def main(argv=None) -> int:
                         help="the release configuration, used when the freeze gives no databases: paths")
     args = parser.parse_args(argv)
     raw = yaml.safe_load(args.config.read_text())
-    if raw.get("databases"):
-        paths = {name: (args.config.parent / p).resolve() for name, p in raw["databases"].items()}
-    else:
-        release = Release.from_yaml(args.release)
-        named = {d.get("database") for d in raw.get("defects") or [] if isinstance(d, dict)}
-        paths = {name: release.local_dir() / name / f"{name}_template.sqlite"
-                 for name in release.databases if name in named}
+    paths = clean_databases(raw, args.config, args.release)
     schema = {name: read_schema(p) for name, p in paths.items() if p.is_file()} or None
     errors, warnings = validate(raw, schema)
     for line in errors:

@@ -1,0 +1,69 @@
+# Two defects on one database for the per-reading builder (#36): a coverage defect whose drift reading
+# is world-fixed and a value-meaning defect whose drift reading is meaning-only, as on #34. Tests add
+# the global part of freeze_valid.yaml where they need a whole freeze. Paths are relative to this file.
+databases:
+  workorders: workorders.sqlite
+defects:
+  - id: short-tasks-cut
+    database: workorders
+    slot: {claim_kind: coverage, subject: tasks}
+    touches: {tasks: ["*"]}
+    transformation:
+      - DELETE FROM tasks WHERE hours < 1
+    cut_tables: []
+    reference_claim: The tasks table leaves out the tasks shorter than an hour.
+    readings:
+      - id: under-one-hour-cut
+        statement: Tasks shorter than an hour were cut from the tasks table.
+        form: world_fixed
+        transformation:
+          - DELETE FROM tasks WHERE hours < 1
+        holds: true
+        is_true: true
+      - id: nothing-cut
+        statement: Nothing was cut from the tasks table.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+      - id: under-two-hours-cut
+        statement: Tasks shorter than two hours were cut from the tasks table.
+        form: world_fixed
+        transformation:
+          - DELETE FROM tasks WHERE hours < 2
+        holds: false
+        is_true: false
+      - id: kept-elsewhere
+        statement: Short tasks are kept in another system.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: true
+        is_true: false
+    drift_reading: {reading: nothing-cut, expected_drift_type: data_part}
+  - id: site-recode
+    database: workorders
+    slot: {claim_kind: value_meaning, subject: workorders.site}
+    touches: {workorders: [site]}
+    transformation:
+      - UPDATE workorders SET site = CASE site WHEN 'NORTH' THEN '1' WHEN 'SOUTH' THEN '2' END
+    reference_claim: The site codes in workorders.site are '1' for the north site and '2' for the south site.
+    readings:
+      - id: one-is-north
+        statement: The code '1' is the north site and '2' the south site.
+        form: world_fixed
+        transformation:
+          - UPDATE workorders SET site = CASE site WHEN 'NORTH' THEN '1' WHEN 'SOUTH' THEN '2' END
+        holds: true
+        is_true: true
+      - id: two-is-north
+        statement: The code '2' is the north site and '1' the south site.
+        form: meaning_only
+        kind: convention
+        transformation: []
+        holds: false
+        is_true: false
+    drift_reading:
+      reading: two-is-north
+      expected_drift_type: convention
+      reference_claim: The site codes in workorders.site are '2' for the north site and '1' for the south site.

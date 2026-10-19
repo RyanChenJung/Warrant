@@ -48,6 +48,10 @@ class Release:
         """Where this release is fetched to: one directory per revision inside the data directory."""
         return data_dir() / "livesqlbench-base-lite" / self.revision
 
+    def template(self, name: str) -> Path:
+        """A database's clean copy: its template SQLite file in the fetched release."""
+        return self.local_dir() / name / f"{name}_template.sqlite"
+
 
 @dataclass(frozen=True, order=True)
 class ForeignKey:

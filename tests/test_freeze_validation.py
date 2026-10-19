@@ -169,6 +169,18 @@ def two_meaning_only_rivals(freeze):
     return d
 
 
+def test_a_meaning_only_true_reading_is_rejected(freeze):
+    """The true reading owns the defect's transformation (#34), so it is world-fixed (#99 review)."""
+    true = reading(defect(freeze, "seeing-recode"), "one-is-best")
+    true.update(form="meaning_only", kind="convention", transformation=[])
+    assert mentions(errors_of(freeze), "world-fixed and own the defect's transformation")
+
+
+def test_a_true_reading_with_a_transformation_other_than_the_defects_is_rejected(freeze):
+    reading(defect(freeze, "wallet-sum"), "three-terms")["transformation"] = ["UPDATE accountbalances SET walletsum = 0"]
+    assert mentions(errors_of(freeze), "world-fixed and own the defect's transformation")
+
+
 def test_two_meaning_only_rivals_are_rejected_even_with_one_marked_no_defect(freeze):
     """Branch (b) as amended on #34: a defect with more than one meaning-only reading other than the
     true one is re-authored, whatever its marks say."""
@@ -188,6 +200,24 @@ def test_meaning_only_readings_do_not_count_when_world_fixed_rivals_choose_the_d
     d = defect(freeze, "orders-cut")
     d["readings"].append({**reading(d, "kept-elsewhere"), "id": "archived"})
     assert errors_of(freeze) == []
+
+
+def test_an_unknown_expected_drift_type_is_rejected(freeze):
+    defect(freeze, "wallet-sum")["drift_reading"]["expected_drift_type"] = "data-part"
+    assert mentions(errors_of(freeze), "expected_drift_type")
+
+
+def test_a_missing_expected_drift_type_is_flagged_not_rejected(freeze):
+    del defect(freeze, "wallet-sum")["drift_reading"]["expected_drift_type"]
+    errors, warnings = validate(freeze, SCHEMA)
+    assert errors == [] and mentions(warnings, "wallet-sum") and mentions(warnings, "expected_drift_type")
+
+
+def test_the_validator_knows_the_builders_drift_types():
+    from warrant.defects.build import DriftType
+    from warrant.freeze.validate import DRIFT_TYPES
+
+    assert set(DRIFT_TYPES) == {t.value for t in DriftType}
 
 
 def test_a_leftover_no_defect_mark_is_flagged_not_rejected(freeze):

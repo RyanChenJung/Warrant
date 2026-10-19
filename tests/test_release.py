@@ -130,3 +130,8 @@ def test_loading_leaves_the_clean_copy_unchanged(tmp_path, download):
     before = clean.read_bytes()
     load_database(tmp_path / "data", "shop")
     assert clean.read_bytes() == before
+
+
+def test_a_databases_clean_copy_is_its_template_file_in_the_fetched_release(tmp_path, monkeypatch):
+    monkeypatch.setenv("WARRANT_DATA_DIR", str(tmp_path))
+    assert RELEASE.template("shop") == RELEASE.local_dir() / "shop" / "shop_template.sqlite"
