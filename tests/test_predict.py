@@ -153,9 +153,9 @@ TRUE = reading("true", False, True)
     ([reading("a", True, False), reading("b", False, True)], PredictedOutcome.AGENT_ALONE),
     ([reading("a", True, False), reading("b", False, False)], PredictedOutcome.BOTH),
     ([reading("a", False, False)], PredictedOutcome.PERSON_ONLY),
-    # The degenerate case both rules cover: no reading differs and the claim holds under all of them.
-    # Person only comes first.
-    ([reading("a", False, True)], PredictedOutcome.PERSON_ONLY),
+    # The case both rules cover: no reading differs and the claim holds under all of them. The claim
+    # is settled, so agent alone comes first (Ryan's decision on #104).
+    ([reading("a", False, True)], PredictedOutcome.AGENT_ALONE),
 ])
 def test_the_predicted_outcome_follows_the_readings_outputs_and_holds_flags(rivals, expected):
     assert outcome([TRUE, *rivals]) == expected

@@ -6,14 +6,15 @@ The baseline battery runs once on every distinct reading database that `warrant.
 (readings that share a content hash share one run), and its normalised outputs (#31) are compared
 byte for byte with the true reading's. No model is called. For each claim (defect slot):
 
-- person only: every reading's output equals the true reading's;
 - agent alone: the reference claim holds under every reading whose output equals the true reading's;
+- person only: every reading's output equals the true reading's;
 - both: some reading's output differs, but the reference claim fails under a reading whose output
   does not.
 
-The rules are applied in that order. They overlap in one case: every reading's output equals the
-true reading's and the reference claim holds under every reading. That case is predicted person only.
-It is not the case of any frozen defect, since each has a drift reading under which the claim fails.
+The rules are applied in that order, as #37 lists them. They overlap in one case: every reading's
+output equals the true reading's and the reference claim holds under every reading. The claim is then
+settled (CONTEXT.md), so that case is predicted agent alone, as decided on #104. It is not the case of
+any frozen defect, since each has a drift reading under which the claim fails.
 
 A claim kind's prediction is the one all its claims share, else "mixed", the per-kind combination
 rule of the global part; the record carries the freeze's wording of the rule. The bridge prediction
@@ -126,10 +127,10 @@ class Predictions:
 
 def outcome(readings: Sequence[ReadingResult]) -> PredictedOutcome:
     """A claim's predicted outcome from all its readings, the true one included."""
-    if not any(r.differs for r in readings):
-        return PredictedOutcome.PERSON_ONLY
     if all(r.holds for r in readings if not r.differs):
         return PredictedOutcome.AGENT_ALONE
+    if not any(r.differs for r in readings):
+        return PredictedOutcome.PERSON_ONLY
     return PredictedOutcome.BOTH
 
 
