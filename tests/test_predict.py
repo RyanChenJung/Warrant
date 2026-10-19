@@ -13,12 +13,14 @@ from pathlib import Path
 import pytest
 import yaml
 
+from warrant.agent.fake import ScriptedAgent
 from warrant.battery.normalise import normalise_database
 from warrant.battery.settings import Normalisation
 from warrant.defects.build import Built, DriftType, build, content_hash
 from warrant.defects.inject import load_defect
 from warrant.freeze.validate import read_schema, validate
 from warrant.store.claims import ClaimKind, PredictedOutcome
+from warrant.write_line.config import Config, Question
 from warrant.write_line.predict import (
     MIXED,
     BatterySettings,
@@ -28,6 +30,7 @@ from warrant.write_line.predict import (
     outcome,
     predict,
 )
+from warrant.write_line.run import run
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FREEZE = FIXTURES / "freeze_predictions.yaml"
@@ -102,6 +105,28 @@ def test_a_coverage_defect_that_leaves_child_rows_on_a_same_named_key_is_not_pre
     assert claim.outcome == PredictedOutcome.BOTH
     assert {r.reading: r.differs for r in claim.readings}["mistyped-references"] is False
     assert predictions.bridge["open-orders-cut"].battery_tells_apart is True
+
+
+def test_prediction_completes_with_a_fake_agent_whose_every_operation_raises(folder, clean, tmp_path):
+    def refuse(request, tools):
+        raise AssertionError("the agent was asked during prediction")
+
+    agent = ScriptedAgent(refuse)
+    config = Config(
+        databases=clean,
+        defects=tuple(DEFECTS),
+        # A control question, so a run that went on past prediction would ask the agent.
+        questions=(Question("work-orders", "plant", "How many work orders are there?",
+                            "SELECT COUNT(*) FROM workorders", None),),
+        rules=("empty",),
+        runs=1,
+        global_part=RAW["global"],
+    )
+    result = run(config, agent, tmp_path / "work", stop_after_prediction=True)
+    assert agent.requests == [] and result.rows == []
+    assert result.predictions.claims["site-swap"].outcome == PredictedOutcome.PERSON_ONLY
+    with pytest.raises(AssertionError, match="asked during prediction"):
+        run(config, agent, tmp_path / "work-on")
 
 
 def test_per_kind_predictions_follow_the_combination_rule_in_the_global_part(predictions):
