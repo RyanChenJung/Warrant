@@ -328,8 +328,9 @@ def run(
 
 
 def check(config: Config, work_dir: Path) -> int:
-    """Print each question's gold answer and each probe's answers under the readings it separates,
-    then every problem the run would stop on; no agent is called."""
+    """Print each question's gold answer, a control's gold answer on the clean copy too, and each
+    probe's answers under the readings it separates, then every problem the run would stop on; no
+    agent is called."""
     built = build(list(config.defects), config.databases, work_dir)
     if config.injection is not None:
         _same_as_recorded(built, config.injection)
@@ -341,6 +342,8 @@ def check(config: Config, work_dir: Path) -> int:
             continue
         gold[q.id] = GoldAnswer(q.id, q.gold_sql, *query_with_columns(injected[q.database], q.gold_sql))
         print(f"{q.id}: gold: {gold[q.id].rows}")
+        if q.defect is None:  # a control's gold answer must be the same on the clean copy
+            print(f"  clean copy: {query(config.databases[q.database], q.gold_sql)}")
         for reading, sql in q.separates:
             try:
                 print(f"  {reading}: {query_with_columns(injected[q.database], sql)[1]}")
