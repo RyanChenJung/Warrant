@@ -16,7 +16,7 @@ from warrant.agent.tools import ReadOnlySQL
 from warrant.config import data_dir
 from warrant.data.sqlite import query, query_with_columns, schema
 from warrant.defects.audit import Audit
-from warrant.defects.build import build
+from warrant.defects.build import Built, build
 from warrant.defects.inject import Defect
 from warrant.scoring.classify import (
     TOLERANCE,
@@ -128,6 +128,27 @@ def _rejected(config: Config, gold: dict[str, GoldAnswer]) -> list[str]:
     return rejected
 
 
+def _same_as_recorded(built: Built, record: dict) -> None:
+    """Refuse databases that are not the recorded injection's: the builder is deterministic, so a
+    rebuild on any machine gives the recorded content hashes, and a run on other databases is not a
+    run on the injected copy (#49)."""
+    differ = [
+        f"the injected copy of {name!r}"
+        for name in sorted(built.injected.keys() | record["injected"].keys())
+        if built.injected.get(name) != record["injected"].get(name)
+    ]
+    readings = {(d, r) for d, rs in built.readings.items() for r in rs} | {
+        (d, r) for d, rs in record["readings"].items() for r in rs
+    }
+    differ += [
+        f"reading {r!r} of {d!r}"
+        for d, r in sorted(readings)
+        if built.readings.get(d, {}).get(r) != record["readings"].get(d, {}).get(r)
+    ]
+    if differ:
+        raise ValueError("the databases built for this run are not the recorded injection's: " + ", ".join(differ))
+
+
 def run(
     config: Config,
     agent: Agent,
@@ -135,18 +156,24 @@ def run(
     provenance: Provenance | None = None,
     results: Path | None = None,
     *,
-    tolerance: float = TOLERANCE,
+    tolerance: float | None = None,
     refusal_check: RefusalCheck = rule_based_refusal_check,
     stop_after_prediction: bool = False,
 ) -> WriteLineResult:
     """Ask every question under every rule `config.runs` times and score the responses.
 
-    The tolerance and the refusal check belong to the global part of the freeze (#33), which will
-    supply them; until then the defaults are the spec's. When a defect has a reading set, the
-    predicted outcomes are computed first, from the global part's battery settings, and with
+    Without a `tolerance`, answers are scored with the global part's numeric_tolerance when the
+    configuration has one, else the scorer's default; the refusal check is the frozen rule's. When the
+    configuration names an injection record, the databases built here must be that injection's, copy
+    for copy by content hash, or the run stops before any agent call. When a defect has a reading
+    set, the predicted outcomes are computed first, from the global part's battery settings, and with
     `stop_after_prediction` the run returns them before any agent call.
     """
+    if tolerance is None:
+        tolerance = (config.global_part or {}).get("numeric_tolerance", TOLERANCE)
     built = build(list(config.defects), config.databases, work_dir)
+    if config.injection is not None:
+        _same_as_recorded(built, config.injection)
     injected = {name: built.copy(content) for name, content in built.injected.items()}
     audits = {a.defect: a for a in built.audits}
     predictions = None
