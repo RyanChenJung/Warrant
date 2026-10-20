@@ -39,6 +39,7 @@ column meanings or knowledge-base entries, are licensed under CC BY-SA 4.0
 - `predictions/`: the predicted outcomes under the baseline battery, with the normalised battery
   output of every reading database (#37).
 - `configs/write_line_pilot.yaml`: the write line's pilot probes, with their gold SQL (#49).
+- `results/`: stored results of real-model runs, with their SQL, starting with the pilot (#49).
 - `drift_tasks/`: the maintenance line's documented drift tasks, with edited knowledge-base entries
   (#43).
 - `tests/fixtures/freeze_valid.yaml`: example defect specifications for the freeze validation tests.
