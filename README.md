@@ -46,7 +46,8 @@ column meanings or knowledge-base entries, are licensed under CC BY-SA 4.0
   output of every reading database (#37).
 - `configs/write_line_pilot.yaml`: the write line's pilot probes, with their gold SQL (#49).
 - `docs/talks/`: the shared facts for talks, with the planted problems' tables, counts and codes.
-- `results/`: stored results of real-model runs, with their SQL, starting with the pilot (#49).
+- `results/`: stored results of real-model runs, with their SQL and, after the pilot (#49), their
+  executed results.
 - `drift_tasks/`: the maintenance line's documented drift tasks, with edited knowledge-base entries
   (#43).
 - `tests/fixtures/freeze_valid.yaml`: example defect specifications for the freeze validation tests.
