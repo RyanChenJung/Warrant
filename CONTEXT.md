@@ -281,3 +281,21 @@ _Avoid_: deferral, asking for help, human-in-the-loop
 **Silent error**:
 A wrong answer given without an error, a refusal, a clarification request or an escalation.
 _Avoid_: hidden error, confident error
+
+## Plain-language names
+
+For talks and introductions only. Technical text, code and the paper's methods use the terms above,
+and their _Avoid_ lists still apply there.
+
+| Plain name | Term |
+|---|---|
+| note | Claim |
+| the AI's notes | Knowledge store |
+| automatic data checks | Check battery |
+| the checks settle it | Settled |
+| possible explanation | Reading |
+| checks-first | Settlement rule |
+| confidence-first | Confidence rule |
+| planted problem | Injected defect |
+| a wrong number with no warning | Silent error |
+| the expert | the person a claim is left to |
