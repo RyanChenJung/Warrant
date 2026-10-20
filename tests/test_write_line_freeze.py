@@ -1,7 +1,8 @@
 """A write-line configuration on a committed freeze (#49): the defects and the global part come from
-the freeze, the run's databases must be the recorded injection's, and answers are scored with the
-freeze's numeric tolerance. The freeze here is the whole-freeze fixture of the predicted outcomes,
-on copies of the work-order fixture."""
+the freeze, the run's databases must be the recorded injection's, answers are scored with the
+freeze's numeric tolerance, and every probe names the readings it separates, each with the SQL that
+answers it under that reading (#34, round 2). The freeze here is the whole-freeze fixture of the
+predicted outcomes, on copies of the work-order fixture."""
 
 import json
 import shutil
@@ -18,7 +19,7 @@ from warrant.defects.inject import load_defect
 from warrant.freeze.validate import clean_databases
 from warrant.scoring.classify import ResponseClass
 from warrant.write_line.config import load_config
-from warrant.write_line.run import run
+from warrant.write_line.run import main, run
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CLOSED_COST = "SELECT SUM(total_cost) FROM workorders WHERE status = 'CLOSED'"
@@ -29,6 +30,8 @@ QUESTIONS = [
         "defect": "open-orders-cut",
         "text": "How many open work orders are there?",
         "gold_sql": "SELECT COUNT(DISTINCT wonum) FROM tasks WHERE wonum NOT IN (SELECT wonum FROM workorders)",
+        # Read as if nothing was cut, the work-order table holds every order: none of them open.
+        "separates": {"nothing-cut": "SELECT COUNT(*) FROM workorders WHERE status = 'OPEN'"},
     },
     {"id": "closed-cost", "database": "depot", "defect": None, "text": "What do closed work orders cost?", "gold_sql": CLOSED_COST},
 ]
@@ -134,3 +137,61 @@ def test_answers_are_scored_with_the_freezes_numeric_tolerance(freeze, tmp_path)
     assert {row.response_class for row in closed} == {ResponseClass.WRONG_ANSWER}
     explicit = run(load_config(configuration(freeze)), answers(lambda r: off), tmp_path / "work2", tolerance=0.05)
     assert {row.response_class for row in explicit.rows if row.question_id == "closed-cost"} == {ResponseClass.CORRECT_ANSWER}
+
+
+# The probes' reading tags (#34, round 2): each probe of a defect with a reading set names the
+# readings it separates, with the SQL that answers it under each, and every such answer is more than
+# 2 percent from the gold answer on the injected copy.
+
+
+def with_probe(**change):
+    probe = {**QUESTIONS[0], **change}
+    return [probe, QUESTIONS[1]]
+
+
+@pytest.mark.parametrize(
+    "change, reason",
+    [
+        ({"separates": None}, "names no reading it separates"),
+        ({"separates": {"parent-cut": "SELECT 0"}}, "'parent-cut' is the true reading"),
+        ({"separates": {"no-such-reading": "SELECT 0"}}, "'no-such-reading' is not a reading of open-orders-cut"),
+        ({"separates": {"nothing-cut": QUESTIONS[0]["gold_sql"]}}, "within 2 percent of the gold answer under reading 'nothing-cut'"),
+        ({"separates": {"nothing-cut": "SELECT 4.05"}}, "within 2 percent of the gold answer under reading 'nothing-cut'"),
+        ({"separates": {"nothing-cut": "SELECT * FROM no_such_table"}}, "its SQL for reading 'nothing-cut' fails"),
+    ],
+    ids=["untagged", "true-reading", "unknown-reading", "same-answer", "within-2-percent", "failing-sql"],
+)
+def test_a_probe_whose_reading_tags_do_not_separate_stops_the_run_before_any_agent_call(freeze, tmp_path, change, reason):
+    probe = {k: v for k, v in {**QUESTIONS[0], **change}.items() if v is not None}
+    calls = []
+    agent = answers(lambda r: calls.append(r) or CLOSED_COST)
+    with pytest.raises(ValueError, match=reason):
+        run(load_config(configuration(freeze, questions=[probe, QUESTIONS[1]])), agent, tmp_path / "work")
+    assert calls == []
+
+
+def test_an_answer_just_over_2_percent_from_the_gold_answer_separates(freeze, tmp_path):
+    """The gold answer is 4 open orders; 4.1 is 2.5 percent off."""
+    config = load_config(configuration(freeze, questions=with_probe(separates={"nothing-cut": "SELECT 4.1"})))
+    assert len(run(config, answers(lambda r: CLOSED_COST), tmp_path / "work").rows) == 4
+
+
+@pytest.mark.parametrize("question", [QUESTIONS[1], {**QUESTIONS[1], "gold_sql": None, "missing_terms": ["x"]}], ids=["control", "refusal"])
+def test_only_a_probe_with_a_gold_answer_can_name_readings_it_separates(freeze, question):
+    with pytest.raises(ValueError, match="only a probe with a gold answer"):
+        load_config(configuration(freeze, questions=[QUESTIONS[0], {**question, "separates": {"nothing-cut": "SELECT 0"}}]))
+
+
+def test_the_check_command_prints_each_probes_answers_under_its_readings_with_no_model_call(freeze, tmp_path, capsys):
+    record = injection_record(freeze, tmp_path / "recorded")
+    path = configuration(freeze, injection=record.name)
+    assert main(["--config", str(path), "--work-dir", str(tmp_path / "work"), "--check"]) == 0
+    out = capsys.readouterr().out
+    assert "open-orders" in out and "gold: [(4,)]" in out and "nothing-cut: [(0,)]" in out
+    assert "0 problems" in out
+
+
+def test_the_check_command_fails_on_a_probe_that_does_not_separate(freeze, tmp_path, capsys):
+    path = configuration(freeze, questions=with_probe(separates={"nothing-cut": "SELECT 4"}))
+    assert main(["--config", str(path), "--work-dir", str(tmp_path / "work"), "--check"]) == 1
+    assert "within 2 percent" in capsys.readouterr().out

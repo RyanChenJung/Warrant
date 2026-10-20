@@ -6,6 +6,7 @@ person; #50 and #51 add the others.
 """
 
 import argparse
+import sqlite3
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,12 +29,13 @@ from warrant.scoring.classify import (
     accuracy,
     execute,
     flips,
+    results_match,
     rule_based_refusal_check,
     score,
 )
 from warrant.store.claims import Claim, KnowledgeStore, Source, Toulmin, WarrantKind
 from warrant.store.results import Provenance, append, provenance_for
-from warrant.write_line.config import Config, load_config
+from warrant.write_line.config import Config, Question, load_config
 from warrant.write_line.predict import BatterySettings, Predictions, predict
 
 
@@ -110,8 +112,39 @@ def _record(row: ResultRow) -> dict:
     }
 
 
-def _rejected(config: Config, gold: dict[str, GoldAnswer]) -> list[str]:
+# A probe's answers under the readings it separates differ from its gold answer by more than this
+# share, or are different sets (#34, round 2).
+SEPARATION = 0.02
+
+
+def _unseparated(q: Question, defect: Defect | None, injected: Path, gold: GoldAnswer) -> list[str]:
+    """Why a probe of a defect with a reading set does not separate the readings it names."""
+    if defect is None or not defect.readings:
+        return []
+    if not q.separates:
+        return [f"{q.id} (a probe of {defect.id}, which has a reading set, names no reading it separates)"]
+    readings = {r["id"]: r for r in defect.readings}
+    expected = Result(gold.columns, gold.rows)
+    found = []
+    for reading, sql in q.separates:
+        if reading not in readings:
+            found.append(f"{q.id} ({reading!r} is not a reading of {defect.id})")
+        elif readings[reading].get("is_true"):
+            found.append(f"{q.id} ({reading!r} is the true reading)")
+        else:
+            try:
+                answer = Result(*query_with_columns(injected, sql))
+            except sqlite3.Error as error:
+                found.append(f"{q.id} (its SQL for reading {reading!r} fails: {error})")
+                continue
+            if results_match(answer, expected, key=q.key, tolerance=SEPARATION):
+                found.append(f"{q.id} (its answer is within 2 percent of the gold answer under reading {reading!r})")
+    return found
+
+
+def _rejected(config: Config, gold: dict[str, GoldAnswer], injected: dict[str, Path]) -> list[str]:
     """Each question the run could not score as configured, and why; checked before any agent call."""
+    defects = {d.id: d for d in config.defects}
     rejected = []
     for q in config.questions:
         if q.id not in gold:  # its correct response is a refusal
@@ -125,6 +158,7 @@ def _rejected(config: Config, gold: dict[str, GoldAnswer]) -> list[str]:
         columns = {column.casefold() for column in g.columns}
         if any(column.casefold() not in columns for column in q.key):
             rejected.append(f"{q.id} (a key column its gold result does not have)")
+        rejected += _unseparated(q, defects.get(q.defect), injected[q.database], g)
     return rejected
 
 
@@ -192,7 +226,7 @@ def run(
         for q in config.questions
         if q.gold_sql is not None
     }
-    rejected = _rejected(config, gold)
+    rejected = _rejected(config, gold, injected)
     if rejected:
         raise ValueError("questions the run cannot score: " + "; ".join(rejected))
     expected = {question_id: Result(g.columns, g.rows) for question_id, g in gold.items()}
@@ -267,15 +301,45 @@ def run(
     )
 
 
+def check(config: Config, work_dir: Path) -> int:
+    """Print each question's gold answer and each probe's answers under the readings it separates,
+    then every problem the run would stop on; no agent is called."""
+    built = build(list(config.defects), config.databases, work_dir)
+    if config.injection is not None:
+        _same_as_recorded(built, config.injection)
+    injected = {name: built.copy(content) for name, content in built.injected.items()}
+    gold = {}
+    for q in config.questions:
+        if q.gold_sql is None:
+            print(f"{q.id}: a refusal question")
+            continue
+        gold[q.id] = GoldAnswer(q.id, q.gold_sql, *query_with_columns(injected[q.database], q.gold_sql))
+        print(f"{q.id}: gold: {gold[q.id].rows}")
+        for reading, sql in q.separates:
+            try:
+                print(f"  {reading}: {query_with_columns(injected[q.database], sql)[1]}")
+            except sqlite3.Error as error:
+                print(f"  {reading}: fails ({error})")
+    problems = _rejected(config, gold, injected)
+    for problem in problems:
+        print(f"problem: {problem}")
+    print(f"{len(problems)} problems")
+    return 1 if problems else 0
+
+
 def main(argv=None) -> int:
     """Run one configuration against the configured model: `python -m warrant.write_line.run`."""
     parser = argparse.ArgumentParser(description="Run the write line against the configured model.")
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--work-dir", type=Path, default=data_dir() / "write_line")
     parser.add_argument("--results", type=Path, default=data_dir() / "results.jsonl")
+    parser.add_argument("--check", action="store_true",
+                        help="check the questions and print their answers, with no agent call")
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
+    if args.check:
+        return check(config, args.work_dir)
     if config.model is None:
         parser.error(f"{args.config} names no model block")
     try:
