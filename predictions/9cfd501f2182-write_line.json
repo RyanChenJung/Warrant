@@ -1,0 +1,197 @@
+{
+  "commit": "9cfd501f21826085cd3e348442d4d13985af982a",
+  "freeze": "freeze/write_line.yaml",
+  "freeze_sha256": "1ccc6ad78da9fab1e333731c7e1a521de47b8421ea6373d111e1be57093a8f8e",
+  "injection_record": "injections/9cfd501f2182-write_line.json",
+  "injection_record_sha256": "80fe025ff2dd54f2fcc0d35699984f61e253ed720ff51b5109062e6d4c611903",
+  "settings": {
+    "normalisation": {
+      "counts": "keep",
+      "percentages": "keep"
+    },
+    "fixed_date": "2026-10-12",
+    "duckdb_version": {
+      "frozen": "1.5.5",
+      "installed": "1.5.5"
+    },
+    "pairing": "declared_child_to_parent",
+    "peers": "declared_foreign_keys",
+    "per_kind_combination": "the prediction all claims of the kind share, else mixed, and a mixed kind is not compared in H1 (one claim per kind here)"
+  },
+  "outputs": {
+    "27f88c603d23a92eb4d84cd060e4d0685fcf7774d8afb28480000a5408be5b21": {
+      "file": "9cfd501f2182-write_line/27f88c603d23a92eb4d84cd060e4d0685fcf7774d8afb28480000a5408be5b21.jsonl",
+      "sha256": "fac0f5ed30be99b657048e7baa83e3f03d1427d33b54cc7a5399d1a18ba51f9d",
+      "records": 105
+    },
+    "765655f0bb065879b1b39518730fb3cd3edba2d7332924867ab54465a67ef746": {
+      "file": "9cfd501f2182-write_line/765655f0bb065879b1b39518730fb3cd3edba2d7332924867ab54465a67ef746.jsonl",
+      "sha256": "2b6640f68ae268aaf706ea499b210e9d3e19db2b903b6cf314b095ae712a4aa1",
+      "records": 84
+    },
+    "8558694443b0f2d07d8cf6c25f06fbd8426a1f18d78ff9d7d0bb0b863a137824": {
+      "file": "9cfd501f2182-write_line/8558694443b0f2d07d8cf6c25f06fbd8426a1f18d78ff9d7d0bb0b863a137824.jsonl",
+      "sha256": "536969eacef9d795e2af1b224e788bf0090acb6eabd4e5e595ac49e0bbe63dc6",
+      "records": 81
+    },
+    "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776": {
+      "file": "9cfd501f2182-write_line/9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776.jsonl",
+      "sha256": "0cd2c4cfe765403d43784b7d1581aa065338172fff1abb9f1a81946c7cf8c714",
+      "records": 84
+    },
+    "9f3e510217e82aa52192f62544358b4a95a2dd8edaffcdb926e341fa1ebe4019": {
+      "file": "9cfd501f2182-write_line/9f3e510217e82aa52192f62544358b4a95a2dd8edaffcdb926e341fa1ebe4019.jsonl",
+      "sha256": "96ce28aec5d9b964ca1088046bb1bed33afdc77b50996900d9b64a0588dc16ea",
+      "records": 83
+    },
+    "ac0f3a4ab46359677872396ddb44a477275d40e86227e4b5fa72ab298bbe4d33": {
+      "file": "9cfd501f2182-write_line/ac0f3a4ab46359677872396ddb44a477275d40e86227e4b5fa72ab298bbe4d33.jsonl",
+      "sha256": "b0ac5d4d67fcd38af6b131eec593d3a044a7797fbfcef333cd6626a2217c9f63",
+      "records": 84
+    },
+    "c081e5ecdc291051b1cd729cf4a300a37e579a50ee07d992647f3e2b4bdc2bf9": {
+      "file": "9cfd501f2182-write_line/c081e5ecdc291051b1cd729cf4a300a37e579a50ee07d992647f3e2b4bdc2bf9.jsonl",
+      "sha256": "a01375d747fe6f9f284369a9ff1b2bb246c3cfda9298ec3a68258cb839a29046",
+      "records": 81
+    },
+    "e233419def614386b819bd8ad4fa6b9a03df1a80b0df9e26f13c8d09bbde9284": {
+      "file": "9cfd501f2182-write_line/e233419def614386b819bd8ad4fa6b9a03df1a80b0df9e26f13c8d09bbde9284.jsonl",
+      "sha256": "08c7fbe9affbd7d8a91064ecfd25a34d1724db679aa7f5f3b64478e9a1854874",
+      "records": 84
+    },
+    "e99b9a4c52b389ddb402679557da65bf97c0a8e118230fa1b2c02c2511dc15ce": {
+      "file": "9cfd501f2182-write_line/e99b9a4c52b389ddb402679557da65bf97c0a8e118230fa1b2c02c2511dc15ce.jsonl",
+      "sha256": "e6c297f5bba1fa2003ae54b006ff78032e2a9a6a7424060537c36f53f3f7f223",
+      "records": 85
+    }
+  },
+  "claims": {
+    "wallet-sum": {
+      "claim_kind": "column_formula",
+      "subject": "accountbalances.walletsum",
+      "outcome": "agent_alone",
+      "readings": {
+        "with-margin": {
+          "database": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+          "output": "0cd2c4cfe765403d43784b7d1581aa065338172fff1abb9f1a81946c7cf8c714",
+          "differs": false,
+          "holds": true
+        },
+        "without-margin": {
+          "database": "ac0f3a4ab46359677872396ddb44a477275d40e86227e4b5fa72ab298bbe4d33",
+          "output": "b0ac5d4d67fcd38af6b131eec593d3a044a7797fbfcef333cd6626a2217c9f63",
+          "differs": true,
+          "holds": false
+        },
+        "without-frozen": {
+          "database": "e233419def614386b819bd8ad4fa6b9a03df1a80b0df9e26f13c8d09bbde9284",
+          "output": "08c7fbe9affbd7d8a91064ecfd25a34d1724db679aa7f5f3b64478e9a1854874",
+          "differs": true,
+          "holds": false
+        },
+        "with-unrealised-pnl": {
+          "database": "e99b9a4c52b389ddb402679557da65bf97c0a8e118230fa1b2c02c2511dc15ce",
+          "output": "e6c297f5bba1fa2003ae54b006ff78032e2a9a6a7424060537c36f53f3f7f223",
+          "differs": true,
+          "holds": false
+        },
+        "four-terms": {
+          "database": "9f3e510217e82aa52192f62544358b4a95a2dd8edaffcdb926e341fa1ebe4019",
+          "output": "96ce28aec5d9b964ca1088046bb1bed33afdc77b50996900d9b64a0588dc16ea",
+          "differs": true,
+          "holds": false
+        }
+      }
+    },
+    "orders-cut": {
+      "claim_kind": "coverage",
+      "subject": "orders",
+      "outcome": "both",
+      "readings": {
+        "cancelled-cut": {
+          "database": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+          "output": "0cd2c4cfe765403d43784b7d1581aa065338172fff1abb9f1a81946c7cf8c714",
+          "differs": false,
+          "holds": true
+        },
+        "nothing-cut": {
+          "database": "8558694443b0f2d07d8cf6c25f06fbd8426a1f18d78ff9d7d0bb0b863a137824",
+          "output": "536969eacef9d795e2af1b224e788bf0090acb6eabd4e5e595ac49e0bbe63dc6",
+          "differs": true,
+          "holds": false
+        },
+        "cut-with-children": {
+          "database": "c081e5ecdc291051b1cd729cf4a300a37e579a50ee07d992647f3e2b4bdc2bf9",
+          "output": "a01375d747fe6f9f284369a9ff1b2bb246c3cfda9298ec3a68258cb839a29046",
+          "differs": true,
+          "holds": false
+        },
+        "filled-cut": {
+          "database": "765655f0bb065879b1b39518730fb3cd3edba2d7332924867ab54465a67ef746",
+          "output": "2b6640f68ae268aaf706ea499b210e9d3e19db2b903b6cf314b095ae712a4aa1",
+          "differs": true,
+          "holds": false
+        },
+        "archived": {
+          "database": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+          "output": "0cd2c4cfe765403d43784b7d1581aa065338172fff1abb9f1a81946c7cf8c714",
+          "differs": false,
+          "holds": false
+        },
+        "other-system": {
+          "database": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+          "output": "0cd2c4cfe765403d43784b7d1581aa065338172fff1abb9f1a81946c7cf8c714",
+          "differs": false,
+          "holds": false
+        },
+        "mistyped": {
+          "database": "9ac982a1ca018cfe6ae1663602d8708e9d0b49ad04eba73cd481b23dc5d0c776",
+          "output": "0cd2c4cfe765403d43784b7d1581aa065338172fff1abb9f1a81946c7cf8c714",
+          "differs": false,
+          "holds": false
+        }
+      }
+    },
+    "seeing-recode": {
+      "claim_kind": "value_meaning",
+      "subject": "observatories.seeingprofile",
+      "outcome": "person_only",
+      "readings": {
+        "one-is-best": {
+          "database": "27f88c603d23a92eb4d84cd060e4d0685fcf7774d8afb28480000a5408be5b21",
+          "output": "fac0f5ed30be99b657048e7baa83e3f03d1427d33b54cc7a5399d1a18ba51f9d",
+          "differs": false,
+          "holds": true
+        },
+        "three-is-best": {
+          "database": "27f88c603d23a92eb4d84cd060e4d0685fcf7774d8afb28480000a5408be5b21",
+          "output": "fac0f5ed30be99b657048e7baa83e3f03d1427d33b54cc7a5399d1a18ba51f9d",
+          "differs": false,
+          "holds": false
+        }
+      }
+    }
+  },
+  "kinds": {
+    "column_formula": "agent_alone",
+    "coverage": "both",
+    "value_meaning": "person_only"
+  },
+  "bridge": {
+    "wallet-sum": {
+      "drift_reading": "without-margin",
+      "drift_type": "data_part",
+      "battery_tells_apart": true
+    },
+    "orders-cut": {
+      "drift_reading": "nothing-cut",
+      "drift_type": "data_part",
+      "battery_tells_apart": true
+    },
+    "seeing-recode": {
+      "drift_reading": "three-is-best",
+      "drift_type": "convention",
+      "battery_tells_apart": false
+    }
+  }
+}
