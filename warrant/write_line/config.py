@@ -48,6 +48,9 @@ def _names(raw: dict, field: str) -> tuple[str, ...]:
 def _question(raw: dict) -> Question:
     if (raw.get("gold_sql") is None) == (not raw.get("missing_terms")):
         raise ValueError(f"question {raw['id']!r} needs exactly one of gold_sql and missing_terms")
+    defect = raw.get("defect")
+    if defect is not None and not (isinstance(defect, str) and defect.strip()):
+        raise ValueError(f"question {raw['id']!r}: defect must be one defect id")
     separates = raw.get("separates") or {}
     if not isinstance(separates, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in separates.items()):
         raise ValueError(f"question {raw['id']!r}: separates maps reading ids to SQL")
@@ -78,6 +81,17 @@ class Config:
     injection: dict | None = None
 
 
+def _known_defects(config: Config) -> Config:
+    """Refuse a question whose defect is not one of the configuration's: a misspelled id would make a
+    probe look like neither a probe of a defect with a reading set nor a control, and skip both
+    checks the run makes before any agent call."""
+    ids = {d.id for d in config.defects}
+    unknown = [f"{q.id} ({q.defect!r})" for q in config.questions if q.defect is not None and q.defect not in ids]
+    if unknown:
+        raise ValueError("questions naming a defect the configuration does not have: " + ", ".join(unknown))
+    return config
+
+
 def load_config(path: Path, release_config: Path = RELEASE_CONFIG) -> Config:
     """Read a configuration; paths are relative to the configuration file."""
     path = Path(path)
@@ -91,12 +105,12 @@ def load_config(path: Path, release_config: Path = RELEASE_CONFIG) -> Config:
     if not raw.get("freeze"):
         if raw.get("injection"):
             raise ValueError("an injection record needs the freeze it was built from (freeze:)")
-        return Config(
+        return _known_defects(Config(
             databases={name: (path.parent / db).resolve() for name, db in raw["databases"].items()},
             defects=tuple(load_defect(d) for d in raw["defects"]),
             global_part=raw.get("global"),
             **common,
-        )
+        ))
     if any(key in raw for key in ("defects", "global", "databases")):
         raise ValueError("a configuration that names a freeze takes its defects, global part and databases from it")
     freeze = (path.parent / raw["freeze"]).resolve()
@@ -108,10 +122,10 @@ def load_config(path: Path, release_config: Path = RELEASE_CONFIG) -> Config:
             raise ValueError(f"the injection record's outcome is {injection.get('outcome')!r}, not 'built'")
         if injection.get("freeze_sha256") != sha256(freeze):
             raise ValueError(f"the injection record is not of this freeze: {freeze.name}'s SHA-256 differs")
-    return Config(
+    return _known_defects(Config(
         databases=clean_databases(frozen, freeze, release_config),
         defects=tuple(load_defect(d) for d in frozen["defects"]),
         global_part=frozen.get("global"),
         injection=injection,
         **common,
-    )
+    ))

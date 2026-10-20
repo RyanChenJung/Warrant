@@ -197,6 +197,40 @@ def test_the_check_command_fails_on_a_probe_that_does_not_separate(freeze, tmp_p
     assert "within 2 percent" in capsys.readouterr().out
 
 
+def test_the_check_command_fails_on_a_control_whose_gold_answer_differs_on_the_injected_copy_and_prints_both(
+    freeze, tmp_path, capsys
+):
+    # The cut removes the open work orders, so counting every work order is no control.
+    control = {**QUESTIONS[1], "id": "all-orders", "gold_sql": "SELECT COUNT(*) FROM workorders"}
+    path = configuration(freeze, questions=[QUESTIONS[0], control])
+    assert main(["--config", str(path), "--work-dir", str(tmp_path / "work"), "--check"]) == 1
+    out = capsys.readouterr().out
+    assert "a control question whose gold answer differs between clean and injected copy" in out
+    assert "all-orders: gold: [(8,)]\n  clean copy: [(12,)]\n" in out, out
+
+
+@pytest.mark.parametrize("defect", ["open-order-cut", "Open-Orders-Cut"])
+def test_a_question_naming_a_defect_the_configuration_does_not_have_is_refused_when_loaded(freeze, defect):
+    # A misspelled id would make the probe look like neither a probe of a defect with a reading set
+    # nor a control, and skip both checks.
+    with pytest.raises(ValueError, match=f"a defect the configuration does not have: open-orders \\('{defect}'\\)"):
+        load_config(configuration(freeze, questions=with_probe(defect=defect)))
+
+
+@pytest.mark.parametrize("defect", [["open-orders-cut"], "", 3])
+def test_a_question_whose_defect_is_not_one_defect_id_is_refused_when_loaded(freeze, defect):
+    with pytest.raises(ValueError, match="defect must be one defect id"):
+        load_config(configuration(freeze, questions=with_probe(defect=defect)))
+
+
+def test_a_question_naming_an_unknown_defect_is_refused_without_a_freeze_too(write_line_config):
+    raw = yaml.safe_load(write_line_config.read_text())
+    raw["questions"][0]["defect"] = "open-order-cut"
+    write_line_config.write_text(yaml.safe_dump(raw, sort_keys=False))
+    with pytest.raises(ValueError, match="a defect the configuration does not have"):
+        load_config(write_line_config)
+
+
 def test_the_pilot_configuration_is_eight_coverage_probes_on_the_committed_freeze_with_its_model_settings():
     """The pilot (#49): the probes of orders-cut under the empty store and everything from a person, once,
     with the settings the freeze requires before the first model call on its defects."""
