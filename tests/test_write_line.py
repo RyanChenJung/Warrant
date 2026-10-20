@@ -8,6 +8,8 @@ import pytest
 
 from warrant.agent.fake import ScriptedAgent
 from warrant.agent.interface import AgentOutput, AnswerRequest, Response, ResponseKind, Usage
+from warrant.agent.tools import ReadOnlySQL
+from warrant.data.sqlite import query_with_columns
 from warrant.store.claims import ClaimKind, Slot, Source, WarrantKind
 from warrant.store.results import Provenance
 from warrant.write_line.config import load_config
@@ -207,3 +209,50 @@ def test_every_stored_result_carries_the_provenance_of_its_run(config, tmp_path)
     assert {r["repo_commit"] for r in records} == {"abc1234"}
     assert records[0]["question_id"] and records[0]["rule"] and records[0]["response_class"]
     assert records[0]["input_tokens"] == 0 and records[0]["output_tokens"] == 0
+
+
+def test_every_stored_answer_carries_its_executed_result_its_stated_value_and_the_self_reported_confidence(
+    config, tmp_path
+):
+    # The pilot's records held only the final SQL, so its values had to be re-executed (#49).
+    def confident(request, tools):
+        return dataclasses.replace(knows_the_claim(request, tools), confidence=0.7)
+
+    results = tmp_path / "results.jsonl"
+    result = run(config, ScriptedAgent(confident), tmp_path / "work", PROVENANCE, results)
+
+    records = [json.loads(line) for line in results.read_text().splitlines()]
+    (injected,) = result.injected.values()
+    assert {r["confidence"] for r in records} == {0.7}
+    for record in records:
+        columns, executed = query_with_columns(injected, record["final_sql"])
+        assert list(map(tuple, record["executed"])) == executed
+        assert record["executed_columns"] == list(columns)
+        # The scripted agent states what the SQL tool returned.
+        assert record["value"] == json.loads(json.dumps(ReadOnlySQL(injected)(record["final_sql"])))
+
+
+def test_a_stored_refusal_carries_what_it_says_is_missing_and_what_it_offers_instead(config, tmp_path):
+    def refuses(request, tools):
+        return Response(ResponseKind.REFUSAL, missing="the order status", alternative="the open tasks", confidence=0.4)
+
+    results = tmp_path / "results.jsonl"
+    run(config, ScriptedAgent(refuses), tmp_path / "work", PROVENANCE, results)
+
+    records = [json.loads(line) for line in results.read_text().splitlines()]
+    assert {
+        (r["missing"], r["alternative"], r["confidence"], r["executed"], r["executed_columns"]) for r in records
+    } == {("the order status", "the open tasks", 0.4, None, None)}
+
+
+def test_a_stored_clarification_request_carries_its_question(config, tmp_path):
+    def asks(request, tools):
+        return Response(ResponseKind.CLARIFICATION, clarification="Do open work orders count?", confidence=0.3)
+
+    results = tmp_path / "results.jsonl"
+    run(config, ScriptedAgent(asks), tmp_path / "work", PROVENANCE, results)
+
+    records = [json.loads(line) for line in results.read_text().splitlines()]
+    assert {(r["response_class"], r["clarification"], r["value"]) for r in records} == {
+        ("clarification_request", "Do open work orders count?", None)
+    }

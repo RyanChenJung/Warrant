@@ -10,6 +10,7 @@ import sqlite3
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from warrant.agent.claude import ClaudeAgent
 from warrant.agent.interface import Agent, AnswerRequest, ResponseKind, Usage
@@ -58,6 +59,16 @@ class ResultRow:
     usage: Usage
     failure: str = ""
     bucket: Bucket | None = None
+    executed_columns: tuple[str, ...] | None = None
+    # What the response said, beside its final SQL: the stated value; the answer's self-reported
+    # confidence, not the slot confidence the confidence rule ranks by (#51); for a refusal, what it
+    # says is missing and what it offers instead; and a clarification request's question. None or
+    # empty for a failed call.
+    value: Any = None
+    confidence: float | None = None
+    missing: str = ""
+    alternative: str = ""
+    clarification: str = ""
 
 
 @dataclass(frozen=True)
@@ -106,6 +117,15 @@ def _record(row: ResultRow) -> dict:
         "response_class": row.response_class,
         "bucket": row.bucket,
         "final_sql": row.final_sql,
+        # The executed result is stored with its score, so each answer's value can be audited, and its
+        # score recomputed from the gold answer, without re-executing its final SQL (#49).
+        "executed": row.executed,
+        "executed_columns": row.executed_columns,
+        "value": row.value,
+        "confidence": row.confidence,
+        "missing": row.missing,
+        "alternative": row.alternative,
+        "clarification": row.clarification,
         "input_tokens": row.usage.input_tokens,
         "output_tokens": row.usage.output_tokens,
         "failure": row.failure,
@@ -278,6 +298,12 @@ def run(
                     usage=output.usage,
                     failure=output.failure,
                     bucket=scored.bucket,
+                    executed_columns=None if executed is None else executed.columns,
+                    value=None if response is None else response.value,
+                    confidence=None if response is None else response.confidence,
+                    missing="" if response is None else response.missing,
+                    alternative="" if response is None else response.alternative,
+                    clarification="" if response is None else response.clarification,
                 )
                 rows.append(row)
                 if results is not None and provenance is not None:
