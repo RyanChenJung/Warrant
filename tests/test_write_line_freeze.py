@@ -195,3 +195,16 @@ def test_the_check_command_fails_on_a_probe_that_does_not_separate(freeze, tmp_p
     path = configuration(freeze, questions=with_probe(separates={"nothing-cut": "SELECT 4"}))
     assert main(["--config", str(path), "--work-dir", str(tmp_path / "work"), "--check"]) == 1
     assert "within 2 percent" in capsys.readouterr().out
+
+
+def test_the_pilot_configuration_is_eight_coverage_probes_on_the_committed_freeze_with_its_model_settings():
+    """The pilot (#49): the probes of orders-cut under the empty store and everything from a person, once,
+    with the settings the freeze requires before the first model call on its defects."""
+    config = load_config(Path(__file__).parents[1] / "configs" / "write_line_pilot.yaml")
+    assert [q.defect for q in config.questions] == ["orders-cut"] * 8
+    assert all(q.separates for q in config.questions)
+    assert config.rules == ("empty", "all_person") and config.runs == 1
+    assert config.injection is not None and config.injection["outcome"] == "built"
+    model = config.model
+    assert (model.model, model.region, model.max_tokens, model.effort) == ("anthropic.claude-sonnet-5", "us-east-1", 16000, "high")
+    assert model.temperature is None
