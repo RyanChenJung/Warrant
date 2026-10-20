@@ -22,7 +22,9 @@ class Question:
     """A probe question (`defect` names its defect) or a control question (`defect` is None).
 
     A question has a gold SQL, or, when its correct response is a refusal, the terms that name its
-    missing piece. `key` names the columns a set answer is compared on.
+    missing piece. `key` names the columns a set answer is compared on. A probe with a gold SQL names
+    the readings it separates (`separates`), each with the SQL that answers it on the injected copy
+    under that reading; the run checks them before any agent call (#34, round 2).
     """
 
     id: str
@@ -32,6 +34,7 @@ class Question:
     defect: str | None
     missing_terms: tuple[str, ...] = ()
     key: tuple[str, ...] = ()
+    separates: tuple[tuple[str, str], ...] = ()  # (reading id, SQL under that reading)
 
 
 def _names(raw: dict, field: str) -> tuple[str, ...]:
@@ -45,6 +48,11 @@ def _names(raw: dict, field: str) -> tuple[str, ...]:
 def _question(raw: dict) -> Question:
     if (raw.get("gold_sql") is None) == (not raw.get("missing_terms")):
         raise ValueError(f"question {raw['id']!r} needs exactly one of gold_sql and missing_terms")
+    separates = raw.get("separates") or {}
+    if not isinstance(separates, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in separates.items()):
+        raise ValueError(f"question {raw['id']!r}: separates maps reading ids to SQL")
+    if separates and (raw.get("defect") is None or raw.get("gold_sql") is None):
+        raise ValueError(f"question {raw['id']!r}: only a probe with a gold answer names readings it separates")
     return Question(
         id=raw["id"],
         database=raw["database"],
@@ -53,6 +61,7 @@ def _question(raw: dict) -> Question:
         defect=raw.get("defect"),
         missing_terms=_names(raw, "missing_terms"),
         key=_names(raw, "key"),
+        separates=tuple(separates.items()),
     )
 
 
