@@ -1,12 +1,18 @@
 # Warrant
 
-**Who may write what an AI analyst believes about your data.**
+**Which questions should a data AI ask an expert on day one?**
 
-Research code and experiments on memory governance for AI agents that answer
-questions over company data: which claims about a dataset automated checks can
-settle on their own, which ones need a person, and whether that line moves when
-the checks improve. Terms are defined in [CONTEXT.md](CONTEXT.md); decisions are
-recorded in [docs/adr/](docs/adr/).
+Before a data AI has any users, it gives wrong numbers, without warning, wherever the data cannot
+show what it means. This repo tests one way to choose what to ask the person who knows the
+business: run automatic checks on the data first, and ask only about what they cannot settle. With
+the same number of questions, we compare it with asking where the AI is least confident.
+
+In the terms of [CONTEXT.md](CONTEXT.md): which claims about a dataset the check battery can settle
+on its own and which need a person
+([ADR 0001](docs/adr/0001-headline-claim-is-an-allocation-rule.md)). The maintenance line, on
+keeping claims current, is paused
+([ADR 0010](docs/adr/0010-defer-the-maintenance-line-and-fall-back-to-the-write-line.md)).
+Decisions are recorded in [docs/adr/](docs/adr/).
 
 ## Data and licences
 
@@ -39,6 +45,7 @@ column meanings or knowledge-base entries, are licensed under CC BY-SA 4.0
 - `predictions/`: the predicted outcomes under the baseline battery, with the normalised battery
   output of every reading database (#37).
 - `configs/write_line_pilot.yaml`: the write line's pilot probes, with their gold SQL (#49).
+- `docs/talks/`: the shared facts for talks, with the planted problems' tables, counts and codes.
 - `results/`: stored results of real-model runs, with their SQL, starting with the pilot (#49).
 - `drift_tasks/`: the maintenance line's documented drift tasks, with edited knowledge-base entries
   (#43).
