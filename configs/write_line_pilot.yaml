@@ -1,0 +1,142 @@
+# The write line's minimal real-model pilot (#49): the coverage defect `orders-cut` of the committed
+# freeze, its eight probes (#34, round 2: four the agent's own claim can answer, four only the
+# person's claim can answer), under the empty store and everything from a person, one run each.
+# The questions and gold SQL are committed and pushed before the first agent call on them, and enter
+# the full thin run (#54) unchanged; a question changed because the harness cannot score it is
+# recorded on #49 and committed again before its next call.
+#
+# The model block also fixes, before the first model call on this freeze's defects or claims, the
+# settings the freeze requires for claim writing and the judge (freeze/write_line.yaml,
+# claim_writing.sampling and judge.settings): effort high, thinking at the model's default (adaptive;
+# no thinking parameter is sent) and max_tokens 16000; no sampling parameter is sent (decided by the
+# lead on 2026-10-20, recorded on #26).
+#
+# Table and column names in this file come from LiveSQLBench-Base-Lite (CC BY-SA 4.0, see
+# LICENSE-DATA). Paths are relative to this file.
+freeze: ../freeze/write_line.yaml
+injection: ../injections/9cfd501f2182-write_line.json
+rules: [empty, all_person]
+runs: 1
+model:
+  provider: bedrock
+  model: anthropic.claude-sonnet-5
+  region: us-east-1
+  max_tokens: 16000
+  effort: high
+  attempts: 2
+questions:
+  # Probes the agent's own claim can answer: the orders the table lacks are still in the child tables.
+  - id: orders-placed
+    database: crypto
+    defect: orders-cut
+    text: How many orders have been placed on the exchange?
+    gold_sql: >-
+      SELECT COUNT(*) FROM (SELECT recordvault FROM orders UNION SELECT ordersmark FROM orderexecutions
+      UNION SELECT orderslink FROM fees UNION SELECT ordervault FROM riskandmargin)
+    separates:
+      nothing-cut: SELECT COUNT(*) FROM orders
+      other-system: SELECT COUNT(*) FROM orders
+      mistyped: SELECT COUNT(*) FROM orders
+  - id: fees-charged
+    database: crypto
+    defect: orders-cut
+    text: What is the total amount of trading fees charged on all orders?
+    gold_sql: SELECT SUM(feetotal) FROM fees
+    separates:
+      nothing-cut: SELECT SUM(f.feetotal) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+      other-system: SELECT SUM(f.feetotal) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+  - id: filled-notional
+    database: crypto
+    defect: orders-cut
+    text: What is the total notional value of all order fills?
+    gold_sql: SELECT SUM(fillsum) FROM orderexecutions
+    separates:
+      nothing-cut: SELECT SUM(e.fillsum) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+      other-system: SELECT SUM(e.fillsum) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+  - id: fee-per-order
+    database: crypto
+    defect: orders-cut
+    text: What is the average trading fee per order?
+    gold_sql: >-
+      SELECT SUM(feetotal) / (SELECT COUNT(*) FROM (SELECT recordvault FROM orders UNION SELECT ordersmark
+      FROM orderexecutions UNION SELECT orderslink FROM fees UNION SELECT ordervault FROM riskandmargin))
+      FROM fees
+    separates:
+      nothing-cut: >-
+        SELECT SUM(f.feetotal) / (SELECT COUNT(*) FROM orders) FROM fees f JOIN orders o
+        ON o.recordvault = f.orderslink
+      other-system: >-
+        SELECT SUM(f.feetotal) / (SELECT COUNT(*) FROM orders) FROM fees f JOIN orders o
+        ON o.recordvault = f.orderslink
+      mistyped: SELECT SUM(feetotal) / (SELECT COUNT(*) FROM orders) FROM fees
+  # Probes only the person's claim can answer: the orders the table lacks are the cancelled ones.
+  - id: orders-cancelled
+    database: crypto
+    defect: orders-cut
+    text: How many orders were cancelled?
+    gold_sql: >-
+      SELECT COUNT(*) FROM (SELECT ordersmark AS ref FROM orderexecutions UNION SELECT orderslink FROM fees
+      UNION SELECT ordervault FROM riskandmargin) WHERE ref NOT IN (SELECT recordvault FROM orders)
+    separates:
+      nothing-cut: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+      filled-cut: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+      archived: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+      other-system: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+      mistyped: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+  - id: cancelled-share
+    database: crypto
+    defect: orders-cut
+    text: What share of all orders were cancelled, as a fraction between 0 and 1?
+    gold_sql: >-
+      SELECT 1.0 * (SELECT COUNT(*) FROM (SELECT ordersmark AS ref FROM orderexecutions UNION SELECT
+      orderslink FROM fees UNION SELECT ordervault FROM riskandmargin) WHERE ref NOT IN (SELECT recordvault
+      FROM orders)) / (SELECT COUNT(*) FROM (SELECT recordvault FROM orders UNION SELECT ordersmark FROM
+      orderexecutions UNION SELECT orderslink FROM fees UNION SELECT ordervault FROM riskandmargin))
+    separates:
+      nothing-cut: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+      filled-cut: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+      archived: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+      other-system: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+      mistyped: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+  - id: fees-on-cancelled
+    database: crypto
+    defect: orders-cut
+    text: What is the total amount of trading fees charged on cancelled orders?
+    gold_sql: SELECT SUM(feetotal) FROM fees WHERE orderslink NOT IN (SELECT recordvault FROM orders)
+    separates:
+      nothing-cut: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+      filled-cut: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+      archived: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+      other-system: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+      mistyped: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+  - id: filled-notional-on-cancelled
+    database: crypto
+    defect: orders-cut
+    text: What is the total notional value of fills on cancelled orders?
+    gold_sql: SELECT SUM(fillsum) FROM orderexecutions WHERE ordersmark NOT IN (SELECT recordvault FROM orders)
+    separates:
+      nothing-cut: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
+      filled-cut: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
+      archived: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
+      other-system: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
+      mistyped: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
