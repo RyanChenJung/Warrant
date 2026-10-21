@@ -1,4 +1,4 @@
-"""The Claude implementation of the answer operation.
+"""The Claude implementations of the answer operation and of the judge model (#120).
 
 One request, a tool loop over exactly the tools the request offers, then one structured response
 (ADR 0008). The single seam is `create`, a `messages.create`-shaped callable: tests pass a replay of
@@ -13,6 +13,7 @@ import anthropic
 
 from warrant.agent.config import ModelConfig, client
 from warrant.agent.interface import AgentOutput, AnswerRequest, Response, ResponseKind, Tool, Usage
+from warrant.agent.judge import JudgeCall
 from warrant.agent.prompt import SYSTEM, user_message
 from warrant.agent.tools import SCHEMAS
 
@@ -158,6 +159,40 @@ class ClaudeAgent:
             # configuration names a model that still takes one.
             sent["extra_body"] = {"temperature": config.temperature}
         return sent
+
+
+class ClaudeJudge:
+    """The Claude judge model (#120): one call per filled rubric, as one user message with no system
+    prompt and no tools. Effort, thinking and max_tokens are the configuration's, which for the
+    write line are those fixed for claim writing. No sampling parameter is ever sent (freeze,
+    global.judge.sampling), so a configuration that names a temperature is refused."""
+
+    def __init__(self, config: ModelConfig, create: Callable[..., Any] | None = None):
+        if config.temperature is not None:
+            raise ValueError(f"the judge sends no sampling parameter, but the configuration names temperature {config.temperature}")
+        self._config = config
+        self._create = create or client(config).messages.create
+
+    def call(self, prompt: str) -> JudgeCall:
+        config = self._config
+        sent: dict[str, Any] = {
+            "model": config.model,
+            "max_tokens": config.max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if config.effort:
+            sent["output_config"] = {"effort": config.effort}
+        try:
+            message = self._create(**sent)
+        except anthropic.APIError as error:
+            if not _transient(error):
+                raise
+            return JudgeCall(None, failure=f"{type(error).__name__}: {error}")
+        usage = Usage(message.usage.input_tokens, message.usage.output_tokens)
+        try:
+            return JudgeCall(_final_text(message), usage)
+        except CallFailed as error:
+            return JudgeCall(None, usage, failure=str(error))
 
 
 def _add(left: Usage, right: Usage) -> Usage:

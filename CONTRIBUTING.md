@@ -53,10 +53,10 @@ pinned in `uv.lock`. Add a dependency with `uv add <package>` and commit `uv.loc
 | `warrant/battery/` | The vendored Gloss detectors and the normalisation of their output | #28, #31 |
 | `warrant/freeze/` | Freeze file formats and their validation command | #33 |
 | `warrant/defects/` | Injection on database copies; the per-reading database builder | #27, #35, #36 |
-| `warrant/agent/` | Agent interface, scripted fake agent, Claude agent, tools | #27, #38, #39 |
+| `warrant/agent/` | Agent interface, scripted fake agent, Claude agent, tools; the judge operation | #27, #38, #39, #120 |
 | `warrant/store/` | The knowledge-store format shared by both lines; append-only result records | #27, #38, #50 |
 | `warrant/scoring/` | Scoring and statistics shared by both lines | #40, #41 |
-| `warrant/write_line/` | Write-line entry point: predictions, allocation rules, runs, summary | #27, #37, #50 to #53 |
+| `warrant/write_line/` | Write-line entry point: predictions, allocation rules, runs, summary; the judge's validation and the matched-asks selector | #27, #37, #50 to #53, #120 |
 | `warrant/maintenance/` | Maintenance-line entry point: drift tasks, conditions, escalation, summary | #42, #45 to #48 |
 
 If a ticket needs code somewhere else, say why in the PR.
