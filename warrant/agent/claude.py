@@ -164,10 +164,12 @@ class ClaudeAgent:
 class ClaudeJudge:
     """The Claude judge model (#120): one call per filled rubric, as one user message with no system
     prompt and no tools. Effort, thinking and max_tokens are the configuration's, which for the
-    write line are those fixed for claim writing; no sampling parameter is sent unless the
-    configuration names one, as for the answer operation."""
+    write line are those fixed for claim writing. No sampling parameter is ever sent (freeze,
+    global.judge.sampling), so a configuration that names a temperature is refused."""
 
     def __init__(self, config: ModelConfig, create: Callable[..., Any] | None = None):
+        if config.temperature is not None:
+            raise ValueError(f"the judge sends no sampling parameter, but the configuration names temperature {config.temperature}")
         self._config = config
         self._create = create or client(config).messages.create
 
@@ -180,8 +182,6 @@ class ClaudeJudge:
         }
         if config.effort:
             sent["output_config"] = {"effort": config.effort}
-        if config.temperature is not None:
-            sent["extra_body"] = {"temperature": config.temperature}
         try:
             message = self._create(**sent)
         except anthropic.APIError as error:

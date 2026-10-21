@@ -16,6 +16,7 @@ from warrant.agent.config import ModelConfig
 from warrant.agent.fake import ScriptedJudge
 from warrant.agent.judge import (
     JUDGE_PROMPT_VERSION,
+    RUBRIC_SHA256,
     Judge,
     JudgeMethod,
     JudgeRequest,
@@ -60,9 +61,20 @@ def test_the_judge_method_is_read_from_the_global_part_of_the_committed_freeze(m
     rubric = REPO / judge["rubric"]
     assert method.rubric_path == judge["rubric"] == "freeze/judge_rubric.md"
     assert method.template in rubric.read_text()
-    assert method.record()["rubric_sha256"] == hashlib.sha256(rubric.read_bytes()).hexdigest()
+    # The rubric's SHA-256 at the freeze commit 6676db7, pinned in the code.
+    assert method.record()["rubric_sha256"] == RUBRIC_SHA256
+    assert RUBRIC_SHA256 == "88f8592557f40ceca47b1a238bdab09bb708de8fa0253133dfc49f7dc46256fc"
     assert (method.valid_calls, method.extra_calls) == (3, 3)
     assert method.record()["prompt_version"] == JUDGE_PROMPT_VERSION
+
+
+def test_a_rubric_whose_bytes_differ_from_the_one_at_the_freeze_commit_is_refused(tmp_path):
+    (tmp_path / "freeze").mkdir()
+    edited = (REPO / "freeze" / "judge_rubric.md").read_text().replace("a careful analyst", "an analyst")
+    (tmp_path / "freeze" / "judge_rubric.md").write_text(edited)
+    assert hashlib.sha256(edited.encode()).hexdigest() != RUBRIC_SHA256
+    with pytest.raises(ValueError, match="not the rubric of the freeze commit"):
+        JudgeMethod.from_freeze(yaml.safe_load(FREEZE.read_text())["global"], repo=tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -91,6 +103,13 @@ def test_the_prompt_fills_the_rubric_with_lettered_reading_statements_and_no_rea
     assert '{"A": "holds", "B": "fails", "C": "not_addressed"}' in text  # the rubric's own example
 
 
+def test_the_placeholders_are_filled_in_one_pass_so_a_claim_or_statement_naming_one_stays_as_written(method):
+    request = JudgeRequest(SLOT, "The {readings} column lists {subject} codes.", (("odd", "It says {claim}."),))
+    text, _ = prompt(method.template, request)
+    assert "Claim:\nThe {readings} column lists {subject} codes.\n" in text
+    assert "A. It says {claim}." in text
+
+
 @pytest.mark.parametrize(
     "text, labels",
     [
@@ -114,6 +133,8 @@ def test_a_calls_answer_is_the_first_json_object_in_its_text_output(text, labels
         '{"A": "holds", "B": "not addressed"}',
         '{"A": "holds", "B": ["fails"]}',
         '{"A": "holds", "B": "fails"',  # the first object never closes
+        '{"A": "holds", "B": "fails", "A": "fails"}',  # a letter labelled twice
+        '{"A": "holds", "B": "fails", "A": "holds"}',
     ],
 )
 def test_an_answer_that_does_not_label_every_reading_letter_exactly_once_validly_is_invalid(text):
@@ -183,6 +204,16 @@ def test_a_claim_is_judged_once_and_an_identical_claim_string_agrees_without_a_c
     again = judge.judge(JudgeRequest(SLOT, REQUEST.claim, REQUEST.readings))
     assert len(model.prompts) == 3
     assert again.labels == first.labels and again.without_a_call and not first.without_a_call
+    # The copy made without a call carries no calls, so no splits either.
+    assert (again.valid, again.answers, again.splits, again.resent) == ((), (), (), 0)
+
+
+def test_a_repeated_answer_to_a_split_claim_carries_no_split_of_its_own(method):
+    model = scripted(answer(A="holds", B="fails", C="holds"), answer(A="fails", B="fails", C="holds"),
+                     answer(A="not_addressed", B="fails", C="holds"))
+    judge = Judge(model, method)
+    assert judge.judge(REQUEST).splits == ("parent-cut",)
+    assert judge.judge(REQUEST).splits == ()
 
 
 def test_every_judgement_is_stored_with_its_method_its_answers_and_its_combined_labels(method):
@@ -247,6 +278,11 @@ def test_a_misconfiguration_stops_the_judge_instead_of_being_re_sent(method):
 
     with pytest.raises(anthropic.PermissionDeniedError):
         Judge(ClaudeJudge(CONFIG, create), method).judge(REQUEST)
+
+
+def test_a_judge_configuration_that_names_a_temperature_is_refused_since_the_freeze_sends_none(replay):
+    with pytest.raises(ValueError, match="temperature"):
+        ClaudeJudge(ModelConfig(**{**CONFIG.__dict__, "temperature": 0.0}), replay("judge_labels"))
 
 
 def test_the_claude_judge_reaches_the_model_only_through_the_configured_client(method):

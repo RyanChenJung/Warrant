@@ -9,6 +9,7 @@ judge models, so the combination is the same code for both.
 
 import hashlib
 import json
+import re
 import string
 from collections import Counter
 from dataclasses import dataclass, field, replace
@@ -21,11 +22,19 @@ from warrant.store.claims import Slot
 
 REPO = Path(__file__).resolve().parents[2]
 
-# How the rubric is filled and sent: one user message, no system prompt, the readings lettered in
-# the slot's reading order. Stored with every judgement; bump it whenever the filling below changes.
+# The version of what this module adds to the rubric's prompt section: its four placeholders filled
+# in one pass, {claim} with the claim as given and {readings} with one "A. <statement>" line per
+# reading in the slot's reading order, sent as the only user message with no system prompt. The
+# rubric's own text is pinned by RUBRIC_SHA256 instead. Stored with every judgement; bump it whenever
+# the filling or the sending below changes.
 JUDGE_PROMPT_VERSION = "1"
 
+# The SHA-256 of freeze/judge_rubric.md at the freeze commit 6676db7 (#105); a rubric whose bytes
+# differ is refused.
+RUBRIC_SHA256 = "88f8592557f40ceca47b1a238bdab09bb708de8fa0253133dfc49f7dc46256fc"
+
 PLACEHOLDERS = ("{claim_kind}", "{subject}", "{claim}", "{readings}")
+PLACEHOLDER = re.compile(r"\{(claim_kind|subject|claim|readings)\}")
 
 
 class Label(StrEnum):
@@ -83,13 +92,15 @@ class JudgeMethod:
         path = repo / judge["rubric"]
         if not path.is_file():
             raise ValueError(f"the judge's rubric {judge['rubric']} does not exist")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != RUBRIC_SHA256:
+            raise ValueError(f"{judge['rubric']} is not the rubric of the freeze commit: its SHA-256 differs")
         text = path.read_text()
         if "## Prompt" not in text:
             raise ValueError(f"{judge['rubric']} has no '## Prompt' section")
         template = text.split("## Prompt", 1)[1].strip()
         if missing := [p for p in PLACEHOLDERS if p not in template]:
             raise ValueError(f"the rubric's prompt lacks {', '.join(missing)}")
-        return cls(judge["rubric"], template, hashlib.sha256(path.read_bytes()).hexdigest())
+        return cls(judge["rubric"], template, RUBRIC_SHA256)
 
     def record(self) -> dict:
         return {
@@ -109,17 +120,27 @@ def prompt(template: str, request: JudgeRequest) -> tuple[str, dict[str, str]]:
         raise ValueError(f"a slot with {len(request.readings)} readings has more than one letter each")
     letters = dict(zip(string.ascii_uppercase, (reading_id for reading_id, _ in request.readings)))
     readings = "\n".join(f"{letter}. {statement}" for letter, (_, statement) in zip(letters, request.readings))
-    # The rubric's own JSON example has braces, so the placeholders are replaced, not formatted.
-    text = template
-    for placeholder, value in zip(
-        PLACEHOLDERS, (request.slot.claim_kind, request.slot.subject, request.claim, readings)
-    ):
-        text = text.replace(placeholder, value)
-    return text, letters
+    values = {"claim_kind": request.slot.claim_kind, "subject": request.slot.subject,
+              "claim": request.claim, "readings": readings}
+    # One pass, so a claim or statement that names a placeholder stays as written; and replaced, not
+    # formatted, since the rubric's own JSON example has braces.
+    return PLACEHOLDER.sub(lambda m: values[m.group(1)], template), letters
+
+
+class RepeatedKey(ValueError):
+    pass
+
+
+def _no_repeated_keys(pairs: list) -> dict:
+    keys = [key for key, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise RepeatedKey(f"a key is given more than once: {keys}")
+    return dict(pairs)
 
 
 def _first_object(text: str) -> dict:
-    decoder = json.JSONDecoder()
+    # A repeated key makes the first object invalid, rather than being read as its last value.
+    decoder = json.JSONDecoder(object_pairs_hook=_no_repeated_keys)
     for start, char in enumerate(text):
         if char != "{":
             continue
@@ -147,7 +168,12 @@ def parse(text: str, letters) -> dict[str, Label]:
 
 @dataclass(frozen=True)
 class Judgement:
-    """A claim's combined labels per reading id, with every answer of its run and its method."""
+    """A claim's combined labels per reading id, with every answer of its run and its method.
+
+    A judgement made without a call (an identical claim string judged before) carries the labels
+    only: no valid calls, answers, re-sent calls or splits, so counts over judgements count each
+    claim string's calls once.
+    """
 
     slot: Slot
     claim: str
@@ -197,33 +223,46 @@ def combine(valid: list[dict[str, Label]], readings: tuple[str, ...]) -> tuple[d
 
 class Judge:
     """The judge operation for one run: each claim on a slot is judged once, and an identical claim
-    string on the same slot agrees with it without a call."""
+    string on the same slot agrees with it without a call. When a call raises, `interrupted` holds
+    the claim's answers so far, uncombined, so that a caller can keep them before the error goes on."""
 
     def __init__(self, model: JudgeModel, method: JudgeMethod):
         self._model = model
         self._method = method
         self._judged: dict[tuple[Slot, str], Judgement] = {}
+        self.interrupted: Judgement | None = None
 
     def judge(self, request: JudgeRequest) -> Judgement:
         key = (request.slot, request.claim)
         if key in self._judged:
-            return replace(self._judged[key], valid=(), answers=(), resent=0, usage=Usage(), without_a_call=True)
+            return replace(
+                self._judged[key], valid=(), answers=(), resent=0, splits=(), usage=Usage(), without_a_call=True
+            )
         text, letters = prompt(self._method.template, request)
-        valid, answers, usage = [], [], Usage()
-        limit = self._method.valid_calls + self._method.extra_calls
-        while len(valid) < self._method.valid_calls and len(answers) < limit:
-            call = self._model.call(text)
-            usage = Usage(usage.input_tokens + call.usage.input_tokens, usage.output_tokens + call.usage.output_tokens)
-            if call.text is None:
-                answers.append(f"failed: {call.failure}")
-                continue
-            answers.append(call.text)
-            try:
-                labels = parse(call.text, letters)
-            except ValueError:
-                continue
-            valid.append({letters[letter]: label for letter, label in labels.items()})
         order = tuple(reading_id for reading_id, _ in request.readings)
+        valid, answers, usage = [], [], Usage()
+        self.interrupted = None
+        limit = self._method.valid_calls + self._method.extra_calls
+        try:
+            while len(valid) < self._method.valid_calls and len(answers) < limit:
+                call = self._model.call(text)
+                usage = Usage(usage.input_tokens + call.usage.input_tokens, usage.output_tokens + call.usage.output_tokens)
+                if call.text is None:
+                    answers.append(f"failed: {call.failure}")
+                    continue
+                answers.append(call.text)
+                try:
+                    labels = parse(call.text, letters)
+                except ValueError:
+                    continue
+                valid.append({letters[letter]: label for letter, label in labels.items()})
+        except BaseException:  # an error that stops the run, or Ctrl-C: the answers paid for are kept
+            self.interrupted = Judgement(
+                slot=request.slot, claim=request.claim, reading_order=order, labels={}, valid=tuple(valid),
+                answers=tuple(answers), resent=max(0, len(answers) - self._method.valid_calls), splits=(),
+                usage=usage, method=self._method.record(),
+            )
+            raise
         labels, splits = combine(valid, order)
         judgement = Judgement(
             slot=request.slot,

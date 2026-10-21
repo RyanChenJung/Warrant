@@ -19,8 +19,9 @@ from warrant.defects.build import build
 from warrant.defects.inject import load_defect
 from warrant.freeze.validate import clean_databases
 from warrant.store.results import Provenance
-from warrant.write_line.judging import reading_orders
-from warrant.write_line.validate_judge import main, validate, validation_claims, write_validation
+from warrant.write_line.config import load_config
+from warrant.write_line.judging import reading_orders, reading_orders_for
+from warrant.write_line.validate_judge import main, run_validation, validate, validation_claims
 
 REPO = Path(__file__).parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -36,14 +37,18 @@ def statements(prompt):
     return [statement for _, statement in LETTER.findall(prompt.split("Readings:", 1)[1])]
 
 
-def by_statement(answer_for):
-    """A scripted judge model that labels each reading of a prompt by its statement."""
+def labelled(answer_for):
+    """A script that labels each reading of a prompt by its statement."""
 
     def call(prompt):
         lettered = dict(LETTER.findall(prompt.split("Readings:", 1)[1]))
         return json.dumps({letter: answer_for(prompt, statement) for letter, statement in lettered.items()})
 
-    return ScriptedJudge(call)
+    return call
+
+
+def by_statement(answer_for):
+    return ScriptedJudge(labelled(answer_for))
 
 
 def statement_of(defect_id, reading_id):
@@ -78,6 +83,18 @@ def test_each_slots_reading_order_is_drawn_once_from_one_generator_over_the_slot
         expected[defect.id] = tuple(ids)
     assert reading_orders(DEFECTS, SEED) == expected
     assert reading_orders(tuple(reversed(DEFECTS)), SEED) == expected
+
+
+def test_a_subset_of_the_freezes_defects_draws_other_orders_so_callers_pass_them_all():
+    # One generator runs over every slot in order, so leaving out the alien slot, as a claim-writing
+    # run on crypto alone might, shifts the crypto slots' draws.
+    crypto = tuple(d for d in DEFECTS if d.database == "crypto")
+    assert reading_orders(crypto, SEED) != {d: o for d, o in reading_orders(DEFECTS, SEED).items() if d in {c.id for c in crypto}}
+
+
+def test_the_orders_of_a_configuration_on_the_freeze_are_drawn_over_all_its_defects():
+    config = load_config(REPO / "configs" / "write_line_pilot.yaml")
+    assert reading_orders_for(config) == reading_orders(DEFECTS, SEED)
 
 
 def test_every_call_on_a_slot_lists_its_readings_in_the_slots_one_order():
@@ -154,25 +171,63 @@ def test_splits_and_pairs_whose_three_calls_differ_are_counted():
 
     report = validate(DEFECTS, ScriptedJudge(unsteady), METHOD, SEED)
     assert report.mismatches == [] and report.splits == 0
-    assert report.unsteady_pairs == 5  # (claim, reading) pairs whose valid calls do not all agree
+    # (claim, reading) pairs whose valid calls do not all agree, of every pair judged with a call.
+    assert (report.unsteady_pairs, report.judged_pairs) == (5, 2 * (5 + 7 + 2))
+
+
+def test_a_pair_with_fewer_than_three_valid_calls_counts_as_not_all_agreeing():
+    seen = Counter()
+
+    def two_valid_on_the_wallet(prompt):
+        seen[prompt] += 1
+        lettered = dict(LETTER.findall(prompt.split("Readings:", 1)[1]))
+        if "walletsum in accountbalances includes" in claim_of(prompt) and seen[prompt] <= 4:
+            return "I would rather not say."
+        return json.dumps({letter: as_frozen(prompt, statement) for letter, statement in lettered.items()})
+
+    report = validate(DEFECTS, ScriptedJudge(two_valid_on_the_wallet), METHOD, SEED)
+    assert report.mismatches == [] and report.splits == 0  # two valid calls that agree settle a reading
+    assert report.unsteady_pairs == 5
+
+
+PROVENANCE = Provenance(config_hash="0" * 64, repo_commit="abc1234", model="placeholder", prompt_version=JUDGE_PROMPT_VERSION)
+
+
+def records_of(results):
+    return [json.loads(line) for line in results.read_text().splitlines()]
 
 
 def test_the_records_carry_the_judgement_its_method_and_each_comparison_and_the_rubric_is_untouched(tmp_path):
     rubric = REPO / "freeze" / "judge_rubric.md"
     before = rubric.read_bytes()
     results = tmp_path / "validation.jsonl"
-    provenance = Provenance(config_hash="0" * 64, repo_commit="abc1234", model="placeholder", prompt_version=JUDGE_PROMPT_VERSION)
-    report = validate(DEFECTS, by_statement(as_frozen), METHOD, SEED)
-    write_validation(report, results, provenance)
+    run_validation(DEFECTS, by_statement(as_frozen), METHOD, SEED, results, PROVENANCE, run_id="run-1")
 
-    records = [json.loads(line) for line in results.read_text().splitlines()]
-    assert len(records) == 6
-    assert {r["operation"] for r in records} == {"judge_validation"}
-    assert {r["prompt_version"] for r in records} == {JUDGE_PROMPT_VERSION}
-    assert all(r["method"] == METHOD.record() for r in records)
-    assert all(r["mismatches"] == [] and len(r["answers"]) == 3 for r in records)
-    assert all(set(r["expected"]) <= set(r["labels"]) for r in records)
+    start, *claims, complete = records_of(results)
+    assert {r["operation"] for r in [start, *claims, complete]} == {"judge_validation"}
+    assert {r["run_id"] for r in [start, *claims, complete]} == {"run-1"}
+    assert (start["record"], complete["record"]) == ("start", "complete")
+    assert complete["mismatches"] == 0 and complete["expected_labels"] == 20
+    assert complete["unsteady_pairs"] == 0 and complete["judged_pairs"] == 28
+    assert len(claims) == 6 and {r["record"] for r in claims} == {"claim"}
+    assert {r["prompt_version"] for r in claims} == {JUDGE_PROMPT_VERSION}
+    assert all(r["method"] == METHOD.record() and r["complete"] for r in claims)
+    assert all(r["mismatches"] == [] and len(r["answers"]) == 3 for r in claims)
+    assert all(set(r["expected"]) <= set(r["labels"]) for r in claims)
     assert rubric.read_bytes() == before
+
+
+def test_each_claims_record_is_appended_as_soon_as_it_is_judged(tmp_path):
+    results = tmp_path / "validation.jsonl"
+    written = []
+
+    def watching(prompt):
+        written.append(len(records_of(results)) if results.exists() else 0)
+        return labelled(as_frozen)(prompt)
+
+    run_validation(DEFECTS, ScriptedJudge(watching), METHOD, SEED, results, PROVENANCE, run_id="run-1")
+    # Before the fourth claim's first call, the start record and three claim records are on disk.
+    assert written[3 * 3] == 1 + 3
 
 
 # The command reads the freeze through a run configuration that names it and its recorded
@@ -222,6 +277,61 @@ def test_the_command_refuses_a_freeze_other_than_the_one_its_injection_was_built
     freeze.write_text(freeze.read_text() + "\n# edited after the injection\n")
     with pytest.raises(ValueError, match="not of this freeze"):
         main(["--config", str(configuration(freeze, injection=record.name)), "--dry-run"])
+
+
+def judging_holds(fail_on=None, error=None):
+    """A scripted judge model that labels every reading holds, raising `error` on call `fail_on`."""
+    calls = Counter()
+
+    def script(prompt):
+        calls["sent"] += 1
+        if calls["sent"] == fail_on:
+            raise error
+        return json.dumps(dict.fromkeys(dict(LETTER.findall(prompt.split("Readings:", 1)[1])), "holds"))
+
+    return ScriptedJudge(script)
+
+
+@pytest.mark.parametrize("error", [RuntimeError("the credential expired"), KeyboardInterrupt()], ids=["error", "ctrl-c"])
+def test_an_interrupted_run_keeps_the_answers_already_paid_for_and_a_rerun_is_reported_as_repeated(
+    error, freeze, tmp_path, monkeypatch, capsys
+):
+    config = configuration(freeze, injection=injection_record(freeze, tmp_path / "built").name)
+    results = tmp_path / "out.jsonl"
+    command = ["--config", str(config), "--results", str(results)]
+    # The fixture freeze has four defects: eight claims, three calls each when every call is valid.
+    judges = [judging_holds(fail_on=8, error=error), judging_holds(), judging_holds()]
+    monkeypatch.setattr("warrant.write_line.validate_judge.ClaudeJudge", lambda model: judges.pop(0))
+
+    with pytest.raises(type(error)):
+        main(command)
+    first = records_of(results)
+    run_id = first[0]["run_id"]
+    assert [r["record"] for r in first] == ["start", "claim", "claim", "claim"]
+    assert {r["run_id"] for r in first} == {run_id}
+    assert [r["complete"] for r in first[1:]] == [True, True, False]
+    partial = first[3]
+    assert len(partial["answers"]) == 1 and type(error).__name__ in partial["error"]
+    assert partial["defect"] == "open-orders-cut" and partial["role"] == "reference_claim"
+
+    capsys.readouterr()
+    assert main(command) == 0
+    out = capsys.readouterr().out
+    assert "a repeated run" in out and run_id in out and "no earlier run completed" in out
+    second = records_of(results)[len(first):]
+    assert second[0]["run_id"] != run_id and second[-1]["record"] == "complete"
+
+    assert main(command) == 0
+    assert f"the first complete run is {second[0]['run_id']}" in capsys.readouterr().out
+
+
+def test_a_judge_that_cannot_be_built_from_the_configuration_is_a_usage_error(freeze, tmp_path, capsys):
+    injection = injection_record(freeze, tmp_path / "built").name
+    model = {"provider": "bedrock", "model": "anthropic.claude-sonnet-5", "region": "us-east-1", "temperature": 0}
+    with pytest.raises(SystemExit):
+        main(["--config", str(configuration(freeze, injection=injection, model=model)), "--results", str(tmp_path / "out.jsonl")])
+    assert "temperature" in capsys.readouterr().err
+    assert not (tmp_path / "out.jsonl").exists()
 
 
 def test_a_dry_run_prints_every_prompt_it_would_send_and_makes_no_model_call(freeze, tmp_path, capsys):

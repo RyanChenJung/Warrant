@@ -11,12 +11,19 @@ The configuration names the freeze and its recorded injection (`freeze:`, `injec
 the freeze the injection was built from is judged, and its model block is the one fixed for claim
 writing, which the judge uses too (configs/write_line_pilot.yaml). `--dry-run` prints every prompt
 the run would send and calls no model.
+
+Every answer is kept with its run (global.judge.runs): each record carries the run's id, a start
+record opens the run, each claim's record is appended as soon as it is judged, a claim whose judging
+stops on an error keeps the answers paid for so far, and a completion record closes the run. A run
+repeated for any reason is reported as such, with the first complete run, which is the one used.
 """
 
 import argparse
-from collections import Counter
+import json
+import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
@@ -26,7 +33,9 @@ from warrant.config import data_dir
 from warrant.defects.inject import Defect
 from warrant.store.results import Provenance, append, provenance_for
 from warrant.write_line.config import load_config
-from warrant.write_line.judging import judge_request, reading_orders
+from warrant.write_line.judging import judge_request, reading_orders, reading_orders_for
+
+OPERATION = "judge_validation"
 
 REFERENCE_CLAIM = "reference_claim"
 DRIFT_READING = "drift_reading"
@@ -67,58 +76,136 @@ def validation_claims(defects: tuple[Defect, ...]) -> list[ValidationClaim]:
 
 @dataclass(frozen=True)
 class ValidationReport:
+    """The comparison, and the judge's repeat instability over the judgements made with a call.
+
+    A (claim, reading) pair counts as unsteady when its valid calls do not all give the same label,
+    and a pair with fewer valid calls than the method asks for counts as unsteady too, since its calls
+    cannot be shown to agree. The share is `unsteady_pairs / judged_pairs`.
+    """
+
     claims: list[ValidationClaim]
     judgements: list[Judgement]
     # One row per expected label: defect, role, reading, expected, judged, match.
     rows: list[dict]
-    # (claim, reading) pairs with no label two valid calls share, over every reading judged.
+    # (claim, reading) pairs with no label two valid calls share.
     splits: int
-    # (claim, reading) pairs whose valid calls do not all give the same label.
     unsteady_pairs: int
+    judged_pairs: int
 
     @property
     def mismatches(self) -> list[dict]:
         return [row for row in self.rows if not row["match"]]
 
 
-def validate(defects: tuple[Defect, ...], model: JudgeModel, method: JudgeMethod, seed: int) -> ValidationReport:
+def _rows(claim: ValidationClaim, judgement: Judgement) -> list[dict]:
+    rows = []
+    for reading, expected in claim.expected.items():
+        judged = judgement.labels[reading]
+        rows.append({
+            "defect": claim.defect, "role": claim.role, "reading": reading,
+            "expected": expected.value, "judged": judged.value, "match": judged == expected,
+        })
+    return rows
+
+
+def _claim_record(claim: ValidationClaim, judgement: Judgement, rows: list[dict], error: str = "") -> dict:
+    return {
+        "record": "claim",
+        "defect": claim.defect,
+        "role": claim.role,
+        "complete": not error,
+        **judgement.record(),
+        "expected": {reading: label.value for reading, label in claim.expected.items()},
+        "mismatches": [row for row in rows if not row["match"]],
+        "error": error,
+    }
+
+
+def validate(
+    freeze_defects: tuple[Defect, ...],
+    model: JudgeModel,
+    method: JudgeMethod,
+    seed: int,
+    write: Callable[[dict], None] = lambda record: None,
+) -> ValidationReport:
+    """Judge every validation claim of the freeze, handing each claim's record to `write` as soon as
+    it is judged. If judging a claim raises, its answers so far are written before the error goes
+    on. `freeze_defects` is every defect of the freeze, as the reading orders need."""
     judge = Judge(model, method)
-    orders = reading_orders(defects, seed)
-    by_id = {d.id: d for d in defects}
-    claims = validation_claims(defects)
+    orders = reading_orders(freeze_defects, seed)
+    by_id = {d.id: d for d in freeze_defects}
+    claims = validation_claims(freeze_defects)
     judgements, rows = [], []
     for claim in claims:
-        judgement = judge.judge(judge_request(by_id[claim.defect], claim.claim, orders[claim.defect]))
+        try:
+            judgement = judge.judge(judge_request(by_id[claim.defect], claim.claim, orders[claim.defect]))
+        except BaseException as error:
+            if judge.interrupted is not None:
+                write(_claim_record(claim, judge.interrupted, [], error=f"{type(error).__name__}: {error}"))
+            raise
         judgements.append(judgement)
-        for reading, expected in claim.expected.items():
-            judged = judgement.labels[reading]
-            rows.append({
-                "defect": claim.defect, "role": claim.role, "reading": reading,
-                "expected": expected.value, "judged": judged.value, "match": judged == expected,
-            })
+        mine = _rows(claim, judgement)
+        rows += mine
+        write(_claim_record(claim, judgement, mine))
+    called = [j for j in judgements if not j.without_a_call]
     return ValidationReport(
         claims=claims,
         judgements=judgements,
         rows=rows,
-        splits=sum(len(j.splits) for j in judgements),
+        splits=sum(len(j.splits) for j in called),
         unsteady_pairs=sum(
-            len({call[reading] for call in j.valid}) > 1 for j in judgements for reading in j.reading_order
+            len(j.valid) < method.valid_calls or len({call[reading] for call in j.valid}) > 1
+            for j in called for reading in j.reading_order
         ),
+        judged_pairs=sum(len(j.reading_order) for j in called),
     )
 
 
-def write_validation(report: ValidationReport, results: Path, provenance: Provenance) -> None:
-    """One record per judged claim: the judgement with its method, and each comparison."""
-    for claim, judgement in zip(report.claims, report.judgements):
-        mine = [row for row in report.mismatches if (row["defect"], row["role"]) == (claim.defect, claim.role)]
-        append(results, provenance, {
-            "operation": "judge_validation",
-            "defect": claim.defect,
-            "role": claim.role,
-            **judgement.record(),
-            "expected": {reading: label.value for reading, label in claim.expected.items()},
-            "mismatches": mine,
-        })
+def run_validation(
+    freeze_defects: tuple[Defect, ...],
+    model: JudgeModel,
+    method: JudgeMethod,
+    seed: int,
+    results: Path,
+    provenance: Provenance,
+    run_id: str,
+) -> ValidationReport:
+    """One validation run, appended to `results` as it goes: a start record, one record per claim
+    and a completion record, each with the run's id."""
+
+    def write(record: dict) -> None:
+        append(results, provenance, {"operation": OPERATION, "run_id": run_id, **record})
+
+    claims = validation_claims(freeze_defects)
+    write({"record": "start", "claims": len(claims), "expected_labels": sum(len(c.expected) for c in claims)})
+    report = validate(freeze_defects, model, method, seed, write)
+    write({
+        "record": "complete",
+        "claims": len(report.claims),
+        "expected_labels": len(report.rows),
+        "mismatches": len(report.mismatches),
+        "resent": sum(j.resent for j in report.judgements),
+        "splits": report.splits,
+        "unsteady_pairs": report.unsteady_pairs,
+        "judged_pairs": report.judged_pairs,
+    })
+    return report
+
+
+def earlier_runs(results: Path) -> tuple[list[str], str | None]:
+    """The run ids of earlier validation runs in `results`, in order, and the first complete one."""
+    if not results.exists():
+        return [], None
+    runs, complete = [], []
+    for line in results.read_text().splitlines():
+        record = json.loads(line)
+        if record.get("operation") != OPERATION:
+            continue
+        if record["run_id"] not in runs:
+            runs.append(record["run_id"])
+        if record.get("record") == "complete":
+            complete.append(record["run_id"])
+    return runs, next((run for run in runs if run in complete), None)
 
 
 def main(argv=None) -> int:
@@ -140,7 +227,7 @@ def main(argv=None) -> int:
     limit = method.valid_calls + method.extra_calls
 
     if args.dry_run:
-        orders = reading_orders(config.defects, seed)
+        orders = reading_orders_for(config)
         by_id = {d.id: d for d in config.defects}
         for claim in claims:
             text, _ = prompt(method.template, judge_request(by_id[claim.defect], claim.claim, orders[claim.defect]))
@@ -151,12 +238,23 @@ def main(argv=None) -> int:
 
     if config.model is None:
         parser.error(f"{args.config} names no model block")
-    report = validate(config.defects, ClaudeJudge(config.model), method, seed)
+    try:
+        model = ClaudeJudge(config.model)
+    except ValueError as error:
+        parser.error(f"{args.config}: {error}")  # a misconfiguration, before any claim is judged
+
+    runs, first_complete = earlier_runs(args.results)
+    if runs:
+        print(f"This is a repeated run (earlier runs in {args.results}: {', '.join(runs)}); "
+              + (f"the first complete run is {first_complete}, and it is the one used."
+                 if first_complete else "no earlier run completed."))
+    run_id = uuid.uuid4().hex
     provenance = replace(provenance_for(args.config, config.model), prompt_version=JUDGE_PROMPT_VERSION)
-    write_validation(report, args.results, provenance)
+    report = run_validation(config.defects, model, method, seed, args.results, provenance, run_id)
     resent = sum(j.resent for j in report.judgements)
-    print(f"{len(claims)} claims judged, {resent} calls re-sent, {report.splits} splits, "
-          f"{report.unsteady_pairs} (claim, reading) pairs whose calls differ; written to {args.results}")
+    print(f"Run {run_id}: {len(claims)} claims judged, {resent} calls re-sent, {report.splits} splits; "
+          f"{report.unsteady_pairs} of {report.judged_pairs} (claim, reading) pairs whose valid calls do not "
+          f"all agree; written to {args.results}")
     for row in report.mismatches:
         print(f"  mismatch: {row['defect']} {row['role']} on {row['reading']}: "
               f"expected {row['expected']}, judged {row['judged']}")
