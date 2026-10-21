@@ -242,3 +242,44 @@ def test_the_pilot_configuration_is_eight_coverage_probes_on_the_committed_freez
     model = config.model
     assert (model.model, model.region, model.max_tokens, model.effort) == ("anthropic.claude-sonnet-5", "us-east-1", 16000, "high")
     assert model.temperature is None
+
+
+CONFIGS = Path(__file__).parents[1] / "configs"
+
+
+def test_the_thin_run_carries_the_pilots_eight_coverage_probes_unchanged():
+    """#49: the pilot's questions enter the full thin run (#54) unchanged."""
+    pilot = load_config(CONFIGS / "write_line_pilot.yaml")
+    thin = load_config(CONFIGS / "write_line_thin.yaml")
+    assert [q for q in thin.questions if q.defect == "orders-cut" and q.gold_sql is not None] == list(pilot.questions)
+
+
+def test_the_thin_run_has_the_question_sets_of_52_on_the_pilots_freeze_and_model_settings():
+    pilot = load_config(CONFIGS / "write_line_pilot.yaml")
+    thin = load_config(CONFIGS / "write_line_thin.yaml")
+    sets = {}
+    for q in thin.questions:
+        sets.setdefault(q.defect, []).append(q)
+    assert {defect: len(questions) for defect, questions in sets.items()} == {
+        "orders-cut": 9,
+        "wallet-sum": 6,
+        "seeing-recode": 8,
+        None: 10,
+    }
+    assert all(q.separates for q in thin.questions if q.defect is not None and q.gold_sql is not None)
+    (refusal,) = [q for q in thin.questions if q.gold_sql is None]
+    assert refusal.defect == "orders-cut" and {"cancelled", "canceled"} <= set(refusal.missing_terms)
+    assert (thin.defects, thin.injection, thin.model) == (pilot.defects, pilot.injection, pilot.model)
+
+
+def test_the_thin_runs_business_terms_ground_only_the_wallet_balance_and_name_no_defect_term():
+    """The freeze's claim_writing.business_terms and grounding, and #50's decision of 2026-10-21 that
+    nothing in the claim-writing input points at a slot."""
+    raw = yaml.safe_load((CONFIGS / "write_line_thin.yaml").read_text())
+    terms = raw["business_terms"]
+    assert set(terms) == {"crypto", "alien"}
+    assert terms["crypto"]["grounding"] == {"wallet balance": "accountbalances.walletsum"}
+    assert "wallet balance" in terms["crypto"]["terms"]
+    assert "grounding" not in terms["alien"]
+    named = [term.casefold() for database in terms.values() for term in database["terms"]]
+    assert not [term for term in named if any(word in term for word in ("cancel", "seeing", "grade", "order"))]
