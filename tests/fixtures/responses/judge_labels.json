@@ -1,0 +1,15 @@
+{
+  "id": "msg_recorded_judge_labels",
+  "type": "message",
+  "role": "assistant",
+  "model": "anthropic.claude-model-placeholder",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "Judged reading by reading:\n{\"A\": \"holds\", \"B\": \"fails\", \"C\": \"not_addressed\"}"
+    }
+  ],
+  "usage": {"input_tokens": 900, "output_tokens": 30}
+}
