@@ -26,9 +26,9 @@ pinned in `uv.lock`. Add a dependency with `uv add <package>` and commit `uv.loc
 4. **Open a PR** with `Closes #<n>` in the description and merge it yourself once the tests pass; no
    review is needed, so we can iterate fast. Every change to `main` still goes through a PR. Merging
    closes the issue and unblocks the tickets waiting on it.
-5. **Log your time.** Once a week, comment on each ticket you worked on: hours spent and which
-   acceptance criteria are met. The October 17 checkpoint (#57) compares these logs with the
-   estimates.
+5. **Log your time (recommended).** Once a week, a comment on each ticket you worked on with the hours
+   spent and which acceptance criteria are met helps the team see where the time goes. It is no longer
+   required: the October 17 checkpoint (#57) that compared these logs with the estimates is closed.
 
 ## Hard rules
 
