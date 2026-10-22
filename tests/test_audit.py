@@ -222,3 +222,23 @@ def test_audit_records_need_the_auditors_name(records, tmp_path):
     main(["sheet", "--config", str(CONFIG), "--results", str(results), "--sheet", str(sheet), "--key", str(key)])
     with pytest.raises(SystemExit):
         main(["agreement", "--results", str(results), "--sheet", str(sheet), "--key", str(key), "--out", str(tmp_path / "a.jsonl")])
+
+
+def test_the_audit_covers_the_confident_variants_claims_only(config, orders):
+    # ADR 0012: the abstain variant's claims are judged but not audited. Both variants put a claim at
+    # the same (defect, sample, index), so the judge's labels must be the confident variant's too.
+    seeing = orders["seeing-recode"]
+    truth = {seeing[0]: "holds", seeing[1]: "fails"}
+    records = [
+        {"run_id": RUN, "record": "start"},
+        judgement(config, "seeing-recode", 1, 0, SEEING_CLAIM, truth, variant="confident"),
+        judgement(config, "seeing-recode", 1, 0, "In observatories.seeingprofile, '3' marks the best seeing.",
+                  {seeing[0]: "fails", seeing[1]: "holds"}, variant="abstain"),
+        {"run_id": RUN, "record": "complete"},
+    ]
+    items, rows = filled(config, records, lambda row: "")
+    assert [item.claim for item in items] == [SEEING_CLAIM]
+    letters = items[0].letters
+    for row in rows:
+        row["label"] = truth[letters[row["letter"]]]  # the confident claim's own judge labels
+    assert agreement(rows, items, records, RUN).agree == 2

@@ -24,8 +24,8 @@ import yaml
 
 from warrant.agent.fake import ScriptedAgent, ScriptedClaimWriter, ScriptedJudge
 from warrant.agent.interface import Response, ResponseKind, Usage
-from warrant.agent.judge import JUDGE_PROMPT_VERSION, JudgeCall
-from warrant.agent.write_claims import BusinessTerms, system_prompt
+from warrant.agent.judge import JUDGE_PROMPT_VERSION, JudgeCall, JudgeMethod
+from warrant.agent.write_claims import BusinessTerms, ClaimWritingCall, system_prompt
 from warrant.defects.inject import load_defect
 from warrant.store.results import Provenance
 from warrant.write_line import run as run_module
@@ -167,11 +167,15 @@ def test_every_slot_claim_of_every_sample_is_judged_once_in_its_slots_reading_or
     assert all(r["reading_order"] == list(orders[r["defect"]]) and r["complete"] for r in judgements)
     assert {r["prompt_version"] for r in judgements} == {JUDGE_PROMPT_VERSION}
     assert all(isinstance(r["duration_s"], float) for r in judgements)
-    # An identical claim string on a slot is judged once; the rest agree with it without a call.
+    assert all(r["method"] == JudgeMethod.from_freeze(config.global_part).record() for r in judgements)
+    # An identical claim string on a slot is judged once per variant, each variant's samples having
+    # their own judgements (ADR 0012); the rest agree with it without a call.
     called = [r for r in judgements if not r["without_a_call"]]
-    assert sorted((r["defect"], r["claim"]) for r in called) == sorted(
+    assert sorted((r["variant"], r["defect"], r["claim"]) for r in called) == sorted(
+        (variant, defect, claim) for variant in ("confident", "abstain") for defect, claim in
         [("total-is-sum", FORMULA), ("site-swap", NORTH), ("site-swap", SOUTH), ("open-orders-cut", COMPLETE)])
-    assert len(judge.prompts) == 4 * 3  # three valid calls each
+    assert all(not r["without_a_call"] for r in judgements if r["sample"] == 1)
+    assert len(judge.prompts) == 8 * 3  # three valid calls each
 
 
 def test_the_confidence_store_asks_a_person_on_its_k_least_confident_slots_and_as_often_as_settlement(config, tmp_path):
@@ -202,6 +206,10 @@ def test_the_abstain_confidence_rule_ranks_the_abstain_variants_samples(config, 
     stores = {r["rule"]: r for r in of(records(tmp_path / "results.jsonl"), "store")}
     assert stores["confidence_abstain"]["scores"]["site-swap"]["agreement"] == 1.0
     assert stores["confidence"]["scores"]["site-swap"]["agreement"] == 4 / 9
+    # Its own ranking, not the confident variant's, picks the slots it sends to a person.
+    assert stores["confidence_abstain"]["ranking"] == ["tasks-short-cut", "open-orders-cut", "site-swap", "total-is-sum"]
+    assert {d: s and s["source"] for d, s in stores["confidence_abstain"]["slots"].items()} == {
+        "tasks-short-cut": "person", "open-orders-cut": "person", "site-swap": "agent", "total-is-sum": "agent"}
 
 
 def test_a_failed_later_sample_counts_as_disagreeing_and_is_not_drawn_again(config, tmp_path):
@@ -319,3 +327,125 @@ def test_a_resume_under_another_judge_prompt_version_is_refused(config, tmp_path
     monkeypatch.setattr(run_module, "JUDGE_PROMPT_VERSION", "2")
     with pytest.raises(ValueError, match="another judge prompt"):
         go(config, tmp_path, run_id=records(tmp_path / "results.jsonl")[0]["run_id"])
+
+
+def test_a_tie_on_agreement_and_mean_confidence_is_broken_by_the_freezes_seeded_permutation(config, tmp_path):
+    class TiedOnDepot(Writer):
+        def _write(self, system, user):
+            return super()._write(system, user).replace('"confidence": 0.7', '"confidence": 0.9')
+
+    go(config, tmp_path, writer=TiedOnDepot())
+    confidence = next(r for r in of(records(tmp_path / "results.jsonl"), "store") if r["rule"] == "confidence")
+    assert confidence["scores"]["open-orders-cut"] == confidence["scores"]["total-is-sum"]
+    # Seed 20261012 (`seeds.matched_asks_tie_break`) puts total-is-sum earlier, so more confident.
+    assert confidence["ranking"] == ["tasks-short-cut", "site-swap", "open-orders-cut", "total-is-sum"]
+
+
+def test_a_combination_rule_other_than_the_freezes_is_refused_before_any_call(config, tmp_path):
+    rule = {**GLOBAL["confidence_combination"], "keys": GLOBAL["confidence_combination"]["keys"][::-1]}
+    writer = Writer()
+    with pytest.raises(ValueError, match="confidence combination"):
+        go(dataclasses.replace(config, global_part={**GLOBAL, "confidence_combination": rule}), tmp_path, writer=writer)
+    assert writer.prompts == [] and not (tmp_path / "results.jsonl").exists()
+
+
+class RaisesOnSouth:
+    """A judge model that is interrupted on the first claim that says 'south'."""
+
+    def __init__(self):
+        self.prompts = []
+
+    def call(self, prompt):
+        self.prompts.append(prompt)
+        if claim_of(prompt) == SOUTH:
+            raise KeyboardInterrupt
+        return JudgeCall(judges(prompt), Usage(1, 0))
+
+
+def test_a_claim_string_judged_before_a_resume_agrees_without_a_call_after_it(config, tmp_path):
+    with pytest.raises(KeyboardInterrupt):
+        go(config, tmp_path, judge=RaisesOnSouth())
+    run_id = records(tmp_path / "results.jsonl")[0]["run_id"]
+    judge = ScriptedJudge(judges)
+    go(config, tmp_path, judge=judge, run_id=run_id)
+    # Before the stop, the confident variant judged FORMULA and NORTH with calls (samples 1 to 5) and was
+    # cut on SOUTH (sample 6). After it, its FORMULA of samples 6 to 10 agrees without a call; SOUTH and
+    # depot's claim are judged, and the abstain variant judges its own four strings.
+    assert Counter(claim_of(prompt) for prompt in judge.prompts) == {FORMULA: 3, NORTH: 3, SOUTH: 6, COMPLETE: 6}
+
+
+class PaidWriter(Writer):
+    """The scripted writer, each of whose calls costs `input_tokens`."""
+
+    def __init__(self, input_tokens):
+        self.input_tokens = input_tokens
+        super().__init__()
+
+    def call(self, system, user):
+        return dataclasses.replace(super().call(system, user), usage=Usage(self.input_tokens, 0))
+
+
+def test_the_run_stops_before_a_later_sample_that_could_pass_the_cap(config, tmp_path):
+    # Each sample costs $0.20: with a $1.10 cap, the four samples 1 and one sample 2 fit, a sixth could pass it.
+    with pytest.raises(RunStopped, match="cap"):
+        go(config, tmp_path, writer=PaidWriter(100_000), spend=Spend(PRICES, cap=1.1))
+    stored = records(tmp_path / "results.jsonl")
+    assert [r["sample"] for r in of(stored, "sample")] == [1, 1, 1, 1, 2]
+    assert of(stored, "judgement") == []
+
+
+class CutAt(Writer):
+    """The scripted writer, except that sample `at` pays for an invalid first attempt and is interrupted
+    during its second."""
+
+    def __init__(self, at):
+        super().__init__()
+        self.at, self.tries = at, 0
+
+    def call(self, system, user):
+        variant = "confident" if system == system_prompt("confident") else "abstain"
+        database = database_of(user)
+        if (variant, database, self.done[(variant, database)] + 1) == self.at:
+            self.tries += 1
+            if self.tries == 1:
+                return ClaimWritingCall("no JSON here", Usage(100_000, 0))
+            raise KeyboardInterrupt
+        return super().call(system, user)
+
+
+def test_a_later_sample_stopped_after_a_paid_attempt_is_recorded_as_spent_under_its_number(config, tmp_path):
+    with pytest.raises(KeyboardInterrupt):
+        go(config, tmp_path, writer=CutAt(("confident", "plant", 7)), spend=Spend(PRICES))
+    spent = of(records(tmp_path / "results.jsonl"), "spent")
+    assert [(r["operation"], r["variant"], r["database"], r["sample"], r["input_tokens"]) for r in spent] == [
+        ("write_claims", "confident", "plant", 7, 100_000)]
+
+
+def test_a_swallowed_interrupt_stops_the_run_before_its_next_later_sample(config, tmp_path, monkeypatch):
+    writer, original = Writer(), run_module.write_claims
+
+    def signalled_after_sample_three(*args, **kwargs):
+        output = original(*args, **kwargs)
+        if writer.done[("confident", "plant")] == 3:
+            run_module._signalled.append("SIGTERM")
+        return output
+
+    monkeypatch.setattr(run_module, "_signalled", [])
+    monkeypatch.setattr(run_module, "write_claims", signalled_after_sample_three)
+    with pytest.raises(KeyboardInterrupt, match="SIGTERM"):
+        go(config, tmp_path, writer=writer)
+    assert writer.done[("confident", "plant")] == 3 and sum(writer.done.values()) == 6
+
+
+def test_sample_one_of_a_variant_no_confidence_rule_ranks_is_judged(config, tmp_path):
+    go(dataclasses.replace(config, rules=("empty", "all_agent", "settlement")), tmp_path)
+    judgements = of(records(tmp_path / "results.jsonl"), "judgement")
+    assert sorted((r["variant"], r["defect"], r["sample"]) for r in judgements) == [
+        ("confident", "open-orders-cut", 1), ("confident", "site-swap", 1), ("confident", "total-is-sum", 1)]
+
+
+def test_a_variant_no_confidence_rule_ranks_is_judged_on_sample_one_only(config, tmp_path):
+    go(dataclasses.replace(config, rules=("empty", "settlement_abstain", "confidence")), tmp_path)
+    judgements = of(records(tmp_path / "results.jsonl"), "judgement")
+    assert {r["sample"] for r in judgements if r["variant"] == "abstain"} == {1}
+    assert {r["sample"] for r in judgements if r["variant"] == "confident"} == set(range(1, 11))

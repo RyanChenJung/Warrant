@@ -443,7 +443,7 @@ def run(
         raise ValueError("the confidence rules rank the judge's profiles, so they need a judge model")
     # Read before any call, so that a configuration that cannot rank or judge stops before it pays.
     combination = CombinationRule.from_freeze(config.global_part) if ranked else None
-    judge = Judge(judge_model, JudgeMethod.from_freeze(config.global_part)) if judge_model is not None else None
+    method = JudgeMethod.from_freeze(config.global_part) if judge_model is not None else None
     if tolerance is None:
         tolerance = (config.global_part or {}).get("numeric_tolerance", TOLERANCE)
     built = build(list(config.defects), config.databases, work_dir)
@@ -578,16 +578,18 @@ def run(
                         samples[(variant, database, number)] = draw(variant, database, number)
 
         # Judging (#51, #120): every claim on a slot in every sample, sample 1's first, each in its slot's
-        # reading order, before the stores. A claim string already judged on its slot agrees without a
-        # call, across invocations too; a judgement cut short by an error keeps its paid answers and is
-        # judged again on resume, since a claim's judgement is its first complete one (#53).
-        if judge is not None:
+        # reading order, before the stores. Each variant's samples have their own judgements (ADR 0012):
+        # within a variant, a claim string already judged on its slot agrees without a call, across
+        # invocations too. A judgement cut short by an error keeps its paid answers and is judged again
+        # on resume, since a claim's judgement is its first complete one (#53).
+        if method is not None:
             orders = reading_orders_for(config)
             judged = {(r["variant"], r["defect"], r["sample"], r["index"])
                       for r in earlier if r.get("record") == "judgement" and r.get("complete")}
-            labelled = {(r["defect"], r["claim"]): r for r in earlier
+            labelled = {(r["variant"], r["defect"], r["claim"]): r for r in earlier
                         if r.get("record") == "judgement" and r.get("complete") and not r.get("without_a_call")}
             for variant in variants:
+                judge = Judge(judge_model, method)  # its own cache of judged strings, this variant's only
                 for database in config.databases:
                     for number in range(1, (last if variant in ranked else 1) + 1):
                         sample = samples[(variant, database, number)]
@@ -601,8 +603,8 @@ def run(
                             request = judge_request(d, sample["claims"][index]["statement"], orders[d.id])
                             fields = {"record": "judgement", "run_id": run_id, "defect": d.id, "variant": variant,
                                       "sample": number, "index": index}
-                            if (d.id, request.claim) in labelled:
-                                first = labelled[(d.id, request.claim)]
+                            if (variant, d.id, request.claim) in labelled:
+                                first = labelled[(variant, d.id, request.claim)]
                                 write({**fields, "complete": True, "error": "", "slot": first["slot"],
                                        "claim": request.claim, "reading_order": first["reading_order"],
                                        "labels": first["labels"], "valid": [], "answers": [], "resent": 0, "splits": [],
@@ -629,7 +631,7 @@ def run(
                             record = {**fields, "complete": True, "error": "", **judgement.record(),
                                       "prompt_version": JUDGE_PROMPT_VERSION, "duration_s": time.monotonic() - started}
                             write(record)
-                            labelled[(d.id, request.claim)] = record
+                            labelled[(variant, d.id, request.claim)] = record
 
         # The confidence rule's allocation, per ranked variant: its k least confident slots go to a
         # person, k being the settlement rule's ask count in the committed predictions (#51).
