@@ -96,6 +96,19 @@ def stored(scoring_config, tmp_path):
     return [r for r in map(json.loads, results.read_text().splitlines()) if r["record"] == "answer"]
 
 
+def test_the_statistics_read_only_the_answer_records_of_a_whole_results_file(stored, scoring_config, tmp_path):
+    results = tmp_path / "whole.jsonl"
+    config = dataclasses.replace(load_config(scoring_config), runs=3)
+    run(config, ThreeRunAgent(), tmp_path / "work", PROVENANCE, results)
+    whole = [json.loads(line) for line in results.read_text().splitlines()]
+    # A call paid for whose answer was not stored (#54) carries no response class.
+    whole.insert(1, {"record": "spent", "operation": "answer", "question_id": "open-order-hours", "rule": "empty",
+                     "run": 0, "input_tokens": 10, "output_tokens": 1})
+    assert {r["record"] for r in whole} == {"start", "answer", "spent", "complete"}
+    assert paired_difference(whole, "all_person", "empty", seed=0) == paired_difference(stored, "all_person", "empty", seed=0)
+    assert flip_rate(whole) == flip_rate(stored)
+
+
 # Paired differences
 
 

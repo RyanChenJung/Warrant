@@ -5,6 +5,8 @@ more than twice its estimate. No test calls a model."""
 
 import dataclasses
 import json
+import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -160,6 +162,29 @@ def test_a_complete_run_or_one_with_another_prompt_version_or_other_rules_is_not
         run(config, Costly(), tmp_path / "work", dataclasses.replace(PROVENANCE, prompt_version="2"), stopped, run_id=run_id)
     with pytest.raises(ValueError, match="other rules or runs"):
         run(dataclasses.replace(config, runs=2), Costly(), tmp_path / "work", PROVENANCE, stopped, run_id=run_id)
+    with pytest.raises(ValueError, match="other rules or runs"):
+        run(dataclasses.replace(config, rules=tuple(reversed(config.rules))), Costly(), tmp_path / "work", PROVENANCE,
+            stopped, run_id=run_id)
+
+
+def test_a_run_stopped_before_its_first_answer_is_not_resumed_under_another_answer_prompt(config, tmp_path):
+    results = tmp_path / "results.jsonl"
+    with pytest.raises(KeyboardInterrupt):
+        run(config, PaidThenInterrupted(), tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES))
+    run_id = records(results)[0]["run_id"]
+    with pytest.raises(ValueError, match="another answer prompt"):
+        run(config, Costly(), tmp_path / "work", dataclasses.replace(PROVENANCE, prompt_version="2"), results, run_id=run_id)
+
+
+def test_a_run_set_aside_for_a_run_that_has_since_completed_is_not_resumed(config, tmp_path):
+    # The summary uses the first complete run in the file; completing the earlier one would change it.
+    results = tmp_path / "results.jsonl"
+    with pytest.raises(KeyboardInterrupt):
+        run(config, Costly(stop_after=1), tmp_path / "work", PROVENANCE, results)
+    set_aside = records(results)[0]["run_id"]
+    run(config, Costly(), tmp_path / "work", PROVENANCE, results)
+    with pytest.raises(ValueError, match="completed after it started"):
+        run(config, Costly(), tmp_path / "work", PROVENANCE, results, run_id=set_aside)
 
 
 def test_a_first_pass_check_without_a_spend_is_refused_before_anything_is_stored(config, tmp_path):
@@ -215,6 +240,20 @@ def test_an_approved_first_pass_stays_approved_when_the_run_is_resumed_again(con
     assert records(results)[-1]["record"] == "complete"
 
 
+def test_an_approval_before_the_first_pass_is_complete_is_refused(config, tmp_path):
+    config = dataclasses.replace(config, runs=3)
+    results = tmp_path / "results.jsonl"
+    with pytest.raises(ValueError, match="no first pass to approve"):
+        run(config, Costly(), tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES),
+            first_pass_estimate=0.01, approve_first_pass=True)
+    with pytest.raises(KeyboardInterrupt):
+        run(config, Costly(stop_after=1), tmp_path / "work", PROVENANCE, results)
+    run_id = records(results)[0]["run_id"]
+    with pytest.raises(ValueError, match="no first pass to approve"):
+        run(config, Costly(), tmp_path / "work", PROVENANCE, results, run_id=run_id, spend=Spend(PRICES),
+            first_pass_estimate=0.01, approve_first_pass=True)
+
+
 def test_a_first_pass_within_twice_its_estimate_does_not_pause(config, tmp_path):
     config = dataclasses.replace(config, runs=3)
     results = tmp_path / "results.jsonl"
@@ -246,6 +285,73 @@ def test_a_new_run_beside_an_incomplete_run_of_its_configuration_is_refused(writ
     assert [r["record"] for r in records(results)].count("start") == 1
 
 
+def test_a_new_run_beside_a_complete_run_of_its_configuration_needs_new_run(write_line_config, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly())
+    results = tmp_path / "results.jsonl"
+    assert main(main_args(write_line_config, tmp_path)) == 0
+    with pytest.raises(SystemExit):
+        main(main_args(write_line_config, tmp_path))
+    assert "--new-run" in capsys.readouterr().err
+    assert main(main_args(write_line_config, tmp_path, "--new-run")) == 0
+    assert [r["record"] for r in records(results)].count("complete") == 2
+
+
+def test_the_command_pauses_after_the_first_pass_and_goes_on_when_resumed_with_the_approval(
+    write_line_config, tmp_path, monkeypatch, capsys
+):
+    # Three runs; each answer costs $0.20, far over the pilot's mean of about $0.04.
+    config_path = tmp_path / "three_runs.yaml"
+    config_path.write_text(write_line_config.read_text().replace("runs: 1", "runs: 3"))
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly(input_tokens=100_000))
+    results = tmp_path / "results.jsonl"
+    assert main(main_args(config_path, tmp_path)) == 3
+    run_id = records(results)[0]["run_id"]
+    assert f"--run-id {run_id} --approve-first-pass" in capsys.readouterr().out
+    first_pass = sum(r["record"] == "answer" for r in records(results))
+    assert main(main_args(config_path, tmp_path, "--run-id", run_id)) == 3
+    assert sum(r["record"] == "answer" for r in records(results)) == first_pass
+    assert main(main_args(config_path, tmp_path, "--run-id", run_id, "--approve-first-pass")) == 0
+    stored = records(results)
+    assert stored[-1]["record"] == "complete" and {r["run_id"] for r in stored} == {run_id}
+    assert sum(r["record"] == "answer" for r in stored) == 3 * first_pass
+
+
+def test_the_command_hands_the_run_the_committed_predictions(write_line_config, tmp_path, monkeypatch):
+    committed, given = {"claims": {}}, {}
+
+    def stopped(*args, **kwargs):
+        given.update(kwargs)
+        raise RunStopped("stopped", "f" * 32)
+
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly())
+    monkeypatch.setattr(run_module, "committed_predictions_for", lambda config: committed)
+    monkeypatch.setattr(run_module, "run", stopped)
+    assert main(main_args(write_line_config, tmp_path)) == 3
+    assert given["committed_predictions"] is committed
+
+
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP], ids=["SIGTERM", "SIGHUP"])
+def test_a_sigterm_or_sighup_reaches_the_run_as_an_interrupt_it_records(write_line_config, tmp_path, monkeypatch, signum):
+    # Without a handler either signal ends the process at once, losing the answer in progress. The
+    # test's own handler stands in for that, so a missing handler fails the test, not the test run.
+    reached_the_default = []
+
+    def signalled(*args, **kwargs):
+        os.kill(os.getpid(), signum)
+
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly())
+    monkeypatch.setattr(run_module, "run", signalled)
+    before = signal.signal(signum, lambda *_: reached_the_default.append(True))
+    try:
+        test_handler = signal.getsignal(signum)
+        with pytest.raises(KeyboardInterrupt):
+            main(main_args(write_line_config, tmp_path))
+        assert signal.getsignal(signum) is test_handler  # restored once the run is over
+    finally:
+        signal.signal(signum, before)
+    assert not reached_the_default
+
+
 def test_a_new_run_counts_what_every_earlier_run_in_the_results_file_spent(write_line_config, tmp_path, monkeypatch):
     monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly(input_tokens=30_000_000))
     results = tmp_path / "results.jsonl"
@@ -268,6 +374,14 @@ def test_the_committed_predictions_are_found_by_the_injection_records_hash(confi
     committed = committed_predictions_for(pilot)
     assert committed["injection_record"] == "injections/9cfd501f2182-write_line.json"
     assert committed_predictions_for(config) is None  # no injection record named
+
+
+def test_only_the_predictions_naming_the_injection_records_hash_are_taken(tmp_path):
+    pilot = load_config(REPO / "configs" / "write_line_pilot.yaml")
+    committed = json.loads((REPO / "predictions" / "9cfd501f2182-write_line.json").read_text())
+    (tmp_path / "a-other.json").write_text(json.dumps({**committed, "injection_record_sha256": "0" * 64, "other": True}))
+    (tmp_path / "b-this.json").write_text(json.dumps(committed))
+    assert "other" not in committed_predictions_for(pilot, tmp_path)
 
 
 def test_an_injection_record_with_reading_sets_and_no_committed_predictions_is_refused(tmp_path):

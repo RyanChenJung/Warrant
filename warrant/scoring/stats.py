@@ -79,8 +79,8 @@ def bootstrap_interval(
 
 
 def _answers(records: Iterable[Record]) -> Iterable[Record]:
-    """The answer records: a write-line run's start and complete records (#54) carry no response,
-    and records with no type, such as the maintenance line's, are answers."""
+    """The answer records: a write-line run's start, spent and complete records (#54) carry no
+    response, and records with no type, such as the maintenance line's, are answers."""
     return (record for record in records if record.get("record", "answer") == "answer")
 
 

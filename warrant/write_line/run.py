@@ -7,6 +7,7 @@ person; #50 and #51 add the others.
 
 import argparse
 import json
+import signal
 import sqlite3
 import uuid
 from collections import Counter
@@ -240,31 +241,48 @@ def _read(path: Path | None) -> list[dict]:
     return [json.loads(line) for line in Path(path).read_text().splitlines()]
 
 
+def _answer_prompt(record: dict) -> bool:
+    """Whether the record carries the answer prompt's version (#53): a start record, an answer, or a
+    call paid for while answering."""
+    return record.get("record") in ("start", "answer") or (
+        record.get("record") == "spent" and record.get("operation") == "answer")
+
+
+def _runs(records: list[dict], config_hash: str) -> tuple[list[str], set[str], set[str]]:
+    """This configuration's run ids in the order they were started, the complete ones, and the ones set
+    aside: started before the configuration's first complete run. The summary uses the first complete
+    run in the file, so completing a run set aside would change which run it uses."""
+    started = list(dict.fromkeys(
+        r["run_id"] for r in records if r.get("record") == "start" and r.get("config_hash") == config_hash))
+    complete = {r["run_id"] for r in records if r.get("record") == "complete"}
+    first = next((run_id for run_id in started if run_id in complete), None)
+    set_aside = set() if first is None else {run_id for run_id in started[:started.index(first)] if run_id not in complete}
+    return started, complete, set_aside
+
+
 def _earlier_records(results: Path | None, provenance: Provenance | None, run_id: str, config: Config) -> list[dict]:
-    """The stored records of the run being resumed, refused unless the run is incomplete and was made
-    with this configuration, this answer prompt and these rules and runs."""
+    """The stored records of the run being resumed, refused unless the run is incomplete, was not set
+    aside for a run of its configuration that has since completed, and was made with this
+    configuration, this answer prompt and these rules and runs."""
     if results is None or provenance is None or not Path(results).exists():
         raise ValueError(f"no run {run_id} to resume: no results file")
-    mine = [r for r in _read(results) if r.get("run_id") == run_id]
+    stored = _read(results)
+    mine = [r for r in stored if r.get("run_id") == run_id]
     if not mine:
         raise ValueError(f"no run {run_id} in {results}")
     if any(r.get("record") == "complete" for r in mine):
         raise ValueError(f"run {run_id} is complete; there is nothing to resume")
     if any(r.get("config_hash") != provenance.config_hash for r in mine):
         raise ValueError(f"run {run_id} was made with another configuration; a run is resumed with its own")
-    if any(r.get("prompt_version") != provenance.prompt_version for r in mine if r.get("record") == "answer"):
+    if run_id in _runs(stored, provenance.config_hash)[2]:
+        raise ValueError(f"run {run_id} was set aside: a run of its configuration completed after it started, "
+                         "and the summary uses the first complete run")
+    if any(r.get("prompt_version") != provenance.prompt_version for r in mine if _answer_prompt(r)):
         raise ValueError(f"run {run_id} was made with another answer prompt version; a run is resumed with its own")
     start = next(r for r in mine if r.get("record") == "start")
     if (start["rules"], start["runs"]) != (list(config.rules), config.runs):
         raise ValueError(f"run {run_id} was started with other rules or runs; a run is resumed with its own")
     return mine
-
-
-def _incomplete_runs(records: list[dict], config_hash: str) -> list[str]:
-    """The run ids of this configuration's runs that were started and never completed, oldest first."""
-    complete = {r["run_id"] for r in records if r.get("record") == "complete"}
-    started = (r["run_id"] for r in records if r.get("record") == "start" and r.get("config_hash") == config_hash)
-    return [run_id for run_id in dict.fromkeys(started) if run_id not in complete]
 
 
 def _scored(q: Question, rule: str, run_index: int, output, path: Path, expected: Result | None,
@@ -339,15 +357,16 @@ def run(
     (question, rule, run), and a complete record once every answer is stored (#53). A call paid for
     whose answer is not stored, because the run stopped during it, leaves a spent record with its
     tokens. Given a `run_id`, the run resumes that run from `results`: it makes only the calls still
-    missing, refusing a complete run and one made with another configuration, answer prompt, rules or
-    runs. Given a `spend`, which the caller builds from every record already paid for
+    missing, refusing a complete run, one set aside for a run that has since completed, and one made
+    with another configuration, answer prompt, rules or runs. Given a `spend`, which the caller builds from every record already paid for
     (`Spend.from_records`), it stops before a call that could take the spend past its cap. Given a
     `first_pass_estimate`, it pauses after run 0 when that pass's answers cost more than twice the
-    estimate, unless the lead approves it with `approve_first_pass`, an approval the start record
-    keeps for later resumes (#54). A stop raises RunStopped and keeps every record; any other error
-    raised once the run has started carries a note naming the run id to resume. Given the
-    `committed_predictions`, the recomputed predictions must equal them slot by slot, or the run stops
-    before any agent call, since the stores are composed from the predictions that fixed k.
+    estimate, unless the lead approves it with `approve_first_pass` when resuming a run whose first
+    pass is stored, an approval the start record keeps for later resumes (#54). A stop raises
+    RunStopped and keeps every record; any other error raised once the run has started carries a
+    note naming the run id to resume. Given the `committed_predictions`, the recomputed predictions
+    must equal them slot by slot, or the run stops before any agent call, since the stores are
+    composed from the predictions that fixed k.
     """
     if first_pass_estimate is not None and spend is None:
         raise ValueError("the first-pass check needs the run's spend, for its prices")
@@ -398,6 +417,10 @@ def run(
             append(results, provenance, record)
 
     done = {(r["question_id"], r["rule"], r["run"]) for r in earlier if r.get("record") == "answer"}
+    # The lead approves a first pass whose cost has been seen: one whose every answer is stored.
+    if approve_first_pass and not all((q.id, rule, 0) in done for rule in config.rules for q in config.questions):
+        raise ValueError("there is no first pass to approve yet: the approval resumes a run paused after its "
+                         "complete first pass")
     approved = approve_first_pass or any(r.get("first_pass_approved") for r in earlier if r.get("record") == "start")
     write({"record": "start", "run_id": run_id, "rules": list(config.rules), "runs": config.runs,
            "resumed": bool(earlier), "first_pass_approved": approved})
@@ -519,6 +542,10 @@ def committed_predictions_for(config: Config, directory: Path = REPO / "predicti
     return found[0]
 
 
+def _interrupt(signum, frame):
+    raise KeyboardInterrupt(signal.Signals(signum).name)
+
+
 def main(argv=None) -> int:
     """Run one configuration against the configured model: `python -m warrant.write_line.run`."""
     parser = argparse.ArgumentParser(description="Run the write line against the configured model.")
@@ -544,10 +571,15 @@ def main(argv=None) -> int:
         parser.error(f"{args.config} names no model block")
     provenance = provenance_for(args.config, config.model)
     stored = _read(args.results)
-    incomplete = _incomplete_runs(stored, provenance.config_hash)
-    if args.run_id is None and not args.new_run and incomplete:
-        parser.error(f"run {incomplete[-1]} of this configuration in {args.results} is incomplete: resume it "
-                     f"with --run-id {incomplete[-1]}, or start another with --new-run")
+    started, complete, set_aside = _runs(stored, provenance.config_hash)
+    if args.run_id is None and not args.new_run and started:
+        # Another run is paid for again in full, so it is started only on purpose.
+        incomplete = [run_id for run_id in started if run_id not in complete and run_id not in set_aside]
+        if incomplete:
+            parser.error(f"run {incomplete[-1]} of this configuration in {args.results} is incomplete: resume it "
+                         f"with --run-id {incomplete[-1]}, or start another with --new-run")
+        parser.error(f"this configuration already has a complete run in {args.results}; "
+                     "start another only on purpose, with --new-run")
     try:
         agent = ClaudeAgent(config.model)
         # The cap covers every call already paid for: every run in the results file, a repeated run
@@ -558,6 +590,9 @@ def main(argv=None) -> int:
         parser.error(f"{args.config}: {error}")  # a misconfiguration, before any question is asked
     mean_input, mean_output = mean_tokens(json.loads(line) for line in PILOT_RESULTS.read_text().splitlines())
     estimate = answer_estimate(len(config.questions) * len(config.rules), mean_input, mean_output, spend.prices)
+    # SIGTERM and SIGHUP (a closed terminal, a dropped SSH session) would end the process with no
+    # exception, losing the tokens of the answer in progress; as an interrupt, the run records them.
+    handlers = {signum: signal.signal(signum, _interrupt) for signum in (signal.SIGTERM, signal.SIGHUP)}
     try:
         result = run(
             config,
@@ -576,6 +611,9 @@ def main(argv=None) -> int:
         print(f"  resume it with --run-id {stop.run_id}"
               + (" --approve-first-pass once the lead approves the first pass" if "first pass" in str(stop) else ""))
         return 3
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
     failed = sum(row.response_class == ResponseClass.FAILED for row in result.rows)
     print(f"run {result.run_id} complete: {len(result.rows)} results this invocation, {failed} failed calls, "
           f"${spend.total:.2f} spent in all, written to {args.results}")
