@@ -269,3 +269,23 @@ def test_the_command_writes_no_claim_before_the_judge_validation_clears_it(write
                          "--results", str(tmp_path / "results.jsonl"),
                          "--judge-validation", str(tmp_path / "judge_validation.jsonl")])
     assert "judge's validation" in capsys.readouterr().err
+
+
+def test_a_failed_sample_one_stops_the_run_before_the_stores_and_a_resume_draws_only_it_again(config, tmp_path):
+    # Decided by the lead on 2026-10-22: a failed sample 1 has no claim set to keep, so it is drawn again.
+    def last_fails(system, user):
+        return None if system == system_prompt("abstain") and database_of(user) == "depot" else writes(system, user)
+
+    with pytest.raises(RunStopped, match="sample 1 of depot under the abstain variant failed"):
+        go(config, tmp_path, writer=ScriptedClaimWriter(last_fails))
+    first = records(tmp_path / "results.jsonl")
+    assert [r["record"] for r in first] == ["start"] + ["sample"] * 4
+    assert first[-1]["failure"] and first[-1]["claims"] == []
+    writer = ScriptedClaimWriter(writes)
+    go(config, tmp_path, writer=writer, run_id=first[0]["run_id"])
+    assert [database_of(user) for system, user in writer.prompts] == ["depot"]  # the failed sample only
+    stored = records(tmp_path / "results.jsonl")
+    settlement = next(r for r in stored if r["record"] == "store" and r["rule"] == "settlement_abstain")
+    assert settlement["slots"]["open-orders-cut"]["source"] == "person" and stored[-1]["record"] == "complete"
+    abstain_depot = [r for r in stored if r["record"] == "sample" and (r["variant"], r["database"]) == ("abstain", "depot")]
+    assert [bool(r["failure"]) for r in abstain_depot] == [True, False]

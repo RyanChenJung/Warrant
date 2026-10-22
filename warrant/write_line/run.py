@@ -396,9 +396,9 @@ def run(
     `stop_after_prediction` the run returns them before any agent call.
 
     Every stored record carries the run's id and its type (#53): a start record; sample 1 of each
-    prompt variant the rules read, on every database, written by `claim_writer`; one store record per
-    rule; one answer record per (question, rule, run); and a complete record once every answer is
-    stored. Each question is given its rule's store on its own database. A call paid for whose result
+    prompt variant the rules read, on every database, written by `claim_writer`, a failed one stopping
+    the run so that a resume draws it again; one store record per rule; one answer record per
+    (question, rule, run); and a complete record once every answer is stored. Each question is given its rule's store on its own database. A call paid for whose result
     is not stored, because the run stopped during it, leaves a spent record with its tokens. Every
     record of a model call carries its wall time, and the start record the battery's on each
     database's injected copy. Given a `run_id`, the run resumes that run from `results`: it makes only
@@ -506,8 +506,14 @@ def run(
     rows = []
     try:
         # Claim writing: sample 1 of each variant the rules read, on every database (#50). A resumed run
-        # reuses the samples it has, since a sample drawn again would be another claim set.
-        samples = {(r["variant"], r["database"]): r for r in earlier if r.get("record") == "sample" and r["sample"] == 1}
+        # reuses the samples it has, since a sample drawn again would be another claim set. A failed
+        # sample 1 has no claim set to keep: it stops the run before the stores, and a resume draws it
+        # again, its record kept, so the run uses each database's first sample 1 without a failure
+        # (decided by the lead on 2026-10-22).
+        samples = {}
+        for r in earlier:
+            if r.get("record") == "sample" and r["sample"] == 1 and not r.get("failure"):
+                samples.setdefault((r["variant"], r["database"]), r)
         for variant in variants:
             for database in config.databases:
                 if (variant, database) in samples:
@@ -527,10 +533,13 @@ def run(
                     raise
                 if spend is not None:
                     spend.add(output.usage.input_tokens, output.usage.output_tokens)
-                samples[(variant, database)] = {"record": "sample", "run_id": run_id, "database": database, "sample": 1,
-                                                **output.record(), "prompt_version": WRITE_CLAIMS_PROMPT_VERSION,
-                                                "duration_s": time.monotonic() - started}
-                write(samples[(variant, database)])
+                record = {"record": "sample", "run_id": run_id, "database": database, "sample": 1, **output.record(),
+                          "prompt_version": WRITE_CLAIMS_PROMPT_VERSION, "duration_s": time.monotonic() - started}
+                write(record)
+                if output.failure:
+                    raise RunStopped(f"sample 1 of {database} under the {variant} variant failed after its attempts "
+                                     f"({output.failure}); resume the run to draw it again", run_id)
+                samples[(variant, database)] = record
 
         # The stores, one per rule and database, each recorded once per run, before the first answer.
         composed = {rule: {database: compose(rule, database, config.defects, warrants,
