@@ -95,10 +95,12 @@ def answer_estimate(answers: int, mean_input: float, mean_output: float, prices:
 
 
 def first_pass_cost(records: Iterable[Mapping], prices: Prices) -> float:
-    """The cost of the first complete pass's answers (run 0), failed ones included: what the estimate
-    covers. Claim writing and judging come before it and are left out."""
-    return sum(prices.cost(r["input_tokens"], r["output_tokens"])
-               for r in records if r.get("record") == "answer" and r.get("run") == 0)
+    """The cost of the first complete pass's answers (run 0), failed ones and ones paid for but stopped
+    before they were stored included: what the estimate covers. Claim writing and judging come before
+    it and are left out."""
+    return sum(prices.cost(r["input_tokens"], r["output_tokens"]) for r in records
+               if r.get("run") == 0 and (r.get("record") == "answer"
+                                         or (r.get("record") == "spent" and r.get("operation") == "answer")))
 
 
 def over_estimate(actual: float, estimate: float, factor: float = FIRST_PASS_FACTOR) -> bool:

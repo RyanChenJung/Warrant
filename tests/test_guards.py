@@ -92,8 +92,11 @@ def test_the_first_pass_cost_is_run_0s_answers_only_failures_included():
         {"record": "answer", "run": 0, "input_tokens": 100_000, "output_tokens": 0},
         {"record": "answer", "run": 0, "input_tokens": 100_000, "output_tokens": 0, "failure": "timed out"},
         {"record": "answer", "run": 1, "input_tokens": 1_000_000, "output_tokens": 0},
+        # An answer paid for but stopped before it was stored is part of the pass too.
+        {"record": "spent", "operation": "answer", "run": 0, "input_tokens": 50_000, "output_tokens": 0},
+        {"record": "spent", "operation": "write_claims", "input_tokens": 1_000_000, "output_tokens": 0},
     ]
-    assert first_pass_cost(records, Prices(2.0, 10.0)) == pytest.approx(0.4)
+    assert first_pass_cost(records, Prices(2.0, 10.0)) == pytest.approx(0.5)
 
 
 def test_a_first_pass_costing_more_than_twice_its_estimate_pauses_the_run():

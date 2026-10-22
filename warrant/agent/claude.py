@@ -82,7 +82,7 @@ def _parse(text: str) -> Response:
         kind = ResponseKind(raw["kind"])
         confidence = _confidence(raw.get("confidence"))
         missing, alternative, clarification = (_text(raw, f) for f in ("missing", "alternative", "clarification"))
-    except (KeyError, TypeError, ValueError) as error:
+    except (KeyError, TypeError, ValueError, OverflowError) as error:  # OverflowError: a confidence no float holds
         raise CallFailed(f"malformed response: {error}") from error
 
     # An answer is scored by re-executing its SQL, so an answer without any is not one.
@@ -116,6 +116,11 @@ class ClaudeAgent:
                 failure = str(error)
                 spent = _add(spent, error.usage)
                 continue
+            except BaseException as error:
+                # An error that stops the run (a misconfiguration, an interrupt) carries the tokens
+                # already paid for this answer, so the run can record and count them (#54).
+                error.usage = _add(spent, getattr(error, "usage", Usage()))
+                raise
             return AgentOutput(response, _add(spent, usage))
         return AgentOutput(None, spent, failure=failure)
 
@@ -124,24 +129,32 @@ class ClaudeAgent:
         messages: list[dict] = [{"role": "user", "content": user_message(request)}]
         usage = Usage()
 
-        # ponytail: a flat call ceiling, enough for the single-turn setting; make it a token or
-        # wall-clock budget if a condition ever needs the agent to explore further.
-        for _ in range(self._config.max_tool_calls + 1):
-            try:
-                message = self._create(**self._request(request, messages))
-            except anthropic.APIError as error:
-                if not _transient(error):
-                    raise
-                raise CallFailed(f"{type(error).__name__}: {error}", usage) from error
-            usage = _add(usage, Usage(message.usage.input_tokens, message.usage.output_tokens))
-            if message.stop_reason != "tool_use":
+        try:
+            # ponytail: a flat call ceiling, enough for the single-turn setting; make it a token or
+            # wall-clock budget if a condition ever needs the agent to explore further.
+            for _ in range(self._config.max_tool_calls + 1):
                 try:
-                    return _parse(_final_text(message)), usage
-                except CallFailed as error:
-                    raise CallFailed(str(error), usage) from error
-            content = [block.model_dump(exclude_none=True) for block in message.content]
-            messages.append({"role": "assistant", "content": content})
-            messages.append({"role": "user", "content": _results(message, request, tools)})
+                    message = self._create(**self._request(request, messages))
+                except anthropic.APIError as error:
+                    if not _transient(error):
+                        raise
+                    raise CallFailed(f"{type(error).__name__}: {error}", usage) from error
+                usage = _add(usage, Usage(message.usage.input_tokens, message.usage.output_tokens))
+                if message.stop_reason != "tool_use":
+                    try:
+                        return _parse(_final_text(message)), usage
+                    except CallFailed as error:
+                        raise CallFailed(str(error), usage) from error
+                content = [block.model_dump(exclude_none=True) for block in message.content]
+                messages.append({"role": "assistant", "content": content})
+                messages.append({"role": "user", "content": _results(message, request, tools)})
+        except CallFailed:
+            raise
+        except BaseException as error:
+            # A misconfiguration, or an interrupt during a call or a tool: every turn of the
+            # conversation so far was paid for.
+            error.usage = usage
+            raise
 
         raise CallFailed(f"the model asked for more than {self._config.max_tool_calls} tool calls", usage)
 

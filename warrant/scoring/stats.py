@@ -78,10 +78,16 @@ def bootstrap_interval(
     return _percentile(means, tail), _percentile(means, 1 - tail)
 
 
+def _answers(records: Iterable[Record]) -> Iterable[Record]:
+    """The answer records: a write-line run's start, spent and complete records (#54) carry no
+    response, and records with no type, such as the maintenance line's, are answers."""
+    return (record for record in records if record.get("record", "answer") == "answer")
+
+
 def _classes(records: Iterable[Record], item: str, condition: str) -> dict[tuple[str, str], list[str]]:
     """Each item's response classes under each condition."""
     classes = defaultdict(list)
-    for record in records:
+    for record in _answers(records):
         classes[(record[item], record[condition])].append(record["response_class"])
     return classes
 
@@ -183,7 +189,7 @@ def question_differences(
     rules = (confidence, settlement)
     classes = defaultdict(dict)  # (question, rule) -> {run: response class}
     repeated = set()
-    for record in records:
+    for record in _answers(records):
         key = (record["question_id"], record["rule"])
         if key[0] in questions and key[1] in rules:
             if record["run"] in classes[key]:
