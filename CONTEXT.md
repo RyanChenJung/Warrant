@@ -135,14 +135,14 @@ _Avoid_: confidence routing, confidence baseline
 
 **Matched asks**:
 The condition under which the settlement and confidence rules are compared: both send the same
-number of claims to a person, the number the settlement rule sends under the baseline battery, fixed
-before any agent runs.
+number of claims to a person in total over all slots, the number the settlement rule sends under the
+baseline battery, fixed before any agent runs.
 _Avoid_: equal budget, same k
 
 **Claim-writing sample**:
-One of several claim sets the agent writes for a database from the same input. The first is the set
-the stores use; the others show how consistently the agent writes each claim, which is what the
-confidence rule ranks by.
+One of several claim sets the agent authors for a database from the same input. Only the first is
+written into the stores; the others show how consistently the agent states each claim, which the
+confidence rule ranks by before the agent's self-reported confidence.
 _Avoid_: draw, rollout, attempt
 
 **Hybrid rule**:
@@ -194,29 +194,30 @@ _Avoid_: decided, proven, detected, resolved
 ### Judging
 
 **Judge**:
-The operation that labels a claim against each reading of its slot as holding, failing or not
-addressed, without being told which reading is true. Its rubric is frozen with the defects.
+The step that labels a claim against each reading in its slot's reading set as holding, failing or
+not addressed, without being told which reading is true. Its rubric is frozen with the defects.
 _Avoid_: grader, evaluator, LLM-as-judge
 
 **Profile**:
-A claim's labels from the judge across the readings of its slot. Two claims agree when their profiles
-are identical.
+A claim's labels from the judge across the readings in its slot's reading set. Two claims agree when
+their profiles are identical.
 _Avoid_: label vector, signature
 
 **Wrong write**:
-A claim written into a store that fails under its slot's true reading. A claim the judge leaves not
-addressed on the true reading is incomplete, not wrong.
-_Avoid_: bad claim, false memory, error
+An agent claim written into a store that the judge labels as failing under its slot's true reading.
+One the judge leaves not addressed on the true reading is incomplete, not wrong.
+_Avoid_: bad claim, false memory, write error
 
 **Judge validation**:
-The judge run, before any claim is written by the agent, on claims whose labels are known in
-advance: the reference claims and the drift-reading statements. Mismatches are reported, not fixed.
+The judge run, before the agent's first claim-writing sample, on statements whose expected labels are
+frozen: each reference claim on every reading, and each drift-reading statement on its drift reading
+and the true reading. Mismatches are reported, and the rubric is not changed.
 _Avoid_: calibration, judge test
 
 **Blind audit**:
-A person who did not design the defects labels the agent's claims on the slots without seeing the
-judge's labels or which reading is true. Agreement with the judge is reported, and the judge's labels
-stand.
+The labelling of the agent's claims on the slots by a teammate who did not design the defects,
+without seeing the judge's labels or which reading is true. How often the teammate's labels match the
+judge's is reported, and the judge's labels stand.
 _Avoid_: human evaluation, annotation, spot check
 
 ### Drift
@@ -290,8 +291,9 @@ from which of its readings the battery can tell apart.
 _Avoid_: expected outcome, hypothesis
 
 **Rules coincide**:
-The result in which the settlement and confidence rules write identical stores, so their comparison
-has nothing to test on those slots. It is reported as a result, not re-run.
+The result in which the settlement and confidence rules produce identical stores, so no slot is filled
+from different sources and their comparison has no question to test. It is reported as it is, not
+re-run under another seed.
 _Avoid_: tie, null result
 
 **Migration**:
