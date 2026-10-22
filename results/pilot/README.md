@@ -21,6 +21,11 @@ The run rebuilt the databases and checked every copy's content hash against
 | filled-notional-on-cancelled | wrong | correct |
 | Accuracy | 3 of 8 (0.375) | 7 of 8 (0.875) |
 
+Under everything from a person, the store held the reference claims of all three frozen defects,
+since the runner composed one store from every defect of the freeze. So the crypto questions also
+saw the alien value-meaning claim (`seeing-recode`). It is about another database, and no pilot
+question touches it. From #54 on, each question gets only its own database's claims (#50).
+
 What the records do not hold is the value each final SQL returns; the values above come from
 re-executing the stored SQL on the rebuilt injected copy. The results are data derived from
 LiveSQLBench-Base-Lite (table and column names in the SQL), under CC BY-SA 4.0.
