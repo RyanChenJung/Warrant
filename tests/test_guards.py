@@ -14,9 +14,11 @@ from warrant.write_line.guards import (
     Prices,
     Spend,
     answer_estimate,
+    first_pass_cost,
     mean_tokens,
     over_estimate,
     predictions_differ,
+    prices_for,
     validation_problems,
 )
 
@@ -35,10 +37,15 @@ def method():
 
 def test_a_calls_cost_is_its_tokens_at_the_prices_per_million():
     assert Prices(2.0, 10.0).cost(1_000_000, 100_000) == pytest.approx(3.0)
-    assert LIST_PRICES == Prices(2.0, 10.0)
+    assert prices_for(MODEL) == LIST_PRICES[MODEL] == Prices(2.0, 10.0)
 
 
-def test_the_spend_refuses_a_call_that_could_take_it_past_the_cap():
+def test_a_model_without_a_list_price_is_refused_rather_than_guessed():
+    with pytest.raises(ValueError, match="no list price"):
+        prices_for("anthropic.claude-other")
+
+
+def test_the_spend_refuses_a_call_whose_bound_would_take_it_past_the_cap():
     spend = Spend(Prices(2.0, 10.0), cap=1.0)
     assert spend.allows_another_call()
     spend.add(200_000, 10_000)  # 0.50
@@ -47,10 +54,18 @@ def test_the_spend_refuses_a_call_that_could_take_it_past_the_cap():
     assert not spend.allows_another_call()
 
 
-def test_before_any_call_the_spend_uses_the_bound_it_is_given():
+def test_a_bound_larger_than_the_largest_call_so_far_is_used_instead():
     spend = Spend(Prices(2.0, 10.0), cap=1.0)
     assert spend.allows_another_call(bound=1.0)
     assert not spend.allows_another_call(bound=1.01)
+    spend.add(100_000, 0)  # 0.20
+    assert spend.allows_another_call(bound=0.8) and not spend.allows_another_call(bound=0.81)
+
+
+def test_the_spend_counts_the_judges_validation_too():
+    records = [json.loads(line) for line in VALIDATION.read_text().splitlines()]
+    spend = Spend.from_records(records, LIST_PRICES[MODEL])
+    assert spend.total == pytest.approx(LIST_PRICES[MODEL].cost(13_368, 2_928))
 
 
 def test_a_resumed_runs_spend_starts_from_every_stored_call():
@@ -70,8 +85,19 @@ def test_the_pilots_mean_tokens_per_answer_come_from_its_records():
     assert mean_in == pytest.approx(15_887.625) and mean_out == pytest.approx(870.3125)
 
 
+def test_the_first_pass_cost_is_run_0s_answers_only_failures_included():
+    records = [
+        {"record": "sample", "input_tokens": 1_000_000, "output_tokens": 0},
+        {"record": "judgement", "input_tokens": 1_000_000, "output_tokens": 0},
+        {"record": "answer", "run": 0, "input_tokens": 100_000, "output_tokens": 0},
+        {"record": "answer", "run": 0, "input_tokens": 100_000, "output_tokens": 0, "failure": "timed out"},
+        {"record": "answer", "run": 1, "input_tokens": 1_000_000, "output_tokens": 0},
+    ]
+    assert first_pass_cost(records, Prices(2.0, 10.0)) == pytest.approx(0.4)
+
+
 def test_a_first_pass_costing_more_than_twice_its_estimate_pauses_the_run():
-    estimate = answer_estimate(165, 15_887.625, 870.3125, LIST_PRICES)
+    estimate = answer_estimate(165, 15_887.625, 870.3125, LIST_PRICES[MODEL])
     assert estimate == pytest.approx(165 * (15_887.625 * 2 + 870.3125 * 10) / 1_000_000)
     assert not over_estimate(actual=2 * estimate, estimate=estimate)
     assert over_estimate(actual=2 * estimate + 0.01, estimate=estimate)
@@ -95,11 +121,38 @@ def test_a_changed_outcome_output_or_bridge_is_reported():
     assert any("wallet-sum" in p and "bridge" in p for p in problems)
 
 
-def test_a_missing_or_extra_slot_is_reported():
+def test_a_missing_or_extra_slot_or_reading_is_reported():
     committed = json.loads(PREDICTIONS.read_text())
     computed = copy.deepcopy(committed)
     del computed["claims"]["wallet-sum"]
-    assert any("wallet-sum" in p for p in predictions_differ(computed, committed))
+    computed["claims"]["extra"] = copy.deepcopy(committed["claims"]["orders-cut"])
+    del computed["claims"]["orders-cut"]["readings"]["archived"]
+    problems = predictions_differ(computed, committed)
+    assert any("wallet-sum" in p and "lack" in p for p in problems)
+    assert any("extra" in p and "lack" in p for p in problems)
+    assert any("archived" in p and "missing" in p for p in problems)
+
+
+def test_a_changed_slot_kind_or_output_or_freeze_hash_is_reported():
+    committed = json.loads(PREDICTIONS.read_text())
+    computed = copy.deepcopy(committed)
+    computed["claims"]["orders-cut"]["subject"] = "fees"
+    computed["kinds"]["coverage"] = "person_only"
+    computed["outputs"][next(iter(computed["outputs"]))]["sha256"] = "0" * 64
+    computed["freeze_sha256"] = "0" * 64
+    problems = predictions_differ(computed, committed)
+    assert len(problems) == 4
+    assert any("subject" in p for p in problems) and any("claim kind coverage" in p for p in problems)
+    assert any("normalised output" in p for p in problems) and any("freeze_sha256" in p for p in problems)
+
+
+def test_provenance_that_differs_between_runs_is_not_compared():
+    committed = json.loads(PREDICTIONS.read_text())
+    computed = {**copy.deepcopy(committed), "commit": "f" * 40}
+    computed["settings"]["duckdb_version"]["installed"] = "9.9.9"
+    for content in computed["outputs"].values():
+        content["file"] = "elsewhere/" + content["file"]
+    assert predictions_differ(computed, committed) == []
 
 
 def test_the_committed_validation_clears_claim_writing(method):

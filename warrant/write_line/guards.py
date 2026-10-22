@@ -1,5 +1,6 @@
 """The full run's guards (#54): the spending cap, the check after the first complete pass, and the two
-checks the freeze asks for before the first claim-writing call.
+checks #54 asks for before the first claim-writing call: the freeze's judge validation
+(`global.judge.validation`) and the predictions check of #53.
 
 These are plain functions over token counts, records and committed files; the run command wires them
 in. None of them calls a model.
@@ -29,16 +30,27 @@ class Prices:
         return (input_tokens * self.input_per_mtok + output_tokens * self.output_per_mtok) / 1_000_000
 
 
-# Anthropic's list price for claude-sonnet-5, the estimate's basis on #54. Bedrock prices Claude
-# separately and its pricing page does not list this model; the lead's bill is the check.
-LIST_PRICES = Prices(2.0, 10.0)
+# Anthropic's list prices, the estimate's basis on #54, by the model id the run configuration names.
+# Bedrock prices Claude separately and its pricing page does not list this model; the lead's bill is
+# the check. A model not listed here has no price, so the run refuses it rather than guess.
+LIST_PRICES = {"anthropic.claude-sonnet-5": Prices(2.0, 10.0)}
+
+
+def prices_for(model: str) -> Prices:
+    if model not in LIST_PRICES:
+        raise ValueError(f"no list price for {model!r}; add it to warrant/write_line/guards.py first")
+    return LIST_PRICES[model]
 
 
 class Spend:
-    """What the run has spent so far, from the token usage of every model call, against a hard cap.
+    """What the run has spent so far, from the token usage of every model call, against the cap.
 
-    The next call's cost is not known before it is made, so a call is allowed only if one more call as
-    expensive as the largest so far (or the bound given, before any call) stays within the cap.
+    The next call's cost is not known before it is made. A call is allowed only if the spend so far
+    plus a bound on that call stays within the cap; the bound is the largest call so far, or the
+    `bound` the caller passes when it knows a larger one for the operation it is about to call. So the
+    cap can be crossed by at most the amount by which one call exceeds its bound. With an estimate of
+    about $25 to $30 and the pause after the first pass at twice its estimate, that is the residual
+    risk #54's cap accepts.
     """
 
     def __init__(self, prices: Prices, cap: float = CAP):
@@ -58,8 +70,10 @@ class Spend:
 
     @classmethod
     def from_records(cls, records: Iterable[Mapping], prices: Prices, cap: float = CAP) -> "Spend":
-        """The spend of a run being resumed: every stored record that carries token usage, failed
-        calls included, since their tokens were paid for."""
+        """The spend so far from stored records: every record that carries token usage, failed calls
+        included, since their tokens were paid for. For the run, pass every record of its results file
+        (every run id, since a repeated run was paid for too) and the judge validation's records,
+        which #54's cap also covers."""
         spend = cls(prices, cap)
         for record in records:
             if "input_tokens" in record:
@@ -80,18 +94,31 @@ def answer_estimate(answers: int, mean_input: float, mean_output: float, prices:
     return answers * prices.cost(mean_input, mean_output)
 
 
+def first_pass_cost(records: Iterable[Mapping], prices: Prices) -> float:
+    """The cost of the first complete pass's answers (run 0), failed ones included: what the estimate
+    covers. Claim writing and judging come before it and are left out."""
+    return sum(prices.cost(r["input_tokens"], r["output_tokens"])
+               for r in records if r.get("record") == "answer" and r.get("run") == 0)
+
+
 def over_estimate(actual: float, estimate: float, factor: float = FIRST_PASS_FACTOR) -> bool:
-    """Whether a pass cost more than `factor` times its estimate, which pauses the run for the lead."""
+    """Whether the first pass's answers (`first_pass_cost`) cost more than `factor` times their
+    estimate (`answer_estimate`), which pauses the run for the lead."""
     return actual > factor * estimate
 
 
 def predictions_differ(computed: Mapping, committed: Mapping) -> list[str]:
     """Where the predictions recomputed for this run (in the committed file's form,
     `warrant.write_line.predict.record`) differ from the committed ones: each slot's outcome, each
-    reading's database, output, differs and holds, each claim kind's outcome, each bridge prediction
-    and each normalised output's SHA-256. The stores are composed from the predictions that fixed k,
-    so any difference stops the run before claim writing."""
-    problems = []
+    reading's database, output, differs and holds, each slot's claim kind and subject, each claim
+    kind's outcome, each bridge prediction, each normalised output's SHA-256, and the freeze's and
+    injection record's SHA-256 when the computed record carries them. Provenance that legitimately
+    differs between runs (commit, settings such as the installed DuckDB version) is not compared. The
+    stores are composed from the predictions that fixed k, so any difference stops the run before
+    claim writing."""
+    problems = [f"{field} {computed.get(field)!r}, committed {committed.get(field)!r}"
+                for field in ("freeze_sha256", "injection_record_sha256")
+                if field in computed and computed.get(field) != committed.get(field)]
     claims, frozen = computed.get("claims", {}), committed.get("claims", {})
     for defect in sorted(claims.keys() | frozen.keys()):
         if defect not in claims:
@@ -101,8 +128,9 @@ def predictions_differ(computed: Mapping, committed: Mapping) -> list[str]:
             problems.append(f"{defect}: a slot the committed predictions lack")
             continue
         ours, theirs = claims[defect], frozen[defect]
-        if ours.get("outcome") != theirs.get("outcome"):
-            problems.append(f"{defect}: outcome {ours.get('outcome')!r}, committed {theirs.get('outcome')!r}")
+        for field in ("claim_kind", "subject", "outcome"):
+            if ours.get(field) != theirs.get(field):
+                problems.append(f"{defect}: {field} {ours.get(field)!r}, committed {theirs.get(field)!r}")
         readings, frozen_readings = ours.get("readings", {}), theirs.get("readings", {})
         for reading in sorted(readings.keys() | frozen_readings.keys()):
             mine, its = readings.get(reading), frozen_readings.get(reading)
