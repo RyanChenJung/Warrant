@@ -138,8 +138,7 @@ def _no_repeated_keys(pairs: list) -> dict:
     return dict(pairs)
 
 
-def first_object(text: str) -> dict:
-    """The first JSON object in a text output; also the write-claims answer's (#50)."""
+def _first_object(text: str) -> dict:
     # A repeated key makes the first object invalid, rather than being read as its last value.
     decoder = json.JSONDecoder(object_pairs_hook=_no_repeated_keys)
     for start, char in enumerate(text):
@@ -156,7 +155,7 @@ def first_object(text: str) -> dict:
 def parse(text: str, letters) -> dict[str, Label]:
     """A call's answer: the first JSON object in its text output, valid when it gives exactly one
     label, matched exactly, for every reading letter and no other key."""
-    answer = first_object(text)
+    answer = _first_object(text)
     if set(answer) != set(letters):
         raise ValueError(f"the answer's keys {sorted(answer)} are not the reading letters {sorted(letters)}")
     labels = {}

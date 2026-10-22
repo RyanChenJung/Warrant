@@ -176,32 +176,16 @@ class ClaudeJudge:
         self._create = create or client(config).messages.create
 
     def call(self, prompt: str) -> JudgeCall:
-        config = self._config
-        sent: dict[str, Any] = {
-            "model": config.model,
-            "max_tokens": config.max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-        if config.effort:
-            sent["output_config"] = {"effort": config.effort}
-        try:
-            message = self._create(**sent)
-        except anthropic.APIError as error:
-            if not _transient(error):
-                raise
-            return JudgeCall(None, failure=f"{type(error).__name__}: {error}")
-        usage = Usage(message.usage.input_tokens, message.usage.output_tokens)
-        try:
-            return JudgeCall(_final_text(message), usage)
-        except CallFailed as error:
-            return JudgeCall(None, usage, failure=str(error))
+        text, usage, failure, _ = _text_call(self._create, self._config, prompt)
+        return JudgeCall(text, usage, failure)
 
 
 class ClaudeClaimWriter:
     """The Claude claim-writing model (#50): one call per sample, the write-claims system prompt and
-    one user message, no tools. Effort, thinking and max_tokens are the configuration's, fixed before
-    the first model call on the freeze's defects; no sampling parameter is ever sent (freeze,
-    global.claim_writing.sampling), so a configuration that names a temperature is refused."""
+    one user message, no tools. Effort and max_tokens are the configuration's, fixed before the first
+    model call on the freeze's defects; thinking is the model's default and no thinking parameter is
+    sent. No sampling parameter is ever sent (freeze, global.claim_writing.sampling), so a
+    configuration that names a temperature is refused."""
 
     def __init__(self, config: ModelConfig, create: Callable[..., Any] | None = None):
         if config.temperature is not None:
@@ -210,26 +194,32 @@ class ClaudeClaimWriter:
         self._create = create or client(config).messages.create
 
     def call(self, system: str, user: str) -> ClaimWritingCall:
-        config = self._config
-        sent: dict[str, Any] = {
-            "model": config.model,
-            "max_tokens": config.max_tokens,
-            "system": system,
-            "messages": [{"role": "user", "content": user}],
-        }
-        if config.effort:
-            sent["output_config"] = {"effort": config.effort}
-        try:
-            message = self._create(**sent)
-        except anthropic.APIError as error:
-            if not _transient(error):
-                raise
-            return ClaimWritingCall(None, failure=f"{type(error).__name__}: {error}")
-        usage = Usage(message.usage.input_tokens, message.usage.output_tokens)
-        try:
-            return ClaimWritingCall(_final_text(message), usage)
-        except CallFailed as error:
-            return ClaimWritingCall(None, usage, failure=str(error))
+        text, usage, failure, stop_reason = _text_call(self._create, self._config, user, system)
+        return ClaimWritingCall(text, usage, failure, stop_reason)
+
+
+def _text_call(create, config: ModelConfig, user: str, system: str | None = None) -> tuple[str | None, Usage, str, str]:
+    """One call with no tools and no sampling parameter, for the judge and the claim writer: its text
+    output or None, its usage, a failure when there is no text, and its stop reason. A transient
+    platform error is a failed call; any other is raised."""
+    sent: dict[str, Any] = {"model": config.model, "max_tokens": config.max_tokens}
+    if system is not None:
+        sent["system"] = system
+    sent["messages"] = [{"role": "user", "content": user}]
+    if config.effort:
+        sent["output_config"] = {"effort": config.effort}
+    try:
+        message = create(**sent)
+    except anthropic.APIError as error:
+        if not _transient(error):
+            raise
+        return None, Usage(), f"{type(error).__name__}: {error}", ""
+    usage = Usage(message.usage.input_tokens, message.usage.output_tokens)
+    stop_reason = message.stop_reason or ""
+    try:
+        return _final_text(message), usage, "", stop_reason
+    except CallFailed as error:
+        return None, usage, str(error), stop_reason
 
 
 def _add(left: Usage, right: Usage) -> Usage:

@@ -8,7 +8,7 @@
   "content": [
     {
       "type": "text",
-      "text": "{\"claims\": [{\"claim_kind\": \"row_meaning\", \"subject\": \"accountbalances.walletsum\", \"statement\": \"The wallet balance is the available balance plus the frozen balance.\", \"confidence\": 0.8, \"cites\": [\"walletsum equals availsum.\"]}]}"
+      "text": "{\"claims\": [{\"claim_kind\": \"column_formula\", \"subject\": \"accountbalances.walletsum\", \"statement\": \"The wallet balance is the available balance plus the frozen balance.\", \"confidence\": 1.5, \"cites\": [\"walletsum equals availsum.\"]}]}"
     }
   ],
   "usage": {"input_tokens": 3000, "output_tokens": 300}
