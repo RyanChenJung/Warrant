@@ -316,7 +316,7 @@ def test_every_stored_result_carries_its_response_class_and_bucket(config, tmp_p
     results = tmp_path / "results.jsonl"
     run(config, answering({"open-order-hours": answer("SELECT 16.25 * 1.5")}), tmp_path / "work", PROVENANCE, results)
 
-    records = [json.loads(line) for line in results.read_text().splitlines()]
+    records = [r for r in map(json.loads, results.read_text().splitlines()) if r["record"] == "answer"]
     stored = {(r["question_id"], r["rule"]): (r["response_class"], r["bucket"]) for r in records}
     assert stored[("open-order-hours", "empty")] == ("wrong_answer", "within_factor_2")
     assert stored[("open-order-numbers", "empty")] == ("correct_answer", None)

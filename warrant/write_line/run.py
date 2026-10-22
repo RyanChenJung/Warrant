@@ -6,11 +6,13 @@ person; #50 and #51 add the others.
 """
 
 import argparse
+import json
 import sqlite3
+import uuid
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from warrant.agent.claude import ClaudeAgent
 from warrant.agent.interface import Agent, AnswerRequest, ResponseKind, Usage
@@ -37,7 +39,21 @@ from warrant.scoring.classify import (
 from warrant.store.claims import Claim, KnowledgeStore, Source, Toulmin, WarrantKind
 from warrant.store.results import Provenance, append, provenance_for
 from warrant.write_line.config import Config, Question, load_config
+from warrant.write_line.guards import (
+    Spend,
+    answer_estimate,
+    first_pass_cost,
+    mean_tokens,
+    over_estimate,
+    predictions_differ,
+    prices_for,
+)
 from warrant.write_line.predict import BatterySettings, Predictions, predict
+from warrant.write_line.predict import record as predictions_record
+
+REPO = Path(__file__).resolve().parents[2]
+# The pilot's answers give the mean tokens per answer the first-pass estimate uses (#54).
+PILOT_RESULTS = REPO / "results" / "pilot" / "2026-10-20-e33ac97.jsonl"
 
 
 @dataclass(frozen=True)
@@ -88,6 +104,18 @@ class WriteLineResult:
     audits: dict[str, Audit]
     # The predicted outcomes (#37), when a defect has a reading set.
     predictions: Predictions | None = None
+    # The run's id, a fresh one or the one resumed (#54).
+    run_id: str = ""
+
+
+class RunStopped(Exception):
+    """The run stopped on purpose before its end: before a call that could pass the spending cap, or at
+    the pause after a first pass that cost more than twice its estimate (#54). Its records are kept;
+    resume it under its run id."""
+
+    def __init__(self, message: str, run_id: str):
+        super().__init__(message)
+        self.run_id = run_id
 
 
 def _person_claim(defect: Defect) -> Claim:
@@ -109,8 +137,10 @@ def compose(rule: str, defects: tuple[Defect, ...]) -> KnowledgeStore:
     raise ValueError(f"unknown allocation rule: {rule!r}")
 
 
-def _record(row: ResultRow) -> dict:
+def _record(row: ResultRow, run_id: str = "") -> dict:
     return {
+        "record": "answer",
+        "run_id": run_id,
         "question_id": row.question_id,
         "rule": row.rule,
         "run": row.run,
@@ -203,6 +233,18 @@ def _same_as_recorded(built: Built, record: dict) -> None:
         raise ValueError("the databases built for this run are not the recorded injection's: " + ", ".join(differ))
 
 
+def _earlier_records(results: Path | None, provenance: Provenance | None, run_id: str) -> list[dict]:
+    """The stored records of the run being resumed, refused unless they are this configuration's."""
+    if results is None or provenance is None or not Path(results).exists():
+        raise ValueError(f"no run {run_id} to resume: no results file")
+    mine = [r for r in map(json.loads, Path(results).read_text().splitlines()) if r.get("run_id") == run_id]
+    if not mine:
+        raise ValueError(f"no run {run_id} in {results}")
+    if any(r.get("config_hash") != provenance.config_hash for r in mine):
+        raise ValueError(f"run {run_id} was made with another configuration; a run is resumed with its own")
+    return mine
+
+
 def run(
     config: Config,
     agent: Agent,
@@ -213,6 +255,11 @@ def run(
     tolerance: float | None = None,
     refusal_check: RefusalCheck = rule_based_refusal_check,
     stop_after_prediction: bool = False,
+    run_id: str | None = None,
+    spend: Spend | None = None,
+    first_pass_estimate: float | None = None,
+    approve_first_pass: bool = False,
+    committed_predictions: Mapping | None = None,
 ) -> WriteLineResult:
     """Ask every question under every rule `config.runs` times and score the responses.
 
@@ -222,6 +269,16 @@ def run(
     for copy by content hash, or the run stops before any agent call. When a defect has a reading
     set, the predicted outcomes are computed first, from the global part's battery settings, and with
     `stop_after_prediction` the run returns them before any agent call.
+
+    Every stored record carries the run's id and its type: a start record, one answer record per
+    (question, rule, run), and a complete record once every answer is stored (#53). Given a `run_id`,
+    the run resumes that run from `results`: it makes only the calls still missing, refusing a run made
+    with another configuration. Given a `spend`, it stops before a call that could take the spend,
+    earlier calls of a resumed run included, past its cap. Given a `first_pass_estimate`, it pauses
+    after run 0 when that pass's answers cost more than twice the estimate, unless the lead approves
+    it with `approve_first_pass` (#54). A stop raises RunStopped and keeps every record. Given the
+    `committed_predictions`, the recomputed predictions must equal them slot by slot, or the run stops
+    before any agent call, since the stores are composed from the predictions that fixed k.
     """
     if tolerance is None:
         tolerance = (config.global_part or {}).get("numeric_tolerance", TOLERANCE)
@@ -236,6 +293,10 @@ def run(
             raise ValueError("defects with reading sets need the global part's battery settings to predict")
         settings = BatterySettings.from_freeze({"global": config.global_part})
         predictions = predict(config.defects, built, config.databases, settings, work_dir / "battery")
+        if committed_predictions is not None:
+            problems = predictions_differ(predictions_record(predictions, settings, {}, ""), committed_predictions)
+            if problems:
+                raise ValueError("the recomputed predictions differ from the committed ones: " + "; ".join(problems))
     if stop_after_prediction:
         if predictions is None:
             raise ValueError("no defect has a reading set, so there is nothing to predict")
@@ -252,10 +313,40 @@ def run(
     expected = {question_id: Result(g.columns, g.rows) for question_id, g in gold.items()}
     stores = {rule: compose(rule, config.defects) for rule in config.rules}
 
+    keep = results is not None and provenance is not None
+    earlier: list[dict] = []
+    if run_id is not None:
+        earlier = _earlier_records(results, provenance, run_id)
+    else:
+        run_id = uuid.uuid4().hex
+    if spend is not None:
+        for record in earlier:
+            if "input_tokens" in record:
+                spend.add(record["input_tokens"], record["output_tokens"])
+    answered = [r for r in earlier if r.get("record") == "answer"]
+    done = {(r["question_id"], r["rule"], r["run"]) for r in answered}
+    if keep:
+        append(results, provenance, {"record": "start", "run_id": run_id, "rules": list(config.rules),
+                                     "runs": config.runs, "resumed": bool(earlier)})
+
     rows = []
     for run_index in range(config.runs):
+        if run_index == 1 and first_pass_estimate is not None and not approve_first_pass:
+            if spend is None:
+                raise ValueError("the first-pass check needs the run's spend, for its prices")
+            actual = first_pass_cost(answered, spend.prices)
+            if over_estimate(actual, first_pass_estimate):
+                raise RunStopped(
+                    f"the first pass cost ${actual:.2f}, more than twice its estimate of ${first_pass_estimate:.2f}; "
+                    "the run pauses for the lead and goes on when resumed with the first pass approved", run_id)
         for rule in config.rules:
             for q in config.questions:
+                if (q.id, rule, run_index) in done:
+                    continue
+                if spend is not None and not spend.allows_another_call():
+                    raise RunStopped(
+                        f"stopped before a call that could take the spend past the ${spend.cap:.2f} cap "
+                        f"(${spend.total:.2f} spent so far)", run_id)
                 path = injected[q.database]
                 request = AnswerRequest(
                     database=q.database,
@@ -267,6 +358,8 @@ def run(
                     tools=(ReadOnlySQL.name,),
                 )
                 output = agent.answer(request, {ReadOnlySQL.name: ReadOnlySQL(path)})
+                if spend is not None:
+                    spend.add(output.usage.input_tokens, output.usage.output_tokens)
                 response = output.response
                 executed = (
                     execute(path, response.final_sql)
@@ -306,8 +399,12 @@ def run(
                     clarification="" if response is None else response.clarification,
                 )
                 rows.append(row)
-                if results is not None and provenance is not None:
-                    append(results, provenance, _record(row))
+                record = _record(row, run_id)
+                answered.append(record)
+                if keep:
+                    append(results, provenance, record)
+    if keep:
+        append(results, provenance, {"record": "complete", "run_id": run_id, "answers": len(answered)})
 
     by_rule = {rule: [r for r in rows if r.rule == rule] for rule in config.rules}
     return WriteLineResult(
@@ -324,6 +421,7 @@ def run(
         injected=injected,
         audits=audits,
         predictions=predictions,
+        run_id=run_id,
     )
 
 
@@ -356,6 +454,18 @@ def check(config: Config, work_dir: Path) -> int:
     return 1 if problems else 0
 
 
+def committed_predictions_for(config: Config, directory: Path = REPO / "predictions") -> dict | None:
+    """The committed predictions of the configuration's injection record (#37), found by the record's
+    SHA-256, which they name; None when the configuration names no injection record or none matches."""
+    if config.injection_sha256 is None:
+        return None
+    found = [json.loads(path.read_text()) for path in sorted(Path(directory).glob("*.json"))]
+    found = [p for p in found if p.get("injection_record_sha256") == config.injection_sha256]
+    if len(found) > 1:
+        raise ValueError(f"{len(found)} committed predictions name this injection record")
+    return found[0] if found else None
+
+
 def main(argv=None) -> int:
     """Run one configuration against the configured model: `python -m warrant.write_line.run`."""
     parser = argparse.ArgumentParser(description="Run the write line against the configured model.")
@@ -364,6 +474,9 @@ def main(argv=None) -> int:
     parser.add_argument("--results", type=Path, default=data_dir() / "results.jsonl")
     parser.add_argument("--check", action="store_true",
                         help="check the questions and print their answers, with no agent call")
+    parser.add_argument("--run-id", help="resume this run from the results file, making only the calls still missing")
+    parser.add_argument("--approve-first-pass", action="store_true",
+                        help="go on past the pause after a first pass that cost more than twice its estimate")
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
@@ -373,17 +486,32 @@ def main(argv=None) -> int:
         parser.error(f"{args.config} names no model block")
     try:
         agent = ClaudeAgent(config.model)
+        spend = Spend(prices_for(config.model.model))
     except ValueError as error:
         parser.error(f"{args.config}: {error}")  # a misconfiguration, before any question is asked
-    result = run(
-        config,
-        agent,
-        args.work_dir,
-        provenance_for(args.config, config.model),
-        args.results,
-    )
+    mean_input, mean_output = mean_tokens(json.loads(line) for line in PILOT_RESULTS.read_text().splitlines())
+    estimate = answer_estimate(len(config.questions) * len(config.rules), mean_input, mean_output, spend.prices)
+    try:
+        result = run(
+            config,
+            agent,
+            args.work_dir,
+            provenance_for(args.config, config.model),
+            args.results,
+            run_id=args.run_id,
+            spend=spend,
+            first_pass_estimate=estimate,
+            approve_first_pass=args.approve_first_pass,
+            committed_predictions=committed_predictions_for(config),
+        )
+    except RunStopped as stop:
+        print(f"run {stop.run_id} stopped: {stop}")
+        print(f"  resume it with --run-id {stop.run_id}"
+              + (" --approve-first-pass once the lead approves the first pass" if "first pass" in str(stop) else ""))
+        return 2
     failed = sum(row.response_class == ResponseClass.FAILED for row in result.rows)
-    print(f"{len(result.rows)} results, {failed} failed calls, written to {args.results}")
+    print(f"run {result.run_id}: {len(result.rows)} results, {failed} failed calls, ${spend.total:.2f} spent, "
+          f"written to {args.results}")
     for rule, rule_accuracy in result.accuracy.items():
         counts = result.counts[rule]
         print(

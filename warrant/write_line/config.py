@@ -77,8 +77,10 @@ class Config:
     runs: int
     model: ModelConfig | None = None
     global_part: dict | None = None
-    # The injection record of the freeze, when the configuration names one.
+    # The injection record of the freeze, when the configuration names one, and its file's SHA-256,
+    # which the committed predictions name (#37).
     injection: dict | None = None
+    injection_sha256: str | None = None
 
 
 def _known_defects(config: Config) -> Config:
@@ -115,9 +117,11 @@ def load_config(path: Path, release_config: Path = RELEASE_CONFIG) -> Config:
         raise ValueError("a configuration that names a freeze takes its defects, global part and databases from it")
     freeze = (path.parent / raw["freeze"]).resolve()
     frozen = yaml.safe_load(freeze.read_text())
-    injection = None
+    injection = injection_sha256 = None
     if raw.get("injection"):
-        injection = json.loads((path.parent / raw["injection"]).read_text())
+        injection_path = path.parent / raw["injection"]
+        injection = json.loads(injection_path.read_text())
+        injection_sha256 = sha256(injection_path)
         if injection.get("outcome") != "built":
             raise ValueError(f"the injection record's outcome is {injection.get('outcome')!r}, not 'built'")
         if injection.get("freeze_sha256") != sha256(freeze):
@@ -127,5 +131,6 @@ def load_config(path: Path, release_config: Path = RELEASE_CONFIG) -> Config:
         defects=tuple(load_defect(d) for d in frozen["defects"]),
         global_part=frozen.get("global"),
         injection=injection,
+        injection_sha256=injection_sha256,
         **common,
     ))

@@ -93,7 +93,7 @@ def stored(scoring_config, tmp_path):
     results = tmp_path / "results.jsonl"
     config = dataclasses.replace(load_config(scoring_config), runs=3)
     run(config, ThreeRunAgent(), tmp_path / "work", PROVENANCE, results)
-    return [json.loads(line) for line in results.read_text().splitlines()]
+    return [r for r in map(json.loads, results.read_text().splitlines()) if r["record"] == "answer"]
 
 
 # Paired differences
