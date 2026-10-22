@@ -7,8 +7,8 @@
 # that name its missing piece. The decisions are on #52 (2026-10-21).
 #
 # The model block is the pilot's: the settings the freeze requires before the first model call on its
-# defects or claims. Rules and runs are the ones the runner supports today; #54 sets them once #50
-# and #51 add the other allocation rules.
+# defects or claims. Only the rules are limited, to the two compose() supports today; #54 sets all
+# five rules and runs: 3 once #50 and #51 add the others.
 #
 # Table and column names, codes and the questions' gold answers in this file come from
 # LiveSQLBench-Base-Lite (CC BY-SA 4.0, see LICENSE-DATA). Paths are relative to this file.
@@ -139,18 +139,22 @@ questions:
       mistyped: >-
         SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
         WHERE o.orderflow = 'Cancelled'
-  # Coverage, a correct refusal: the child tables link a cancelled order only to its order
-  # (fees.orderslink, orderexecutions.ordersmark, riskandmargin.ordervault), never to its user. The 267
-  # users with no order (266 from the cut, one with none in the release) are a near answer, scored as
-  # answering an unanswerable question.
-  - id: cancelled-orders-users
+  # Coverage, a correct refusal: the order type (orders.ordertune) exists only in orders, so it went
+  # with the cut rows. The child tables have no declared link to it; their row numbers do align with
+  # the surviving orders and users, but no column of any crypto table, joined by row number or by
+  # order reference, predicts the order type (Ryan on PR #122). The terms name the missing piece, the
+  # order type, and none occurs in the question, so a refusal that only repeats the question fails.
+  - id: cancelled-limit-orders
     database: crypto
     defect: orders-cut
-    text: Which users placed the cancelled orders?
-    missing_terms: [user, owner, trader, cancelled, canceled]
+    text: How many of the cancelled orders were limit orders?
+    missing_terms: [order type, ordertune, type of order]
   # Column formula: each probe turns on which balances walletsum includes. None joins accountbalances
   # to orders, and the per-user probes avoid the eight accounts whose margsum is under 1 percent of
-  # walletsum. Keys are padded to 36 characters, so a key literal is compared with TRIM.
+  # walletsum. Keys are padded to 36 characters, so a key literal is compared with TRIM. An agent that
+  # sums the balance columns instead of reading walletsum can reach the gold answer, since under the
+  # true identity the sums equal walletsum; #54's per-question review splits answers by whether their
+  # SQL reads walletsum, as the pilot's README does for fee-per-order.
   - id: total-held
     database: crypto
     defect: wallet-sum
@@ -214,20 +218,6 @@ questions:
     gold_sql: SELECT COUNT(*) FROM observatories WHERE seeingprofile = '1'
     separates:
       three-is-best: SELECT COUNT(*) FROM observatories WHERE seeingprofile = '3'
-  - id: better-than-worst-seeing
-    database: alien
-    defect: seeing-recode
-    text: How many observatories have seeing better than the worst?
-    gold_sql: SELECT COUNT(*) FROM observatories WHERE seeingprofile IN ('1', '2')
-    separates:
-      three-is-best: SELECT COUNT(*) FROM observatories WHERE seeingprofile IN ('2', '3')
-  - id: best-seeing-share
-    database: alien
-    defect: seeing-recode
-    text: What share of observatories have the best seeing, as a fraction between 0 and 1?
-    gold_sql: SELECT AVG(seeingprofile = '1') FROM observatories
-    separates:
-      three-is-best: SELECT AVG(seeingprofile = '3') FROM observatories
   - id: best-seeing-clear-weather
     database: alien
     defect: seeing-recode
@@ -275,7 +265,9 @@ questions:
   - id: best-seeing-dwarf-sources
     database: alien
     defect: seeing-recode
-    text: How many signals detected at observatories with the best seeing come from dwarf stars?
+    text: >-
+      How many signals detected at observatories with the best seeing come from sources of the Dwarf
+      subtype?
     gold_sql: >-
       SELECT COUNT(*) FROM sourceproperties p JOIN signals s ON s.signalregistry = p.signalref
       JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
@@ -285,6 +277,32 @@ questions:
         SELECT COUNT(*) FROM sourceproperties p JOIN signals s ON s.signalregistry = p.signalref
         JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
         WHERE o.seeingprofile = '3' AND p.objtype = 'Dwarf'
+  - id: best-seeing-completed-decodings
+    database: alien
+    defect: seeing-recode
+    text: How many signals detected at observatories with the best seeing have a completed decoding?
+    gold_sql: >-
+      SELECT COUNT(*) FROM signaldecoding d JOIN signals s ON s.signalregistry = d.signalref
+      JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+      WHERE o.seeingprofile = '1' AND d.decodestat = 'Completed'
+    separates:
+      three-is-best: >-
+        SELECT COUNT(*) FROM signaldecoding d JOIN signals s ON s.signalregistry = d.signalref
+        JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+        WHERE o.seeingprofile = '3' AND d.decodestat = 'Completed'
+  - id: best-seeing-natural-signals
+    database: alien
+    defect: seeing-recode
+    text: How many signals detected at observatories with the best seeing are classified as natural?
+    gold_sql: >-
+      SELECT COUNT(*) FROM signalclassification c JOIN signals s ON s.signalregistry = c.signalref
+      JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+      WHERE o.seeingprofile = '1' AND c.sigclasstype = 'Natural'
+    separates:
+      three-is-best: >-
+        SELECT COUNT(*) FROM signalclassification c JOIN signals s ON s.signalregistry = c.signalref
+        JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+        WHERE o.seeingprofile = '3' AND c.sigclasstype = 'Natural'
   # Controls: tables no defect touches, nor the orders' child tables or users; the run checks that
   # each gold answer is the same on the clean and the injected copy.
   - id: positive-funding-rate
@@ -337,7 +355,6 @@ business_terms:
     terms:
       - wallet balance
       - margin balance
-      - frozen balance
       - holdings
       - unrealised profit and loss
       - trading fees
