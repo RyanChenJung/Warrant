@@ -233,16 +233,81 @@ def _same_as_recorded(built: Built, record: dict) -> None:
         raise ValueError("the databases built for this run are not the recorded injection's: " + ", ".join(differ))
 
 
-def _earlier_records(results: Path | None, provenance: Provenance | None, run_id: str) -> list[dict]:
-    """The stored records of the run being resumed, refused unless they are this configuration's."""
+def _read(path: Path | None) -> list[dict]:
+    """Every record of a results file, none when there is no file."""
+    if path is None or not Path(path).exists():
+        return []
+    return [json.loads(line) for line in Path(path).read_text().splitlines()]
+
+
+def _earlier_records(results: Path | None, provenance: Provenance | None, run_id: str, config: Config) -> list[dict]:
+    """The stored records of the run being resumed, refused unless the run is incomplete and was made
+    with this configuration, this answer prompt and these rules and runs."""
     if results is None or provenance is None or not Path(results).exists():
         raise ValueError(f"no run {run_id} to resume: no results file")
-    mine = [r for r in map(json.loads, Path(results).read_text().splitlines()) if r.get("run_id") == run_id]
+    mine = [r for r in _read(results) if r.get("run_id") == run_id]
     if not mine:
         raise ValueError(f"no run {run_id} in {results}")
+    if any(r.get("record") == "complete" for r in mine):
+        raise ValueError(f"run {run_id} is complete; there is nothing to resume")
     if any(r.get("config_hash") != provenance.config_hash for r in mine):
         raise ValueError(f"run {run_id} was made with another configuration; a run is resumed with its own")
+    if any(r.get("prompt_version") != provenance.prompt_version for r in mine if r.get("record") == "answer"):
+        raise ValueError(f"run {run_id} was made with another answer prompt version; a run is resumed with its own")
+    start = next(r for r in mine if r.get("record") == "start")
+    if (start["rules"], start["runs"]) != (list(config.rules), config.runs):
+        raise ValueError(f"run {run_id} was started with other rules or runs; a run is resumed with its own")
     return mine
+
+
+def _incomplete_runs(records: list[dict], config_hash: str) -> list[str]:
+    """The run ids of this configuration's runs that were started and never completed, oldest first."""
+    complete = {r["run_id"] for r in records if r.get("record") == "complete"}
+    started = (r["run_id"] for r in records if r.get("record") == "start" and r.get("config_hash") == config_hash)
+    return [run_id for run_id in dict.fromkeys(started) if run_id not in complete]
+
+
+def _scored(q: Question, rule: str, run_index: int, output, path: Path, expected: Result | None,
+            tolerance: float, refusal_check: RefusalCheck) -> ResultRow:
+    """The result row of one answer, its final SQL re-executed on the injected copy and scored."""
+    response = output.response
+    executed = (
+        execute(path, response.final_sql)
+        if response is not None and response.kind == ResponseKind.ANSWER
+        else None
+    )
+    # A failed call is recorded, not scored: it is neither a correct nor a wrong answer, and it
+    # stays out of the accuracy.
+    scored = (
+        Score(ResponseClass.FAILED)
+        if output.failure
+        else score(
+            response,
+            executed,
+            expected,
+            key=q.key,
+            missing_terms=q.missing_terms,
+            tolerance=tolerance,
+            refusal_check=refusal_check,
+        )
+    )
+    return ResultRow(
+        question_id=q.id,
+        rule=rule,
+        run=run_index,
+        response_class=scored.response_class,
+        final_sql=None if response is None else response.final_sql,
+        executed=None if executed is None else executed.rows,
+        usage=output.usage,
+        failure=output.failure,
+        bucket=scored.bucket,
+        executed_columns=None if executed is None else executed.columns,
+        value=None if response is None else response.value,
+        confidence=None if response is None else response.confidence,
+        missing="" if response is None else response.missing,
+        alternative="" if response is None else response.alternative,
+        clarification="" if response is None else response.clarification,
+    )
 
 
 def run(
@@ -271,15 +336,21 @@ def run(
     `stop_after_prediction` the run returns them before any agent call.
 
     Every stored record carries the run's id and its type: a start record, one answer record per
-    (question, rule, run), and a complete record once every answer is stored (#53). Given a `run_id`,
-    the run resumes that run from `results`: it makes only the calls still missing, refusing a run made
-    with another configuration. Given a `spend`, it stops before a call that could take the spend,
-    earlier calls of a resumed run included, past its cap. Given a `first_pass_estimate`, it pauses
-    after run 0 when that pass's answers cost more than twice the estimate, unless the lead approves
-    it with `approve_first_pass` (#54). A stop raises RunStopped and keeps every record. Given the
+    (question, rule, run), and a complete record once every answer is stored (#53). A call paid for
+    whose answer is not stored, because the run stopped during it, leaves a spent record with its
+    tokens. Given a `run_id`, the run resumes that run from `results`: it makes only the calls still
+    missing, refusing a complete run and one made with another configuration, answer prompt, rules or
+    runs. Given a `spend`, which the caller builds from every record already paid for
+    (`Spend.from_records`), it stops before a call that could take the spend past its cap. Given a
+    `first_pass_estimate`, it pauses after run 0 when that pass's answers cost more than twice the
+    estimate, unless the lead approves it with `approve_first_pass`, an approval the start record
+    keeps for later resumes (#54). A stop raises RunStopped and keeps every record; any other error
+    raised once the run has started carries a note naming the run id to resume. Given the
     `committed_predictions`, the recomputed predictions must equal them slot by slot, or the run stops
     before any agent call, since the stores are composed from the predictions that fixed k.
     """
+    if first_pass_estimate is not None and spend is None:
+        raise ValueError("the first-pass check needs the run's spend, for its prices")
     if tolerance is None:
         tolerance = (config.global_part or {}).get("numeric_tolerance", TOLERANCE)
     built = build(list(config.defects), config.databases, work_dir)
@@ -316,95 +387,75 @@ def run(
     keep = results is not None and provenance is not None
     earlier: list[dict] = []
     if run_id is not None:
-        earlier = _earlier_records(results, provenance, run_id)
+        earlier = _earlier_records(results, provenance, run_id, config)
     else:
         run_id = uuid.uuid4().hex
-    if spend is not None:
-        for record in earlier:
-            if "input_tokens" in record:
-                spend.add(record["input_tokens"], record["output_tokens"])
-    answered = [r for r in earlier if r.get("record") == "answer"]
-    done = {(r["question_id"], r["rule"], r["run"]) for r in answered}
-    if keep:
-        append(results, provenance, {"record": "start", "run_id": run_id, "rules": list(config.rules),
-                                     "runs": config.runs, "resumed": bool(earlier)})
+    stored = list(earlier)  # the run's records, a resumed run's earlier ones included
+
+    def write(record: dict) -> None:
+        stored.append(record)
+        if keep:
+            append(results, provenance, record)
+
+    done = {(r["question_id"], r["rule"], r["run"]) for r in earlier if r.get("record") == "answer"}
+    approved = approve_first_pass or any(r.get("first_pass_approved") for r in earlier if r.get("record") == "start")
+    write({"record": "start", "run_id": run_id, "rules": list(config.rules), "runs": config.runs,
+           "resumed": bool(earlier), "first_pass_approved": approved})
 
     rows = []
-    for run_index in range(config.runs):
-        if run_index == 1 and first_pass_estimate is not None and not approve_first_pass:
-            if spend is None:
-                raise ValueError("the first-pass check needs the run's spend, for its prices")
-            actual = first_pass_cost(answered, spend.prices)
-            if over_estimate(actual, first_pass_estimate):
-                raise RunStopped(
-                    f"the first pass cost ${actual:.2f}, more than twice its estimate of ${first_pass_estimate:.2f}; "
-                    "the run pauses for the lead and goes on when resumed with the first pass approved", run_id)
-        for rule in config.rules:
-            for q in config.questions:
-                if (q.id, rule, run_index) in done:
-                    continue
-                if spend is not None and not spend.allows_another_call():
+    try:
+        for run_index in range(config.runs):
+            if run_index == 1 and first_pass_estimate is not None and not approved:
+                actual = first_pass_cost(stored, spend.prices)
+                if over_estimate(actual, first_pass_estimate):
                     raise RunStopped(
-                        f"stopped before a call that could take the spend past the ${spend.cap:.2f} cap "
-                        f"(${spend.total:.2f} spent so far)", run_id)
-                path = injected[q.database]
-                request = AnswerRequest(
-                    database=q.database,
-                    question_id=q.id,
-                    question=q.text,
-                    run=run_index,
-                    schema=schema(path),
-                    store=stores[rule],
-                    tools=(ReadOnlySQL.name,),
-                )
-                output = agent.answer(request, {ReadOnlySQL.name: ReadOnlySQL(path)})
-                if spend is not None:
-                    spend.add(output.usage.input_tokens, output.usage.output_tokens)
-                response = output.response
-                executed = (
-                    execute(path, response.final_sql)
-                    if response is not None and response.kind == ResponseKind.ANSWER
-                    else None
-                )
-                # A failed call is recorded, not scored: it is neither a correct nor a wrong
-                # answer, and it stays out of the accuracy below.
-                scored = (
-                    Score(ResponseClass.FAILED)
-                    if output.failure
-                    else score(
-                        response,
-                        executed,
-                        expected.get(q.id),
-                        key=q.key,
-                        missing_terms=q.missing_terms,
-                        tolerance=tolerance,
-                        refusal_check=refusal_check,
+                        f"the first pass cost ${actual:.2f}, more than twice its estimate of ${first_pass_estimate:.2f}; "
+                        "the run pauses for the lead and goes on when resumed with the first pass approved", run_id)
+            for rule in config.rules:
+                for q in config.questions:
+                    if (q.id, rule, run_index) in done:
+                        continue
+                    if spend is not None and not spend.allows_another_call():
+                        raise RunStopped(
+                            f"stopped before a call that could take the spend past the ${spend.cap:.2f} cap "
+                            f"(${spend.total:.2f} spent so far); raising the cap is the lead's decision (#54)", run_id)
+                    path = injected[q.database]
+                    request = AnswerRequest(
+                        database=q.database,
+                        question_id=q.id,
+                        question=q.text,
+                        run=run_index,
+                        schema=schema(path),
+                        store=stores[rule],
+                        tools=(ReadOnlySQL.name,),
                     )
-                )
-                row = ResultRow(
-                    question_id=q.id,
-                    rule=rule,
-                    run=run_index,
-                    response_class=scored.response_class,
-                    final_sql=None if response is None else response.final_sql,
-                    executed=None if executed is None else executed.rows,
-                    usage=output.usage,
-                    failure=output.failure,
-                    bucket=scored.bucket,
-                    executed_columns=None if executed is None else executed.columns,
-                    value=None if response is None else response.value,
-                    confidence=None if response is None else response.confidence,
-                    missing="" if response is None else response.missing,
-                    alternative="" if response is None else response.alternative,
-                    clarification="" if response is None else response.clarification,
-                )
-                rows.append(row)
-                record = _record(row, run_id)
-                answered.append(record)
-                if keep:
-                    append(results, provenance, record)
-    if keep:
-        append(results, provenance, {"record": "complete", "run_id": run_id, "answers": len(answered)})
+                    output = None
+                    try:
+                        output = agent.answer(request, {ReadOnlySQL.name: ReadOnlySQL(path)})
+                        row = _scored(q, rule, run_index, output, path, expected.get(q.id), tolerance, refusal_check)
+                    except BaseException as error:
+                        # The call was paid for although its answer is not stored: its tokens are
+                        # recorded, so the cap counts them, and the answer stays missing, so a resume
+                        # asks again.
+                        usage = output.usage if output is not None else getattr(error, "usage", Usage())
+                        if usage.input_tokens or usage.output_tokens:
+                            if spend is not None:
+                                spend.add(usage.input_tokens, usage.output_tokens)
+                            write({"record": "spent", "run_id": run_id, "operation": "answer",
+                                   "question_id": q.id, "rule": rule, "run": run_index,
+                                   "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+                                   "error": f"{type(error).__name__}: {error}"})
+                        raise
+                    if spend is not None:
+                        spend.add(output.usage.input_tokens, output.usage.output_tokens)
+                    rows.append(row)
+                    write(_record(row, run_id))
+        write({"record": "complete", "run_id": run_id,
+               "answers": sum(r.get("record") == "answer" for r in stored)})
+    except BaseException as error:
+        if keep and not isinstance(error, RunStopped):
+            error.add_note(f"run {run_id} stopped with its records kept: resume it with --run-id {run_id}")
+        raise
 
     by_rule = {rule: [r for r in rows if r.rule == rule] for rule in config.rules}
     return WriteLineResult(
@@ -456,14 +507,16 @@ def check(config: Config, work_dir: Path) -> int:
 
 def committed_predictions_for(config: Config, directory: Path = REPO / "predictions") -> dict | None:
     """The committed predictions of the configuration's injection record (#37), found by the record's
-    SHA-256, which they name; None when the configuration names no injection record or none matches."""
-    if config.injection_sha256 is None:
+    SHA-256, which they name; None when the configuration names no injection record or no defect has
+    a reading set, so nothing is predicted. Refused when none or several match: the stores are
+    composed from the committed predictions, so a run may not go on without them."""
+    if config.injection_sha256 is None or not any(d.readings for d in config.defects):
         return None
     found = [json.loads(path.read_text()) for path in sorted(Path(directory).glob("*.json"))]
     found = [p for p in found if p.get("injection_record_sha256") == config.injection_sha256]
-    if len(found) > 1:
-        raise ValueError(f"{len(found)} committed predictions name this injection record")
-    return found[0] if found else None
+    if len(found) != 1:
+        raise ValueError(f"{len(found) or 'no'} committed predictions name this injection record in {directory}")
+    return found[0]
 
 
 def main(argv=None) -> int:
@@ -474,7 +527,12 @@ def main(argv=None) -> int:
     parser.add_argument("--results", type=Path, default=data_dir() / "results.jsonl")
     parser.add_argument("--check", action="store_true",
                         help="check the questions and print their answers, with no agent call")
-    parser.add_argument("--run-id", help="resume this run from the results file, making only the calls still missing")
+    parser.add_argument("--judge-validation", type=Path, default=data_dir() / "judge_validation.jsonl",
+                        help="the judge validation's records, whose spend the cap also covers")
+    which = parser.add_mutually_exclusive_group()
+    which.add_argument("--run-id", help="resume this run from the results file, making only the calls still missing")
+    which.add_argument("--new-run", action="store_true",
+                       help="start a new run although a run of this configuration in the results file is incomplete")
     parser.add_argument("--approve-first-pass", action="store_true",
                         help="go on past the pause after a first pass that cost more than twice its estimate")
     args = parser.parse_args(argv)
@@ -484,9 +542,18 @@ def main(argv=None) -> int:
         return check(config, args.work_dir)
     if config.model is None:
         parser.error(f"{args.config} names no model block")
+    provenance = provenance_for(args.config, config.model)
+    stored = _read(args.results)
+    incomplete = _incomplete_runs(stored, provenance.config_hash)
+    if args.run_id is None and not args.new_run and incomplete:
+        parser.error(f"run {incomplete[-1]} of this configuration in {args.results} is incomplete: resume it "
+                     f"with --run-id {incomplete[-1]}, or start another with --new-run")
     try:
         agent = ClaudeAgent(config.model)
-        spend = Spend(prices_for(config.model.model))
+        # The cap covers every call already paid for: every run in the results file, a repeated run
+        # included, and the judge validation (#54).
+        spend = Spend.from_records(stored + _read(args.judge_validation), prices_for(config.model.model))
+        committed = committed_predictions_for(config)
     except ValueError as error:
         parser.error(f"{args.config}: {error}")  # a misconfiguration, before any question is asked
     mean_input, mean_output = mean_tokens(json.loads(line) for line in PILOT_RESULTS.read_text().splitlines())
@@ -496,23 +563,23 @@ def main(argv=None) -> int:
             config,
             agent,
             args.work_dir,
-            provenance_for(args.config, config.model),
+            provenance,
             args.results,
             run_id=args.run_id,
             spend=spend,
             first_pass_estimate=estimate,
             approve_first_pass=args.approve_first_pass,
-            committed_predictions=committed_predictions_for(config),
+            committed_predictions=committed,
         )
     except RunStopped as stop:
         print(f"run {stop.run_id} stopped: {stop}")
         print(f"  resume it with --run-id {stop.run_id}"
               + (" --approve-first-pass once the lead approves the first pass" if "first pass" in str(stop) else ""))
-        return 2
+        return 3
     failed = sum(row.response_class == ResponseClass.FAILED for row in result.rows)
-    print(f"run {result.run_id}: {len(result.rows)} results, {failed} failed calls, ${spend.total:.2f} spent, "
-          f"written to {args.results}")
-    for rule, rule_accuracy in result.accuracy.items():
+    print(f"run {result.run_id} complete: {len(result.rows)} results this invocation, {failed} failed calls, "
+          f"${spend.total:.2f} spent in all, written to {args.results}")
+    for rule, rule_accuracy in result.accuracy.items():  # over this invocation's results
         counts = result.counts[rule]
         print(
             f"  {rule}: {'no counted response' if rule_accuracy is None else f'{rule_accuracy:.3f}'}, "

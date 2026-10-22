@@ -116,6 +116,11 @@ class ClaudeAgent:
                 failure = str(error)
                 spent = _add(spent, error.usage)
                 continue
+            except BaseException as error:
+                # An error that stops the run (a misconfiguration, an interrupt) carries the tokens
+                # already paid for this answer, so the run can record and count them (#54).
+                error.usage = _add(spent, getattr(error, "usage", Usage()))
+                raise
             return AgentOutput(response, _add(spent, usage))
         return AgentOutput(None, spent, failure=failure)
 
@@ -131,8 +136,12 @@ class ClaudeAgent:
                 message = self._create(**self._request(request, messages))
             except anthropic.APIError as error:
                 if not _transient(error):
+                    error.usage = usage  # the conversation's earlier calls were paid for
                     raise
                 raise CallFailed(f"{type(error).__name__}: {error}", usage) from error
+            except BaseException as error:
+                error.usage = usage
+                raise
             usage = _add(usage, Usage(message.usage.input_tokens, message.usage.output_tokens))
             if message.stop_reason != "tool_use":
                 try:

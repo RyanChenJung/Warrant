@@ -141,6 +141,21 @@ def test_a_misconfiguration_stops_the_run_instead_of_being_recorded_per_question
     assert len(attempts) == 1  # not retried, and no second question is asked
 
 
+def test_a_misconfiguration_after_a_paid_attempt_carries_the_tokens_already_paid(replay, request_for, sql_tool):
+    first = replay("malformed")
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return first(**kwargs)
+        raise status_error(anthropic.AuthenticationError, 401)
+
+    with pytest.raises(anthropic.AuthenticationError) as caught:
+        ClaudeAgent(CONFIG, create).answer(request_for(), sql_tool)
+    assert (caught.value.usage.input_tokens, caught.value.usage.output_tokens) == (1400, 20)
+
+
 def test_an_answer_wrapped_in_a_markdown_fence_is_still_read(replay, request_for, sql_tool):
     output = ClaudeAgent(CONFIG, replay("answer_fenced")).answer(request_for(), sql_tool)
 
