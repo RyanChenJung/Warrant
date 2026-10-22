@@ -133,6 +133,18 @@ person as many claims as the settlement rule does, its least confident ones; the
 settlement rule.
 _Avoid_: confidence routing, confidence baseline
 
+**Matched asks**:
+The condition under which the settlement and confidence rules are compared: both send the same
+number of claims to a person in total over all slots, the number the settlement rule sends under the
+baseline battery, fixed before any agent runs.
+_Avoid_: equal budget, same k
+
+**Claim-writing sample**:
+One of several claim sets the agent authors for a database from the same input. Only the first is
+written into the stores; the others show how consistently the agent states each claim, which the
+confidence rule ranks by before the agent's self-reported confidence.
+_Avoid_: draw, rollout, attempt
+
 **Hybrid rule**:
 The settlement rule, except that a claim the battery did not settle is still written by the agent,
 as a provisional claim, when its confidence is very high.
@@ -178,6 +190,35 @@ A claim is settled under a check battery when it holds in every reading of its r
 battery cannot tell apart from the true one. "Not settled" means only that this battery failed, not
 that no check could succeed.
 _Avoid_: decided, proven, detected, resolved
+
+### Judging
+
+**Judge**:
+The step that labels a claim against each reading in its slot's reading set as holding, failing or
+not addressed, without being told which reading is true. Its rubric is frozen with the defects.
+_Avoid_: grader, evaluator, LLM-as-judge
+
+**Profile**:
+A claim's labels from the judge across the readings in its slot's reading set. Two claims agree when
+their profiles are identical.
+_Avoid_: label vector, signature
+
+**Wrong write**:
+An agent claim written into a store that the judge labels as failing under its slot's true reading.
+One the judge leaves not addressed on the true reading is incomplete, not wrong.
+_Avoid_: bad claim, false memory, write error
+
+**Judge validation**:
+The judge run, before the agent's first claim-writing sample, on statements whose expected labels are
+frozen: each reference claim on every reading, and each drift-reading statement on its drift reading
+and the true reading. Mismatches are reported, and the rubric is not changed.
+_Avoid_: calibration, judge test
+
+**Blind audit**:
+The labelling of the agent's claims on the slots by a teammate who did not design the defects,
+without seeing the judge's labels or which reading is true. How often the teammate's labels match the
+judge's is reported, and the judge's labels stand.
+_Avoid_: human evaluation, annotation, spot check
 
 ### Drift
 
@@ -248,6 +289,12 @@ _Avoid_: cell, verdict, category
 The allocation outcome a claim is expected to have under a battery, derived before any agent runs
 from which of its readings the battery can tell apart.
 _Avoid_: expected outcome, hypothesis
+
+**Rules coincide**:
+The result in which the settlement and confidence rules produce identical stores, so no slot is filled
+from different sources and their comparison has no question to test. It is reported as it is, not
+re-run under another seed.
+_Avoid_: tie, null result
 
 **Migration**:
 A change in outcome between the baseline and the extended battery: predicted for a claim, measured
