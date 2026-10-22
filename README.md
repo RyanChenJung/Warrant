@@ -51,6 +51,8 @@ column meanings or knowledge-base entries, are licensed under CC BY-SA 4.0
 - `drift_tasks/`: the maintenance line's documented drift tasks, with edited knowledge-base entries
   (#43).
 - `tests/fixtures/freeze_valid.yaml`: example defect specifications for the freeze validation tests.
+- `tests/fixtures/frozen_database_names.json`: the table and column names of crypto and alien, which
+  the write-claims prompt test checks the prompt against (#50).
 
 Files of this kind, such as the undocumented drift tasks (#44), are added to this list when they
 land.

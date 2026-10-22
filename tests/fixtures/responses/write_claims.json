@@ -1,0 +1,15 @@
+{
+  "id": "msg_recorded_write_claims",
+  "type": "message",
+  "role": "assistant",
+  "model": "anthropic.claude-model-placeholder",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"claims\": [{\"claim_kind\": \"column_formula\", \"subject\": \"accountbalances.walletsum\", \"statement\": \"The wallet balance is the available balance plus the frozen balance.\", \"confidence\": 0.8, \"cites\": [\"walletsum equals availsum.\"]}]}"
+    }
+  ],
+  "usage": {"input_tokens": 3000, "output_tokens": 400}
+}

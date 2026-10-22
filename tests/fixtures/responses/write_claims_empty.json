@@ -1,0 +1,15 @@
+{
+  "id": "msg_recorded_write_claims_empty",
+  "type": "message",
+  "role": "assistant",
+  "model": "anthropic.claude-model-placeholder",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "text",
+      "text": ""
+    }
+  ],
+  "usage": {"input_tokens": 3000, "output_tokens": 50}
+}
