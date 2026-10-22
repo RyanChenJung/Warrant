@@ -15,18 +15,23 @@ The confidence rule gives a person its k least confident slots, k being the sett
 count fixed when the predictions were committed (`global.matched_asks`), and leaves the rest to the
 agent's claim from sample 1. A slot left to the agent with no sample-1 claim stays empty, as under
 the settlement rule (#50, 2026-10-21). These functions read the sample and judgement records of
-#53's format; composing the store itself uses #50's claims and warrant kinds. No model is called.
+#53's format, of one run (the caller selects it); judging is done before the stores are composed
+(#53), so a claim on a slot without a complete judgement is refused rather than ranked. Means are
+exact (fractions of the confidences as written), so only real ties reach the permutation. Composing
+the store itself uses #50's claims and warrant kinds. No model is called.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
+from numbers import Real
 
 from warrant.defects.inject import Defect
 from warrant.store.claims import PredictedOutcome
 from warrant.write_line.judging import slot_order
 from warrant.write_line.selector import least_confident, seeded_permutation
 
-Score = tuple[float, float] | None  # (agreement, mean confidence), or None: no sample-1 claim to rank
+Score = tuple[Fraction, Fraction] | None  # (agreement, mean confidence), or None: no sample-1 claim
 
 
 @dataclass(frozen=True)
@@ -43,10 +48,12 @@ class CombinationRule:
         rule = global_part["confidence_combination"]
         keys = [next(iter(key)) for key in rule["keys"]]
         agreement = rule["keys"][0].get("agreement", "") if keys else ""
-        if (keys != ["agreement", "mean_confidence", "seeded_permutation"]
-                or not str(rule.get("order", "")).startswith("lexicographic")
-                or "samples 2 to 10" not in agreement):
-            raise ValueError(f"the freeze's confidence combination is not the one built here: {keys}")
+        if keys != ["agreement", "mean_confidence", "seeded_permutation"]:
+            raise ValueError(f"the freeze's confidence combination is not the one built here: keys {keys}")
+        if not str(rule.get("order", "")).startswith("lexicographic"):
+            raise ValueError("the freeze's confidence combination is not the one built here: not lexicographic")
+        if "samples 2 to 10" not in agreement:
+            raise ValueError("the freeze's confidence combination is not the one built here: not samples 2 to 10")
         if global_part["matched_asks"].get("tie_break") != "seeded_permutation":
             raise ValueError("the freeze's matched asks break ties another way")
         return cls(seed=global_part["seeds"]["matched_asks_tie_break"])
@@ -58,21 +65,49 @@ def settlement_ask_count(predictions: Mapping) -> int:
     return sum(claim["outcome"] != PredictedOutcome.AGENT_ALONE.value for claim in predictions["claims"].values())
 
 
-def _slot_index(sample: Mapping, defect: Defect) -> int | None:
-    """The index of the first claim in a sample that fills the defect's slot: kind and subject equal."""
+def slot_claim_index(sample: Mapping, defect: Defect) -> int | None:
+    """The index of the first claim in a sample that fills the defect's slot: kind and subject equal,
+    as the agent wrote them (#53). A later claim on the same slot, or one in another shape, is
+    out-of-slot."""
     for index, claim in enumerate(sample.get("claims") or ()):
-        slot = claim.get("slot") or {}
+        slot = claim.get("slot") if isinstance(claim, Mapping) else None
+        if not isinstance(slot, Mapping):
+            continue
         if (slot.get("claim_kind"), slot.get("subject")) == (defect.slot.claim_kind, defect.slot.subject):
             return index
     return None
 
 
+def _confidence(sample: Mapping, index: int) -> Fraction:
+    value = sample["claims"][index].get("confidence")
+    if isinstance(value, bool) or not isinstance(value, Real) or not 0 <= value <= 1:
+        raise ValueError(f"{sample['database']} sample {sample['sample']} claim {index}: "
+                         f"confidence {value!r} is not a number from 0 to 1")
+    return Fraction(str(value))
+
+
+def _one_run(records: Sequence[Mapping]) -> None:
+    runs = {r["run_id"] for r in records if "run_id" in r}
+    if len(runs) > 1:
+        raise ValueError(f"records of {len(runs)} runs; pass one run's records (#53 uses the first complete run)")
+
+
 def scores(records: Sequence[Mapping], defects: Iterable[Defect], rule: CombinationRule) -> dict[str, Score]:
-    """Each slot's (agreement, mean confidence), or None where sample 1 has no claim on it, or has one
-    the judge did not finish judging."""
-    samples = {(r["database"], r["sample"]): r for r in records if r.get("record") == "sample"}
-    profiles = {(r["defect"], r["sample"], r["index"]): r["labels"]
-                for r in records if r.get("record") == "judgement" and r.get("complete")}
+    """Each slot's (agreement, mean confidence), or None where sample 1 has no claim on it (a failed
+    sample 1 included). Every sample of every database must have a record (a failed one is a record
+    too), and every claim on a slot a complete judgement; otherwise the run is not ready for its
+    stores and this refuses."""
+    _one_run(records)
+    samples: dict[tuple[str, int], Mapping] = {}
+    for r in records:
+        if r.get("record") == "sample":
+            if (r["database"], r["sample"]) in samples:
+                raise ValueError(f"two records of {r['database']} sample {r['sample']}")
+            samples[(r["database"], r["sample"])] = r
+    profiles: dict[tuple[str, int, int], Mapping] = {}
+    for r in records:
+        if r.get("record") == "judgement" and r.get("complete"):
+            profiles.setdefault((r["defect"], r["sample"], r["index"]), r["labels"])  # the first complete one
     found: dict[str, Score] = {}
     for defect in defects:
         if not defect.readings:
@@ -80,25 +115,35 @@ def scores(records: Sequence[Mapping], defects: Iterable[Defect], rule: Combinat
         claims = {}
         for number in range(1, rule.samples + 1):
             sample = samples.get((defect.database, number))
-            index = None if sample is None or sample.get("failure") else _slot_index(sample, defect)
-            if index is not None:
-                claims[number] = (sample["claims"][index]["confidence"], profiles.get((defect.id, number, index)))
-        first = claims.get(1)
-        if first is None or first[1] is None:
+            if sample is None:
+                raise ValueError(f"no record of {defect.database} sample {number}")
+            index = None if sample.get("failure") else slot_claim_index(sample, defect)
+            if index is None:
+                continue
+            profile = profiles.get((defect.id, number, index))
+            if profile is None:
+                raise ValueError(f"{defect.id}: the claim of sample {number} has no complete judgement")
+            claims[number] = (_confidence(sample, index), profile)
+        if 1 not in claims:
             found[defect.id] = None
             continue
-        agreeing = [confidence for number, (confidence, profile) in claims.items()
-                    if number > 1 and profile is not None and profile == first[1]]
-        found[defect.id] = (len(agreeing) / (rule.samples - 1), (first[0] + sum(agreeing)) / (1 + len(agreeing)))
+        first_confidence, first_profile = claims[1]
+        agreeing = [c for number, (c, profile) in claims.items() if number > 1 and profile == first_profile]
+        found[defect.id] = (Fraction(len(agreeing), rule.samples - 1),
+                            (first_confidence + sum(agreeing)) / (1 + len(agreeing)))
     return found
 
 
 def ranking(found: Mapping[str, Score], defects: Iterable[Defect], rule: CombinationRule) -> list[str]:
     """The defect ids, least confident first: slots without a sample-1 claim first, then by agreement
-    and mean confidence, ties broken by the seeded permutation, a later slot being less confident."""
-    by_slot = {slot_order(d): d.id for d in defects if d.id in found}
+    and mean confidence, ties broken by the seeded permutation, a later slot being less confident. The
+    permutation is drawn over every slot of the freeze, pooled across databases (`matched_asks.scope`),
+    so `found` must score every defect with a reading set."""
+    by_slot = {slot_order(d): d.id for d in defects if d.readings}
+    if set(by_slot.values()) != set(found):
+        raise ValueError("the ranking is pooled over every slot of the freeze; score them all")
     permutation = [by_slot[slot] for slot in seeded_permutation(by_slot, rule.seed)]
-    keyed = {defect: (0, 0.0, 0.0) if score is None else (1, *score) for defect, score in found.items()}
+    keyed = {defect: (0, Fraction(0), Fraction(0)) if score is None else (1, *score) for defect, score in found.items()}
     return list(least_confident(keyed, len(keyed), permutation))
 
 
@@ -106,7 +151,8 @@ def with_sample_one_claim(records: Sequence[Mapping], defects: Iterable[Defect])
     """The slots sample 1 wrote a claim on, judged or not."""
     first = {r["database"]: r for r in records if r.get("record") == "sample" and r["sample"] == 1}
     return {d.id for d in defects
-            if d.database in first and not first[d.database].get("failure") and _slot_index(first[d.database], d) is not None}
+            if d.database in first and not first[d.database].get("failure")
+            and slot_claim_index(first[d.database], d) is not None}
 
 
 def allocation(order: Sequence[str], k: int, claimed: set[str]) -> dict[str, str | None]:

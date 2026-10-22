@@ -6,6 +6,7 @@ records of #53's format and calls no model."""
 
 import copy
 import json
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -74,13 +75,20 @@ def test_the_combination_rule_is_read_from_the_freezes_global_part(rule):
     assert rule.samples == 10
 
 
-def test_a_combination_rule_other_than_the_one_built_here_is_refused():
-    raw = yaml.safe_load(FREEZE.read_text())["global"]
-    swapped = copy.deepcopy(raw)
-    keys = swapped["confidence_combination"]["keys"]
-    keys[0], keys[1] = keys[1], keys[0]
-    with pytest.raises(ValueError, match="confidence combination"):
-        CombinationRule.from_freeze(swapped)
+@pytest.mark.parametrize("change", ["keys", "order", "samples", "tie_break"])
+def test_a_combination_rule_other_than_the_one_built_here_is_refused(change):
+    raw = copy.deepcopy(yaml.safe_load(FREEZE.read_text())["global"])
+    rule = raw["confidence_combination"]
+    if change == "keys":
+        rule["keys"][0], rule["keys"][1] = rule["keys"][1], rule["keys"][0]
+    elif change == "order":
+        rule["order"] = "weighted sum"
+    elif change == "samples":
+        rule["keys"][0]["agreement"] = rule["keys"][0]["agreement"].replace("samples 2 to 10", "samples 2 to 5")
+    else:
+        raw["matched_asks"]["tie_break"] = "defect id"
+    with pytest.raises(ValueError, match="confidence combination|break ties"):
+        CombinationRule.from_freeze(raw)
 
 
 def test_k_is_the_settlement_rules_ask_count_from_the_committed_predictions():
@@ -110,13 +118,25 @@ def test_a_slot_where_sample_1_has_no_claim_ranks_least_confident(config, rule):
     assert ranking(found, config.defects, rule)[:2] == ["orders-cut", "wallet-sum"]
 
 
-def test_a_missing_or_failed_sample_counts_as_disagreeing(config, rule):
+def test_a_sample_without_a_claim_on_the_slot_or_a_failed_sample_counts_as_disagreeing(config, rule):
     spec = {"wallet-sum": [(0.8, A)] * 5 + [None] * 5, "orders-cut": [(0.8, A)] * 10, "seeing-recode": [(0.8, A)] * 10}
-    recs = records(spec)
-    recs = [r for r in recs if not (r.get("record") == "sample" and r["database"] == "crypto" and r["sample"] == 10)]
+    recs = []
+    for r in records(spec):
+        if r.get("database") == "crypto" and r.get("sample") == 10 and r["record"] == "sample":
+            r = {**r, "claims": [], "failure": "timed out after retries"}
+        elif r.get("record") == "judgement" and r["sample"] == 10 and r["defect"] != "seeing-recode":
+            continue
+        recs.append(r)
     found = scores(recs, config.defects, rule)
-    assert found["wallet-sum"][0] == pytest.approx(4 / 9)
-    assert found["orders-cut"][0] == pytest.approx(8 / 9)
+    assert found["wallet-sum"][0] == Fraction(4, 9)
+    assert found["orders-cut"][0] == Fraction(8, 9)
+
+
+def test_a_missing_sample_record_is_refused(config, rule):
+    spec = {d: [(0.8, A)] * 10 for d in SLOTS}
+    recs = [r for r in records(spec) if not (r.get("record") == "sample" and r["database"] == "alien" and r["sample"] == 7)]
+    with pytest.raises(ValueError, match="no record of alien sample 7"):
+        scores(recs, config.defects, rule)
 
 
 def test_mean_confidence_is_over_sample_1_and_the_samples_agreeing_with_it(config, rule):
@@ -148,13 +168,75 @@ def test_only_the_first_claim_written_on_a_slot_fills_it(config, rule):
     assert found["wallet-sum"] == (1.0, pytest.approx(0.9))
 
 
-def test_a_sample_1_claim_the_judge_did_not_finish_ranks_least_confident(config, rule):
-    spec = {"wallet-sum": [(0.9, A)] * 10, "orders-cut": [(0.9, A)] * 10, "seeing-recode": [(0.9, A)] * 10}
+@pytest.mark.parametrize("sample", [1, 6])
+def test_a_claim_on_a_slot_the_judge_did_not_finish_is_refused_not_ranked(config, rule, sample):
+    spec = {d: [(0.9, A)] * 10 for d in SLOTS}
     recs = records(spec)
     for r in recs:
-        if r.get("record") == "judgement" and r["defect"] == "seeing-recode" and r["sample"] == 1:
+        if r.get("record") == "judgement" and r["defect"] == "seeing-recode" and r["sample"] == sample:
             r["complete"] = False
-    assert scores(recs, config.defects, rule)["seeing-recode"] is None
+    with pytest.raises(ValueError, match=f"seeing-recode: the claim of sample {sample} has no complete judgement"):
+        scores(recs, config.defects, rule)
+
+
+def test_the_first_complete_judgement_of_a_claim_is_the_one_used(config, rule):
+    spec = {d: [(0.9, A)] * 10 for d in SLOTS}
+    recs = records(spec) + [{"record": "judgement", "defect": "wallet-sum", "sample": n, "index": 0,
+                              "complete": True, "labels": B} for n in (2, 3, 4)]
+    assert scores(recs, config.defects, rule)["wallet-sum"][0] == 1
+
+
+def test_records_of_two_runs_or_a_sample_recorded_twice_are_refused(config, rule):
+    recs = records({d: [(0.9, A)] * 10 for d in SLOTS})
+    with pytest.raises(ValueError, match="2 runs"):
+        scores([{**r, "run_id": "r1"} for r in recs] + [{"record": "start", "run_id": "r2"}], config.defects, rule)
+    with pytest.raises(ValueError, match="two records of crypto sample 1"):
+        scores(recs + [next(r for r in recs if r.get("record") == "sample")], config.defects, rule)
+
+
+@pytest.mark.parametrize("value", [1.5, -0.1, "0.9", True, None])
+def test_a_confidence_that_is_not_a_number_from_0_to_1_is_refused(config, rule, value):
+    recs = records({d: [(0.9, A)] * 10 for d in SLOTS})
+    next(r for r in recs if r.get("record") == "sample" and r["database"] == "alien")["claims"][0]["confidence"] = value
+    with pytest.raises(ValueError, match="is not a number from 0 to 1"):
+        scores(recs, config.defects, rule)
+
+
+def test_a_claim_of_the_slots_kind_on_another_subject_is_out_of_slot(config, rule):
+    spec = {d: [(0.9, A)] * 10 for d in SLOTS}
+    recs = records(spec)
+    for r in recs:
+        if r.get("record") == "sample" and r["database"] == "crypto":
+            for c in r["claims"]:
+                if c["slot"]["claim_kind"] == "coverage":
+                    c["slot"]["subject"] = "orderexecutions"
+                elif c["slot"]["claim_kind"] == "column_formula":
+                    c["slot"]["subject"] = "Accountbalances.walletsum"
+    found = scores(recs, config.defects, rule)
+    assert found["orders-cut"] is None and found["wallet-sum"] is None
+    assert with_sample_one_claim(recs, config.defects) == {"seeing-recode"}
+
+
+def test_means_equal_as_written_are_a_tie_whatever_the_order_or_float_rounding(config, rule):
+    rest = [(0.5, B)] * 7
+    spec = {"wallet-sum": [(0.3, A), (0.1, A), (0.2, A)] + rest,
+            "orders-cut": [(0.1, A), (0.2, A), (0.3, A)] + rest,
+            "seeing-recode": [(0.85, A), (0.95, A)] + [(0.5, B)] * 8}
+    found = scores(records(spec), config.defects, rule)
+    assert found["wallet-sum"] == found["orders-cut"] == (Fraction(2, 9), Fraction(1, 5))
+    other = scores(records({**spec, "seeing-recode": [(0.9, A), (0.9, A)] + [(0.5, B)] * 8}), config.defects, rule)
+    assert found["seeing-recode"] == other["seeing-recode"] == (Fraction(1, 9), Fraction(9, 10))
+
+
+def test_a_three_way_tie_follows_the_frozen_permutation_over_slots_not_defect_ids(config, rule):
+    found = scores(records({d: [(0.9, A)] * 10 for d in SLOTS}), config.defects, rule)
+    assert ranking(found, config.defects, rule) == ["wallet-sum", "seeing-recode", "orders-cut"]
+    assert ranking({d: None for d in SLOTS}, config.defects, rule) == ["wallet-sum", "seeing-recode", "orders-cut"]
+
+
+def test_the_ranking_refuses_a_subset_of_the_slots(config, rule):
+    with pytest.raises(ValueError, match="pooled"):
+        ranking({"wallet-sum": None, "orders-cut": None}, config.defects, rule)
 
 
 def test_the_confidence_rule_sends_exactly_its_k_least_confident_slots_to_a_person(config, rule):
@@ -178,10 +260,3 @@ def test_a_slot_left_to_the_agent_without_a_sample_1_claim_stays_empty(config, r
     assert (sources[order[0]], sources[order[1]], sources[order[2]]) == ("person", "person", None)
 
 
-def test_an_unjudged_sample_1_claim_left_to_the_agent_is_still_the_agents(config, rule):
-    spec = {"wallet-sum": [(0.9, A)] * 10, "orders-cut": [(0.9, A)] * 10, "seeing-recode": [(0.9, A)] * 10}
-    recs = [r for r in records(spec) if not (r.get("record") == "judgement" and r["sample"] == 1)]
-    found = scores(recs, config.defects, rule)
-    assert set(found.values()) == {None}
-    order = ranking(found, config.defects, rule)
-    assert allocation(order, 2, with_sample_one_claim(recs, config.defects))[order[2]] == "agent"
