@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from warrant.agent.claude import ClaudeAgent
-from warrant.agent.interface import Agent, AnswerRequest, ResponseKind, Usage
+from warrant.agent.interface import Agent, AnswerRequest, ResponseKind, Tool, Usage
 from warrant.agent.tools import ReadOnlySQL
 from warrant.config import data_dir
 from warrant.data.sqlite import query, query_with_columns, schema
@@ -122,7 +122,8 @@ class RunStopped(Exception):
 # SIGTERM and SIGHUP (a closed terminal, a dropped SSH session) would end the process with no
 # exception, losing the tokens of the answer in progress, so the command turns them into an interrupt
 # the run records. `_signalled` keeps the signals received: the sqlite3 module swallows an exception
-# raised in its authorizer callback, so the run also checks it once each answer is scored.
+# raised in its authorizer callback, and later signals are ignored, so the run also checks it before
+# each answer, after each tool call and once each answer is scored.
 SIGNALS = (signal.SIGTERM, signal.SIGHUP)
 _signalled: list[str] = []
 
@@ -133,6 +134,21 @@ def _interrupt(signum, frame):
             signal.signal(other, signal.SIG_IGN)
     _signalled.append(signal.Signals(signum).name)
     raise KeyboardInterrupt(_signalled[-1])
+
+
+def _stop_if_signalled() -> None:
+    if _signalled:
+        raise KeyboardInterrupt(_signalled[-1])
+
+
+def _checked(tool: Tool) -> Tool:
+    """The tool, stopping the answer once a call returns after a signal the sqlite3 module swallowed."""
+    def call(*args, **kwargs):
+        try:
+            return tool(*args, **kwargs)
+        finally:
+            _stop_if_signalled()
+    return call
 
 
 def _person_claim(defect: Defect) -> Claim:
@@ -470,10 +486,10 @@ def run(
                     )
                     output = None
                     try:
-                        output = agent.answer(request, {ReadOnlySQL.name: ReadOnlySQL(path)})
+                        _stop_if_signalled()
+                        output = agent.answer(request, {ReadOnlySQL.name: _checked(ReadOnlySQL(path))})
                         row = _scored(q, rule, run_index, output, path, expected.get(q.id), tolerance, refusal_check)
-                        if _signalled:  # an interrupt the sqlite3 module swallowed, scoring perhaps with it
-                            raise KeyboardInterrupt(_signalled[-1])
+                        _stop_if_signalled()  # an interrupt swallowed while scoring, perhaps changing the score
                     except BaseException as error:
                         # The call was paid for although its answer is not stored: its tokens are
                         # recorded, so the cap counts them, and the answer stays missing, so a resume

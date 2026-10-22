@@ -450,6 +450,31 @@ def test_an_interrupt_the_sqlite3_module_swallowed_still_stops_the_run(config, t
     assert [(r["record"], r.get("input_tokens")) for r in records(results)] == [("start", None), ("spent", 100_000)]
 
 
+def test_a_swallowed_interrupt_stops_the_answer_at_its_next_tool_call(config, tmp_path, monkeypatch):
+    # Once signalled, later signals are ignored, so the run must not wait for the conversation's end.
+    went_on = []
+
+    class SwallowedThenQueries:
+        def answer(self, request, tools):
+            run_module._signalled.append("SIGTERM")  # swallowed during an earlier query of this answer
+            tools["sql"]("SELECT 1")
+            went_on.append(True)
+            return AgentOutput(answers(request, tools), Usage(100_000, 0))
+
+    monkeypatch.setattr(run_module, "_signalled", [])
+    with pytest.raises(KeyboardInterrupt, match="SIGTERM"):
+        run(config, SwallowedThenQueries(), tmp_path / "work", PROVENANCE, tmp_path / "results.jsonl", spend=Spend(PRICES))
+    assert not went_on
+
+
+def test_a_swallowed_interrupt_stops_the_run_before_its_next_answer(config, tmp_path, monkeypatch):
+    agent = Costly()
+    monkeypatch.setattr(run_module, "_signalled", ["SIGHUP"])
+    with pytest.raises(KeyboardInterrupt, match="SIGHUP"):
+        run(config, agent, tmp_path / "work", PROVENANCE, tmp_path / "results.jsonl")
+    assert agent.calls == 0
+
+
 def test_a_new_run_counts_what_every_earlier_run_in_the_results_file_spent(write_line_config, tmp_path, monkeypatch):
     monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly(input_tokens=30_000_000))
     results = tmp_path / "results.jsonl"
