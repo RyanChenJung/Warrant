@@ -167,10 +167,11 @@ def test_a_complete_run_or_one_with_another_prompt_version_or_other_rules_is_not
             stopped, run_id=run_id)
 
 
-def test_a_run_stopped_before_its_first_answer_is_not_resumed_under_another_answer_prompt(config, tmp_path):
+@pytest.mark.parametrize("agent", [PaidThenInterrupted(), Costly(stop_after=0)], ids=["paid", "unpaid"])
+def test_a_run_stopped_before_its_first_answer_is_not_resumed_under_another_answer_prompt(config, tmp_path, agent):
     results = tmp_path / "results.jsonl"
     with pytest.raises(KeyboardInterrupt):
-        run(config, PaidThenInterrupted(), tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES))
+        run(config, agent, tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES))
     run_id = records(results)[0]["run_id"]
     with pytest.raises(ValueError, match="another answer prompt"):
         run(config, Costly(), tmp_path / "work", dataclasses.replace(PROVENANCE, prompt_version="2"), results, run_id=run_id)
@@ -240,6 +241,17 @@ def test_an_approved_first_pass_stays_approved_when_the_run_is_resumed_again(con
     assert records(results)[-1]["record"] == "complete"
 
 
+def test_a_run_started_after_the_first_complete_run_is_still_resumed(config, tmp_path):
+    results = tmp_path / "results.jsonl"
+    run(config, Costly(), tmp_path / "work", PROVENANCE, results)
+    with pytest.raises(KeyboardInterrupt):
+        run(config, Costly(stop_after=1), tmp_path / "work", PROVENANCE, results)
+    repeat = records(results)[-1]["run_id"]
+    run(config, Costly(), tmp_path / "work", PROVENANCE, results)  # a third run completes after it
+    run(config, Costly(), tmp_path / "work", PROVENANCE, results, run_id=repeat)
+    assert records(results)[-1] == {**records(results)[-1], "record": "complete", "run_id": repeat}
+
+
 def test_an_approval_before_the_first_pass_is_complete_is_refused(config, tmp_path):
     config = dataclasses.replace(config, runs=3)
     results = tmp_path / "results.jsonl"
@@ -247,7 +259,7 @@ def test_an_approval_before_the_first_pass_is_complete_is_refused(config, tmp_pa
         run(config, Costly(), tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES),
             first_pass_estimate=0.01, approve_first_pass=True)
     with pytest.raises(KeyboardInterrupt):
-        run(config, Costly(stop_after=1), tmp_path / "work", PROVENANCE, results)
+        run(config, Costly(stop_after=len(config.rules) * len(config.questions) - 1), tmp_path / "work", PROVENANCE, results)
     run_id = records(results)[0]["run_id"]
     with pytest.raises(ValueError, match="no first pass to approve"):
         run(config, Costly(), tmp_path / "work", PROVENANCE, results, run_id=run_id, spend=Spend(PRICES),
@@ -294,6 +306,34 @@ def test_a_new_run_beside_a_complete_run_of_its_configuration_needs_new_run(writ
     assert "--new-run" in capsys.readouterr().err
     assert main(main_args(write_line_config, tmp_path, "--new-run")) == 0
     assert [r["record"] for r in records(results)].count("complete") == 2
+
+
+def test_a_plain_invocation_beside_a_set_aside_run_names_no_run_to_resume(write_line_config, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly(stop_after=1))
+    with pytest.raises(KeyboardInterrupt):
+        main(main_args(write_line_config, tmp_path))
+    set_aside = records(tmp_path / "results.jsonl")[0]["run_id"]
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly())
+    assert main(main_args(write_line_config, tmp_path, "--new-run")) == 0
+    capsys.readouterr()
+    with pytest.raises(SystemExit):
+        main(main_args(write_line_config, tmp_path))
+    refusal = capsys.readouterr().err
+    assert "already has a complete run" in refusal and set_aside not in refusal
+
+
+def test_a_run_of_another_configuration_neither_blocks_nor_sets_aside_a_run_of_this_one(
+    write_line_config, tmp_path, monkeypatch
+):
+    other = tmp_path / "other.yaml"
+    other.write_text(write_line_config.read_text() + "\n# another configuration\n")
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly(stop_after=1))
+    with pytest.raises(KeyboardInterrupt):
+        main(main_args(write_line_config, tmp_path))
+    run_id = records(tmp_path / "results.jsonl")[0]["run_id"]
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly())
+    assert main(main_args(other, tmp_path)) == 0  # not blocked by this configuration's incomplete run
+    assert main(main_args(write_line_config, tmp_path, "--run-id", run_id)) == 0  # nor set aside by it
 
 
 def test_the_command_pauses_after_the_first_pass_and_goes_on_when_resumed_with_the_approval(
@@ -350,6 +390,64 @@ def test_a_sigterm_or_sighup_reaches_the_run_as_an_interrupt_it_records(write_li
     finally:
         signal.signal(signum, before)
     assert not reached_the_default
+
+
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP], ids=["SIGTERM", "SIGHUP"])
+def test_a_signal_already_ignored_stays_ignored(write_line_config, tmp_path, monkeypatch, signum):
+    # nohup ignores SIGHUP so that a run survives a logout.
+    interrupted = []
+
+    def signalled(*args, **kwargs):
+        try:
+            os.kill(os.getpid(), signum)
+        except KeyboardInterrupt:  # caught here, so that a regression fails this test, not the test run
+            interrupted.append(True)
+        raise RunStopped("stopped", "f" * 32)
+
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly())
+    monkeypatch.setattr(run_module, "run", signalled)
+    before = signal.signal(signum, signal.SIG_IGN)
+    try:
+        assert main(main_args(write_line_config, tmp_path)) == 3
+        assert signal.getsignal(signum) is signal.SIG_IGN
+    finally:
+        signal.signal(signum, before)
+    assert not interrupted
+
+
+def test_a_second_signal_cannot_cut_short_the_record_of_the_first(write_line_config, tmp_path, monkeypatch):
+    # uv forwards the signal it receives, so the run is often signalled twice in a row.
+    def signalled_twice(*args, **kwargs):
+        try:
+            os.kill(os.getpid(), signal.SIGTERM)
+        except KeyboardInterrupt:
+            os.kill(os.getpid(), signal.SIGTERM)  # arrives while the first is handled
+            raise
+
+    reached_the_default = []
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly())
+    monkeypatch.setattr(run_module, "run", signalled_twice)
+    before = signal.signal(signal.SIGTERM, lambda *_: reached_the_default.append(True))
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            main(main_args(write_line_config, tmp_path))
+    finally:
+        signal.signal(signal.SIGTERM, before)
+    assert caught.value.__context__ is None and not reached_the_default
+
+
+def test_an_interrupt_the_sqlite3_module_swallowed_still_stops_the_run(config, tmp_path, monkeypatch):
+    # The sqlite3 module turns an exception raised in its authorizer callback into "not authorized".
+    class SwallowedWhileAnswering:
+        def answer(self, request, tools):
+            run_module._signalled.append("SIGTERM")
+            return AgentOutput(answers(request, tools), Usage(100_000, 0))
+
+    monkeypatch.setattr(run_module, "_signalled", [])
+    results = tmp_path / "results.jsonl"
+    with pytest.raises(KeyboardInterrupt, match="SIGTERM"):
+        run(config, SwallowedWhileAnswering(), tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES))
+    assert [(r["record"], r.get("input_tokens")) for r in records(results)] == [("start", None), ("spent", 100_000)]
 
 
 def test_a_new_run_counts_what_every_earlier_run_in_the_results_file_spent(write_line_config, tmp_path, monkeypatch):

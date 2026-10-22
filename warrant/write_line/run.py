@@ -119,6 +119,22 @@ class RunStopped(Exception):
         self.run_id = run_id
 
 
+# SIGTERM and SIGHUP (a closed terminal, a dropped SSH session) would end the process with no
+# exception, losing the tokens of the answer in progress, so the command turns them into an interrupt
+# the run records. `_signalled` keeps the signals received: the sqlite3 module swallows an exception
+# raised in its authorizer callback, so the run also checks it once each answer is scored.
+SIGNALS = (signal.SIGTERM, signal.SIGHUP)
+_signalled: list[str] = []
+
+
+def _interrupt(signum, frame):
+    for other in SIGNALS:  # a second signal, such as uv's forward of the first, would cut the records short
+        if signal.getsignal(other) is _interrupt:
+            signal.signal(other, signal.SIG_IGN)
+    _signalled.append(signal.Signals(signum).name)
+    raise KeyboardInterrupt(_signalled[-1])
+
+
 def _person_claim(defect: Defect) -> Claim:
     # No battery runs yet, so the warrant kind is a placeholder until #50 computes it.
     return Claim(
@@ -456,6 +472,8 @@ def run(
                     try:
                         output = agent.answer(request, {ReadOnlySQL.name: ReadOnlySQL(path)})
                         row = _scored(q, rule, run_index, output, path, expected.get(q.id), tolerance, refusal_check)
+                        if _signalled:  # an interrupt the sqlite3 module swallowed, scoring perhaps with it
+                            raise KeyboardInterrupt(_signalled[-1])
                     except BaseException as error:
                         # The call was paid for although its answer is not stored: its tokens are
                         # recorded, so the cap counts them, and the answer stays missing, so a resume
@@ -542,10 +560,6 @@ def committed_predictions_for(config: Config, directory: Path = REPO / "predicti
     return found[0]
 
 
-def _interrupt(signum, frame):
-    raise KeyboardInterrupt(signal.Signals(signum).name)
-
-
 def main(argv=None) -> int:
     """Run one configuration against the configured model: `python -m warrant.write_line.run`."""
     parser = argparse.ArgumentParser(description="Run the write line against the configured model.")
@@ -590,9 +604,10 @@ def main(argv=None) -> int:
         parser.error(f"{args.config}: {error}")  # a misconfiguration, before any question is asked
     mean_input, mean_output = mean_tokens(json.loads(line) for line in PILOT_RESULTS.read_text().splitlines())
     estimate = answer_estimate(len(config.questions) * len(config.rules), mean_input, mean_output, spend.prices)
-    # SIGTERM and SIGHUP (a closed terminal, a dropped SSH session) would end the process with no
-    # exception, losing the tokens of the answer in progress; as an interrupt, the run records them.
-    handlers = {signum: signal.signal(signum, _interrupt) for signum in (signal.SIGTERM, signal.SIGHUP)}
+    # A signal already ignored, as nohup ignores SIGHUP, stays ignored.
+    _signalled.clear()
+    handlers = {signum: signal.signal(signum, _interrupt) for signum in SIGNALS
+                if signal.getsignal(signum) is not signal.SIG_IGN}
     try:
         result = run(
             config,
@@ -614,6 +629,7 @@ def main(argv=None) -> int:
     finally:
         for signum, handler in handlers.items():
             signal.signal(signum, handler)
+        _signalled.clear()
     failed = sum(row.response_class == ResponseClass.FAILED for row in result.rows)
     print(f"run {result.run_id} complete: {len(result.rows)} results this invocation, {failed} failed calls, "
           f"${spend.total:.2f} spent in all, written to {args.results}")
