@@ -18,6 +18,7 @@ from warrant.write_line.warrants import (
     PROVENANCE_RECORD,
     STRONGER_BATTERY,
     claim_for,
+    out_of_slot_claim,
     slot_warrants,
 )
 
@@ -132,3 +133,68 @@ def test_an_agent_claim_left_on_an_unsettled_slot_carries_no_warrant(config, pre
     claim = claim_for(seeing, w["seeing-recode"], Source.AGENT, "'1' is the best seeing.", cites=())
     assert claim.warrant == WarrantKind.NONE and claim.toulmin.backing == "" and claim.toulmin.qualifier == ""
     assert claim.predicted_outcome == PredictedOutcome.PERSON_ONLY
+
+
+def test_an_agent_claim_on_the_coverage_slot_carries_no_warrant_and_not_the_persons_qualifier(config, predictions):
+    w = slot_warrants(config.defects, predictions)
+    claim = claim_for(defect(config, "orders-cut"), w["orders-cut"], Source.AGENT, "The orders table is complete.",
+                      cites=("266 rows reference a missing order",))
+    assert (claim.warrant, claim.toulmin.backing, claim.toulmin.qualifier) == (WarrantKind.NONE, "", "")
+    assert claim.toulmin.data == "266 rows reference a missing order"
+
+
+def test_a_rival_under_which_the_reference_claim_holds_neither_survives_nor_qualifies(config, predictions):
+    # Give seeing-recode a second, holding, convention rival: it must not be what makes the slot a declaration.
+    seeing = defect(config, "seeing-recode")
+    holding = {**next(r for r in seeing.readings if not r["is_true"]), "id": "also-true", "holds": True}
+    provenance = with_readings(seeing, lambda r: {**r, "kind": "provenance"} if not r["is_true"] else r)
+    mixed = dataclasses.replace(provenance, readings=provenance.readings + (holding,))
+    changed = copy.deepcopy(predictions)
+    changed["claims"]["seeing-recode"]["readings"]["also-true"] = {
+        **changed["claims"]["seeing-recode"]["readings"]["three-is-best"], "holds": True}
+    w = slot_warrants([mixed], changed)["seeing-recode"]
+    assert (w.person, w.qualifier) == (WarrantKind.TESTIMONY, PROVENANCE_RECORD)
+
+
+def test_a_both_slot_whose_only_survivor_changes_the_database_needs_a_stronger_battery(config, predictions):
+    orders = defect(config, "orders-cut")
+    world = with_readings(orders, lambda r: {k: v for k, v in r.items() if k != "kind"} | {"form": "world_fixed"}
+                          if r["id"] in ("archived", "other-system", "mistyped") else r)
+    # Put the true reading last, so nothing depends on its position.
+    world = dataclasses.replace(world, readings=tuple(r for r in world.readings if not r["is_true"])
+                                + tuple(r for r in world.readings if r["is_true"]))
+    changed = copy.deepcopy(predictions)
+    for reading in ("archived", "other-system", "mistyped"):
+        changed["claims"]["orders-cut"]["readings"][reading]["database"] = "e" * 64
+    assert slot_warrants([world], changed)["orders-cut"].qualifier == STRONGER_BATTERY
+
+
+def test_a_both_slot_with_a_surviving_convention_rival_is_refused(config, predictions):
+    orders = with_readings(defect(config, "orders-cut"), lambda r: {**r, "kind": "convention"} if r["id"] == "archived" else r)
+    with pytest.raises(ValueError, match="does not cover"):
+        slot_warrants([orders], predictions)
+
+
+def test_a_testimony_with_nothing_to_say_what_could_settle_it_is_refused(config, predictions):
+    # A world-fixed rival on the true reading's own database: neither a data part nor provenance.
+    seeing = with_readings(defect(config, "seeing-recode"),
+                           lambda r: {k: v for k, v in r.items() if k != "kind"} | {"form": "world_fixed"} if not r["is_true"] else r)
+    with pytest.raises(ValueError, match="nothing says what could settle it"):
+        slot_warrants([seeing], predictions)
+
+
+def test_a_reading_missing_from_the_predictions_or_disagreeing_on_holds_is_refused(config, predictions):
+    missing = copy.deepcopy(predictions)
+    del missing["claims"]["orders-cut"]["readings"]["archived"]
+    with pytest.raises(ValueError, match="'archived' has no committed prediction"):
+        slot_warrants(config.defects, missing)
+    flipped = copy.deepcopy(predictions)
+    flipped["claims"]["orders-cut"]["readings"]["archived"]["holds"] = True
+    with pytest.raises(ValueError, match="holds differs"):
+        slot_warrants(config.defects, flipped)
+
+
+def test_an_out_of_slot_claim_keeps_its_kind_and_subject_and_carries_no_warrant():
+    claim = out_of_slot_claim("coverage", "orderexecutions", " 266 executions have no order. ", cites=("a finding",))
+    assert (claim.slot.claim_kind, claim.slot.subject, claim.statement) == ("coverage", "orderexecutions", "266 executions have no order.")
+    assert (claim.warrant, claim.predicted_outcome, claim.toulmin.data) == (WarrantKind.NONE, None, "a finding")

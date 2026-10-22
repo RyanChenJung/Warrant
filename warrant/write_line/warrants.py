@@ -18,14 +18,20 @@ warrant, and:
   be for provenance rivals, both when both occur;
 - any other agent claim carries none.
 
-The person's claims are backed by the person. These are the decisions of 2026-10-21 on #50.
+The person's claims are backed by the person. These are the decisions of 2026-10-21 on #50. A warrant
+kind is what the rule grants a claim on that slot from that source, not a verdict on whether the
+claim is true: whether an agent claim holds is the judge's to say (a wrong write, #51, #53).
+
+Two cases the rule does not cover are refused rather than guessed: a slot predicted both with a
+surviving convention rival, and a testimony warrant with nothing to say what could settle it. No
+frozen slot is either; a second freeze (ADR 0011) settles them before it is injected.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from warrant.defects.inject import Defect
-from warrant.store.claims import Claim, PredictedOutcome, Source, Toulmin, WarrantKind
+from warrant.store.claims import Claim, ClaimKind, PredictedOutcome, Slot, Source, Toulmin, WarrantKind
 
 BATTERY_BACKING = "the vendored battery and check"
 PERSON_BACKING = "the person"
@@ -46,6 +52,12 @@ class SlotWarrant:
 def _surviving_rivals(defect: Defect, readings: Mapping[str, Mapping]) -> tuple[list[dict], str]:
     """The rivals the battery cannot tell from the true reading and under which the reference claim
     fails, and the true reading's database."""
+    for reading in defect.readings:
+        committed = readings.get(reading["id"])
+        if committed is None:
+            raise ValueError(f"{defect.id}: reading {reading['id']!r} has no committed prediction")
+        if committed["holds"] != reading["holds"]:
+            raise ValueError(f"{defect.id}: reading {reading['id']!r}'s holds differs between the freeze and the predictions")
     true = next(r for r in defect.readings if r.get("is_true"))
     true_database = readings[true["id"]]["database"]
     rivals = [r for r in defect.readings
@@ -73,11 +85,16 @@ def slot_warrants(defects: Iterable[Defect], predictions: Mapping) -> dict[str, 
         if outcome == PredictedOutcome.PERSON_ONLY and convention:
             found[defect.id] = SlotWarrant(outcome, WarrantKind.NONE, WarrantKind.DECLARATION)
             continue
+        if convention:
+            raise ValueError(f"{defect.id}: predicted both with a surviving convention rival, a case #50's rule does not cover")
         parts = []
         if any(committed["readings"][r["id"]]["database"] != true_database for r in rivals):
             parts.append(STRONGER_BATTERY)
         if any(r.get("kind") == "provenance" for r in rivals):
             parts.append(PROVENANCE_RECORD)
+        if not parts:
+            raise ValueError(f"{defect.id}: a testimony warrant whose surviving rivals neither change the database "
+                             "nor are declared provenance, so nothing says what could settle it")
         found[defect.id] = SlotWarrant(outcome, WarrantKind.NONE, WarrantKind.TESTIMONY, "; ".join(parts))
     return found
 
@@ -94,3 +111,10 @@ def claim_for(defect: Defect, warrant: SlotWarrant, source: Source, statement: s
         qualifier=warrant.qualifier if kind == WarrantKind.TESTIMONY else "",
     )
     return Claim(defect.slot, statement.strip(), source, kind, toulmin, warrant.outcome)
+
+
+def out_of_slot_claim(claim_kind: str, subject: str, statement: str, cites: Sequence[str] = ()) -> Claim:
+    """An agent claim that fills no slot, kept as the agent wrote its kind and subject, a later claim
+    on an already filled slot included: no warrant and no predicted outcome."""
+    return Claim(Slot(ClaimKind(claim_kind), subject), statement.strip(), Source.AGENT, WarrantKind.NONE,
+                 Toulmin(data="; ".join(cites)), None)
