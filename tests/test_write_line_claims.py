@@ -5,7 +5,6 @@ and each question gets its own database's store. No test calls a model.
 The fixture is `tests/fixtures/freeze_predictions.yaml` (see tests/test_write_line_stores.py).
 """
 
-import dataclasses
 import json
 import sqlite3
 from pathlib import Path
@@ -13,7 +12,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from warrant.agent.fake import ScriptedAgent, ScriptedClaimWriter
+from warrant.agent.fake import ScriptedAgent, ScriptedClaimWriter, ScriptedJudge
 from warrant.agent.interface import Response, ResponseKind, Usage
 from warrant.agent.prompt import user_message
 from warrant.agent.write_claims import WRITE_CLAIMS_PROMPT_VERSION, BusinessTerms, ClaimWritingCall, system_prompt
@@ -141,14 +140,6 @@ def test_the_abstain_rules_are_composed_from_the_abstain_variants_sample_one(con
     assert "The total cost is labour plus parts." in plant["all_agent"]
     assert plant["all_agent_abstain"] == ["'NORTH' marks the north site."]
     assert plant["settlement_abstain"] == [BY_ID["site-swap"].reference_claim]
-
-
-@pytest.mark.parametrize("rule", ["confidence", "confidence_abstain"])
-def test_a_confidence_rule_is_refused_before_any_call_until_its_store_is_built(config, tmp_path, rule):
-    writer = ScriptedClaimWriter(writes)
-    with pytest.raises(ValueError, match="#51"):
-        go(dataclasses.replace(config, rules=("empty", rule)), tmp_path, writer=writer)
-    assert writer.prompts == [] and not (tmp_path / "results.jsonl").exists()
 
 
 def test_a_swallowed_interrupt_stops_the_run_before_its_claim_writing(config, tmp_path, monkeypatch):
@@ -312,6 +303,7 @@ def test_the_command_hands_the_run_the_claim_writer_it_built(write_line_config, 
 
     monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: ScriptedAgent(answers))
     monkeypatch.setattr(run_module, "ClaudeClaimWriter", lambda model: writer)
+    monkeypatch.setattr(run_module, "ClaudeJudge", lambda model: ScriptedJudge(lambda prompt: None))
     monkeypatch.setattr(run_module, "_claim_writing_problems", lambda config, path: [])
     monkeypatch.setattr(run_module, "run", stopped)
     assert run_module.main(["--config", str(write_line_config), "--work-dir", str(tmp_path / "work"),
@@ -329,6 +321,7 @@ def test_the_command_writes_no_claim_before_the_judge_validation_clears_it(write
 
     monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: ScriptedAgent(answers))
     monkeypatch.setattr(run_module, "ClaudeClaimWriter", lambda model: ScriptedClaimWriter(writes))
+    monkeypatch.setattr(run_module, "ClaudeJudge", lambda model: ScriptedJudge(lambda prompt: None))
     monkeypatch.setattr(run_module, "run", never)
     with pytest.raises(SystemExit):
         run_module.main(["--config", str(write_line_config), "--work-dir", str(tmp_path / "work"),
