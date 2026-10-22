@@ -115,6 +115,8 @@ def claim_for(defect: Defect, warrant: SlotWarrant, source: Source, statement: s
 
 def out_of_slot_claim(claim_kind: str, subject: str, statement: str, cites: Sequence[str] = ()) -> Claim:
     """An agent claim that fills no slot, kept as the agent wrote its kind and subject, a later claim
-    on an already filled slot included: no warrant and no predicted outcome."""
-    return Claim(Slot(ClaimKind(claim_kind), subject), statement.strip(), Source.AGENT, WarrantKind.NONE,
+    on an already filled slot included: no warrant and no predicted outcome. A kind outside the five
+    is kept as written too (#53), so it can never match a slot."""
+    kind = ClaimKind(claim_kind) if claim_kind in {k.value for k in ClaimKind} else claim_kind
+    return Claim(Slot(kind, subject), statement.strip(), Source.AGENT, WarrantKind.NONE,
                  Toulmin(data="; ".join(cites)), None)

@@ -198,3 +198,8 @@ def test_an_out_of_slot_claim_keeps_its_kind_and_subject_and_carries_no_warrant(
     claim = out_of_slot_claim("coverage", "orderexecutions", " 266 executions have no order. ", cites=("a finding",))
     assert (claim.slot.claim_kind, claim.slot.subject, claim.statement) == ("coverage", "orderexecutions", "266 executions have no order.")
     assert (claim.warrant, claim.predicted_outcome, claim.toulmin.data) == (WarrantKind.NONE, None, "a finding")
+
+
+def test_an_out_of_slot_claim_of_a_kind_outside_the_five_is_kept_as_written():
+    claim = out_of_slot_claim("row_meaning", "orders.recordvault", "One row is one order.")
+    assert (claim.slot.claim_kind, claim.warrant) == ("row_meaning", WarrantKind.NONE)
