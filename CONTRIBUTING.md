@@ -53,7 +53,7 @@ pinned in `uv.lock`. Add a dependency with `uv add <package>` and commit `uv.loc
 | `warrant/battery/` | The vendored Gloss detectors and the normalisation of their output | #28, #31 |
 | `warrant/freeze/` | Freeze file formats and their validation command | #33 |
 | `warrant/defects/` | Injection on database copies; the per-reading database builder | #27, #35, #36 |
-| `warrant/agent/` | Agent interface, scripted fake agent, Claude agent, tools; the judge operation | #27, #38, #39, #120 |
+| `warrant/agent/` | Agent interface, scripted fake agent, Claude agent, tools; the judge operation; the write-claims operation | #27, #38, #39, #50, #120 |
 | `warrant/store/` | The knowledge-store format shared by both lines; append-only result records | #27, #38, #50 |
 | `warrant/scoring/` | Scoring and statistics shared by both lines | #40, #41 |
 | `warrant/write_line/` | Write-line entry point: predictions, allocation rules, runs, summary; the judge's validation and the matched-asks selector; the run's guards; the blind audit's sheet | #27, #37, #50 to #54, #120, #123 |

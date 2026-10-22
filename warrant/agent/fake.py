@@ -4,6 +4,7 @@ from typing import Callable, Mapping
 
 from warrant.agent.interface import AgentOutput, AnswerRequest, Response, Tool, Usage
 from warrant.agent.judge import JudgeCall
+from warrant.agent.write_claims import ClaimWritingCall
 
 
 class ScriptedAgent:
@@ -28,3 +29,17 @@ class ScriptedJudge:
         self.prompts.append(prompt)
         text = self._script(prompt)
         return JudgeCall(text) if text is not None else JudgeCall(None, failure="scripted failure")
+
+
+class ScriptedClaimWriter:
+    """A claim-writing model whose script gives each call's text output for the system prompt and
+    user message it is sent, or None for a failed call."""
+
+    def __init__(self, script: Callable[[str, str], str | None]):
+        self._script = script
+        self.prompts: list[tuple[str, str]] = []
+
+    def call(self, system: str, user: str) -> ClaimWritingCall:
+        self.prompts.append((system, user))
+        text = self._script(system, user)
+        return ClaimWritingCall(text) if text is not None else ClaimWritingCall(None, failure="scripted failure")
