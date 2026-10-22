@@ -195,14 +195,15 @@ def test_a_misconfigured_model_stops_the_run_without_storing_a_row(config, tmp_p
     with pytest.raises(anthropic.AuthenticationError):
         run(config, Misconfigured(), tmp_path / "work", PROVENANCE, results)
 
-    assert not results.exists()
+    # The run's start record is stored; no answer is.
+    assert [json.loads(line)["record"] for line in results.read_text().splitlines()] == ["start"]
 
 
 def test_every_stored_result_carries_the_provenance_of_its_run(config, tmp_path):
     results = tmp_path / "results.jsonl"
     result = run(config, ScriptedAgent(knows_the_claim), tmp_path / "work", PROVENANCE, results)
 
-    records = [json.loads(line) for line in results.read_text().splitlines()]
+    records = [r for r in map(json.loads, results.read_text().splitlines()) if r["record"] == "answer"]
     assert len(records) == len(result.rows)
     assert {r["model"] for r in records} == {"anthropic.claude-model-placeholder"}
     assert {r["prompt_version"] for r in records} == {"1"}
@@ -221,7 +222,7 @@ def test_every_stored_answer_carries_its_executed_result_its_stated_value_and_th
     results = tmp_path / "results.jsonl"
     result = run(config, ScriptedAgent(confident), tmp_path / "work", PROVENANCE, results)
 
-    records = [json.loads(line) for line in results.read_text().splitlines()]
+    records = [r for r in map(json.loads, results.read_text().splitlines()) if r["record"] == "answer"]
     (injected,) = result.injected.values()
     assert {r["confidence"] for r in records} == {0.7}
     for record in records:
@@ -239,7 +240,7 @@ def test_a_stored_refusal_carries_what_it_says_is_missing_and_what_it_offers_ins
     results = tmp_path / "results.jsonl"
     run(config, ScriptedAgent(refuses), tmp_path / "work", PROVENANCE, results)
 
-    records = [json.loads(line) for line in results.read_text().splitlines()]
+    records = [r for r in map(json.loads, results.read_text().splitlines()) if r["record"] == "answer"]
     assert {
         (r["missing"], r["alternative"], r["confidence"], r["executed"], r["executed_columns"]) for r in records
     } == {("the order status", "the open tasks", 0.4, None, None)}
@@ -252,7 +253,7 @@ def test_a_stored_clarification_request_carries_its_question(config, tmp_path):
     results = tmp_path / "results.jsonl"
     run(config, ScriptedAgent(asks), tmp_path / "work", PROVENANCE, results)
 
-    records = [json.loads(line) for line in results.read_text().splitlines()]
+    records = [r for r in map(json.loads, results.read_text().splitlines()) if r["record"] == "answer"]
     assert {(r["response_class"], r["clarification"], r["value"]) for r in records} == {
         ("clarification_request", "Do open work orders count?", None)
     }

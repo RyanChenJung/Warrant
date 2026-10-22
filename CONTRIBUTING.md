@@ -26,9 +26,9 @@ pinned in `uv.lock`. Add a dependency with `uv add <package>` and commit `uv.loc
 4. **Open a PR** with `Closes #<n>` in the description and merge it yourself once the tests pass; no
    review is needed, so we can iterate fast. Every change to `main` still goes through a PR. Merging
    closes the issue and unblocks the tickets waiting on it.
-5. **Log your time.** Once a week, comment on each ticket you worked on: hours spent and which
-   acceptance criteria are met. The October 17 checkpoint (#57) compares these logs with the
-   estimates.
+5. **Log your time (recommended).** Once a week, a comment on each ticket you worked on with the hours
+   spent and which acceptance criteria are met helps the team see where the time goes. It is no longer
+   required: the October 17 checkpoint (#57) that compared these logs with the estimates is closed.
 
 ## Hard rules
 
@@ -53,10 +53,10 @@ pinned in `uv.lock`. Add a dependency with `uv add <package>` and commit `uv.loc
 | `warrant/battery/` | The vendored Gloss detectors and the normalisation of their output | #28, #31 |
 | `warrant/freeze/` | Freeze file formats and their validation command | #33 |
 | `warrant/defects/` | Injection on database copies; the per-reading database builder | #27, #35, #36 |
-| `warrant/agent/` | Agent interface, scripted fake agent, Claude agent, tools; the judge operation | #27, #38, #39, #120 |
+| `warrant/agent/` | Agent interface, scripted fake agent, Claude agent, tools; the judge operation; the write-claims operation | #27, #38, #39, #50, #120 |
 | `warrant/store/` | The knowledge-store format shared by both lines; append-only result records | #27, #38, #50 |
 | `warrant/scoring/` | Scoring and statistics shared by both lines | #40, #41 |
-| `warrant/write_line/` | Write-line entry point: predictions, allocation rules, runs, summary; the judge's validation and the matched-asks selector | #27, #37, #50 to #53, #120 |
+| `warrant/write_line/` | Write-line entry point: predictions, allocation rules, runs, summary; the judge's validation and the matched-asks selector; the run's guards; the blind audit's sheet | #27, #37, #50 to #54, #120, #123 |
 | `warrant/maintenance/` | Maintenance-line entry point: drift tasks, conditions, escalation, summary | #42, #45 to #48 |
 
 If a ticket needs code somewhere else, say why in the PR.

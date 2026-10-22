@@ -245,6 +245,23 @@ def test_the_pilot_configuration_is_eight_coverage_probes_on_the_committed_freez
     assert model.temperature is None
 
 
+def test_the_run_stops_before_any_agent_call_when_the_recomputed_predictions_differ_from_the_committed(freeze, tmp_path):
+    from warrant.write_line.predict import BatterySettings
+    from warrant.write_line.predict import record as predictions_record
+    config = load_config(configuration(freeze))
+    predicted = run(config, answers(lambda r: CLOSED_COST), tmp_path / "work", stop_after_prediction=True).predictions
+    committed = predictions_record(predicted, BatterySettings.from_freeze({"global": config.global_part}), {}, "")
+    agent = answers(lambda r: CLOSED_COST)
+    assert run(config, agent, tmp_path / "work", committed_predictions=committed).rows
+    changed = json.loads(json.dumps(committed))
+    defect = next(iter(changed["claims"]))
+    changed["claims"][defect]["outcome"] = "person_only" if changed["claims"][defect]["outcome"] != "person_only" else "both"
+    agent = answers(lambda r: CLOSED_COST)
+    with pytest.raises(ValueError, match="differ from the committed"):
+        run(config, agent, tmp_path / "work", committed_predictions=changed)
+    assert agent.requests == []
+
+
 CONFIGS = Path(__file__).parents[1] / "configs"
 
 
