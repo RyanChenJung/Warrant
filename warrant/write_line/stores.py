@@ -10,7 +10,9 @@ claims read the same under every rule (#53, decided 2026-10-21). By rule:
 - `settlement`: sample 1's claim on each settled slot (predicted agent alone), the reference claim on
   every other slot whatever the agent wrote there, and the out-of-slot claims. A settled slot with no
   agent claim stays empty, so the person asks stay at the frozen k (#50, 2026-10-21);
-- `confidence` comes with #51.
+- `confidence`: the reference claim on the k slots the confidence ranking puts least confident,
+  sample 1's claim on each other slot it wrote one on, and the out-of-slot claims (#51); the ranking
+  and the allocation are `confidence.py`'s.
 
 The `_abstain` rules are the same rules over the `abstain` variant's sample 1 (ADR 0012); `empty` and
 `all_person` read no sample. A claim fills a slot when its kind and subject equal the slot's, as the
@@ -81,8 +83,10 @@ def _person_claim(defect: Defect, warrants: Mapping[str, SlotWarrant]) -> Claim:
 
 
 def compose(rule: str, database: str, defects: Iterable[Defect], warrants: Mapping[str, SlotWarrant],
-            sample: Mapping | None = None) -> ComposedStore:
-    """The rule's store on the database, from `sample`, the sample-1 record of the rule's variant on it."""
+            sample: Mapping | None = None, sources: Mapping[str, str | None] | None = None) -> ComposedStore:
+    """The rule's store on the database, from `sample`, the sample-1 record of the rule's variant on it,
+    and for the confidence rule `sources`, its allocation: each slot's source, `person`, `agent` or
+    None (`confidence.allocation`)."""
     variant = variant_of(rule)
     base = rule.removesuffix("_abstain")
     mine = sorted((d for d in defects if d.database == database), key=slot_order)
@@ -90,8 +94,8 @@ def compose(rule: str, database: str, defects: Iterable[Defect], warrants: Mappi
         return ComposedStore({d.id: None for d in mine})
     if base == "all_person":
         return ComposedStore({d.id: _person_claim(d, warrants) for d in mine})
-    if base == "confidence":
-        raise ValueError(f"the {rule} rule's store comes with #51")
+    if base == "confidence" and sources is None:
+        raise ValueError(f"the {rule} rule needs its allocation from the confidence ranking")
     if sample is None:
         raise ValueError(f"the {rule} rule needs sample 1 of the {variant} variant on {database}")
     if missing := [d.id for d in mine if d.id not in warrants]:
@@ -101,7 +105,9 @@ def compose(rule: str, database: str, defects: Iterable[Defect], warrants: Mappi
     slots: dict[str, Claim | None] = {}
     for d in mine:
         warrant, index = warrants[d.id], taken.get(d.id)
-        if base == "settlement" and warrant.outcome != PredictedOutcome.AGENT_ALONE:
+        to_person = (warrant.outcome != PredictedOutcome.AGENT_ALONE if base == "settlement"
+                     else base == "confidence" and sources.get(d.id) == "person")
+        if to_person:
             slots[d.id] = claim_for(d, warrant, Source.PERSON, d.reference_claim)
         elif index is not None:
             slots[d.id] = claim_for(d, warrant, Source.AGENT, claims[index].statement, claims[index].cites)
@@ -113,10 +119,12 @@ def compose(rule: str, database: str, defects: Iterable[Defect], warrants: Mappi
     return ComposedStore(slots, out)
 
 
-def store_record(rule: str, composed: Mapping[str, ComposedStore], defects: Iterable[Defect]) -> dict:
+def store_record(rule: str, composed: Mapping[str, ComposedStore], defects: Iterable[Defect],
+                 scores: Mapping[str, tuple | None] | None = None, ranking: list[str] | None = None) -> dict:
     """The rule's `store` record (#53): every frozen slot's claim as its source, warrant kind and Toulmin
     record, its fields left out where empty, or None for an empty slot; and the person asks per claim
-    kind, every kind of the freeze a key."""
+    kind, every kind of the freeze a key. The confidence rule's also carries each slot's score,
+    (agreement, mean confidence) or None, and the ranking, least confident first."""
     defects = list(defects)
     slots, asks = {}, {d.slot.claim_kind.value: 0 for d in defects}
     for d in defects:
@@ -129,4 +137,9 @@ def store_record(rule: str, composed: Mapping[str, ComposedStore], defects: Iter
                        "toulmin": {field: value for field, value in asdict(claim.toulmin).items() if value}}
         if claim.source == Source.PERSON:
             asks[d.slot.claim_kind.value] += 1
-    return {"record": "store", "rule": rule, "slots": slots, "person_asks": asks}
+    record = {"record": "store", "rule": rule, "slots": slots, "person_asks": asks}
+    if scores is not None:
+        record["scores"] = {d: None if score is None else {"agreement": float(score[0]), "mean_confidence": float(score[1])}
+                            for d, score in scores.items()}
+        record["ranking"] = list(ranking)
+    return record
