@@ -56,7 +56,7 @@ pinned in `uv.lock`. Add a dependency with `uv add <package>` and commit `uv.loc
 | `warrant/agent/` | Agent interface, scripted fake agent, Claude agent, tools; the judge operation | #27, #38, #39, #120 |
 | `warrant/store/` | The knowledge-store format shared by both lines; append-only result records | #27, #38, #50 |
 | `warrant/scoring/` | Scoring and statistics shared by both lines | #40, #41 |
-| `warrant/write_line/` | Write-line entry point: predictions, allocation rules, runs, summary; the judge's validation and the matched-asks selector | #27, #37, #50 to #53, #120 |
+| `warrant/write_line/` | Write-line entry point: predictions, allocation rules, runs, summary; the judge's validation and the matched-asks selector; the run's guards; the blind audit's sheet | #27, #37, #50 to #54, #120, #123 |
 | `warrant/maintenance/` | Maintenance-line entry point: drift tasks, conditions, escalation, summary | #42, #45 to #48 |
 
 If a ticket needs code somewhere else, say why in the PR.
