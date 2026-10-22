@@ -6,12 +6,13 @@ record of that freeze (`injection:`), which the run checks its databases against
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 from warrant.agent.config import ModelConfig, load_model_config
+from warrant.agent.write_claims import BusinessTerms, business_terms
 from warrant.data.release import sha256
 from warrant.defects.inject import Defect, load_defect
 from warrant.freeze.validate import RELEASE_CONFIG, clean_databases
@@ -81,6 +82,8 @@ class Config:
     # which the committed predictions name (#37).
     injection: dict | None = None
     injection_sha256: str | None = None
+    # Per database, the business terms the probe questions use, given to the claim writer (#50).
+    business_terms: dict[str, BusinessTerms] = field(default_factory=dict)
 
 
 def _known_defects(config: Config) -> Config:
@@ -103,6 +106,7 @@ def load_config(path: Path, release_config: Path = RELEASE_CONFIG) -> Config:
         rules=tuple(raw["rules"]),
         runs=int(raw["runs"]),
         model=load_model_config(raw["model"]) if raw.get("model") else None,
+        business_terms={database: business_terms(terms) for database, terms in (raw.get("business_terms") or {}).items()},
     )
     if not raw.get("freeze"):
         if raw.get("injection"):

@@ -30,8 +30,9 @@ import argparse
 import hashlib
 import json
 import tempfile
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import duckdb
@@ -123,6 +124,7 @@ class Predictions:
     kinds: dict[ClaimKind, PredictedOutcome | str]  # a predicted outcome, or MIXED
     bridge: dict[str, Bridge]
     outputs: dict[str, bytes]  # content hash -> normalised output
+    seconds: dict[str, float] = field(default_factory=dict)  # content hash -> the battery's wall time on it
 
 
 def outcome(readings: Sequence[ReadingResult]) -> PredictedOutcome:
@@ -157,13 +159,16 @@ def predict(
     keys = {name: foreign_keys(path) for name, path in clean.items()}
     outputs: dict[str, bytes] = {}
     digests: dict[str, str] = {}
+    seconds: dict[str, float] = {}
 
     def output(database: str, content: str) -> str:
         if content not in outputs:
             work = Path(work_dir) / content
             work.mkdir(parents=True, exist_ok=True)
             db = Database(database, built.copy(content), keys[database], {}, [])
+            started = time.monotonic()
             outputs[content] = battery(db, settings.fixed_date, work, settings.normalisation)
+            seconds[content] = time.monotonic() - started
             digests[content] = hashlib.sha256(outputs[content]).hexdigest()
         return digests[content]
 
@@ -186,7 +191,7 @@ def predict(
         kind: combine(c.outcome for c in claims.values() if c.claim_kind == kind)
         for kind in dict.fromkeys(c.claim_kind for c in claims.values())
     }
-    return Predictions(claims, kinds, bridge, outputs)
+    return Predictions(claims, kinds, bridge, outputs, seconds)
 
 
 def record(predictions: Predictions, settings: BatterySettings, provenance: dict, outputs_dir: str) -> dict:
