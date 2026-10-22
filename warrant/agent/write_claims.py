@@ -10,6 +10,12 @@ slot subject, in its instructions or its examples, so it does not point to where
 outside the five included (#53); whether a claim fills a slot is decided later, by exact kind and
 subject, so such a claim is out-of-slot.
 
+Claim writing runs under two prompt variants, decided on 2026-10-22 (ADR 0012), which differ only in
+their final instruction. `confident` is the primary variant, the one the confirmatory test uses: the
+agent writes every claim it would make, a low confidence being fine where it is unsure. `abstain` is
+a descriptive variant that tells the agent not to guess. The caller chooses the variant; the request
+does not carry it.
+
 The operation sends the prompt until it has a valid answer, at most `attempts` times, keeping every
 attempt's text and tokens; when a call raises, the attempts paid for ride on the error as `partial`.
 A claim-writing model makes one call; the Claude claim writer and the scripted fake are the two
@@ -24,10 +30,11 @@ from typing import Mapping, Protocol
 
 from warrant.agent.interface import Usage
 
-# Stored with every sample; bump it whenever the wording of the system prompt or the user message
-# below changes.
+# Stored with every sample, beside the variant; bump it whenever the wording of the system prompt, a
+# final instruction or the user message below changes.
 WRITE_CLAIMS_PROMPT_VERSION = "1"
 
+# The system prompt shared by both variants, up to their final instruction.
 WRITE_CLAIMS_SYSTEM = """\
 You write down what a database's data shows about its meaning, before anyone asks a question about \
 it. Your claims are kept and given to an analyst who answers questions about this database later, \
@@ -61,8 +68,25 @@ End with one JSON object that has a claims key, and no text after it:
 - "cites": the statements of the check findings the claim rests on, copied as written; an empty \
 list when it rests on the schema or the terms alone.
 
-Write every claim the data supports, and none you would only be guessing.\
 """
+
+# The two prompt variants (decided 2026-10-22, ADR 0012), primary first. They differ only in this
+# final instruction. `confident` is the primary variant, which the confirmatory test uses: the agent
+# writes every claim it would make and lets its confidence say how sure it is. `abstain` is
+# descriptive and models the common practice of telling an agent not to guess.
+VARIANTS = ("confident", "abstain")
+FINAL_INSTRUCTIONS = {
+    "confident": "Write every claim you would make about this database, including ones you are unsure "
+                 "of, and let your confidence say how sure you are.",
+    "abstain": "Write every claim the data supports, and none you would only be guessing.",
+}
+
+
+def system_prompt(variant: str) -> str:
+    """The system prompt of a variant; the prompt version and the variant name identify its text."""
+    if variant not in VARIANTS:
+        raise ValueError(f"not a prompt variant: {variant!r}; the variants are {', '.join(VARIANTS)}")
+    return WRITE_CLAIMS_SYSTEM + FINAL_INSTRUCTIONS[variant]
 
 
 @dataclass(frozen=True)
@@ -214,18 +238,22 @@ class ClaimWritingModel(Protocol):
 @dataclass(frozen=True)
 class WriteClaimsOutput:
     """The claims of a valid answer, every attempt's text output (or "failed: <why>") in the order
-    sent, the tokens of every attempt, and a failure when no attempt gave a valid answer."""
+    sent, the tokens of every attempt, a failure when no attempt gave a valid answer, and the prompt
+    variant the sample was written under."""
 
     claims: tuple[WrittenClaim, ...]
     outputs: tuple[str, ...]
     usage: Usage
     failure: str = ""
+    variant: str = ""
 
     def record(self) -> dict:
         """The claim-writing sample's fields for a `sample` record (#53); the run adds the database,
-        the sample number and the record type. A claim's cites are not repeated: they are in the
+        the sample number and the record type. With the prompt version in the record's provenance,
+        the variant identifies the prompt's text. A claim's cites are not repeated: they are in the
         outputs, and the store's Toulmin data takes them from sample 1."""
         return {
+            "variant": self.variant,
             "claims": [{"slot": {"claim_kind": c.claim_kind, "subject": c.subject}, "statement": c.statement,
                         "confidence": c.confidence} for c in self.claims],
             "outputs": list(self.outputs),
@@ -235,21 +263,27 @@ class WriteClaimsOutput:
         }
 
 
-def write_claims(model: ClaimWritingModel, request: WriteClaimsRequest, attempts: int) -> WriteClaimsOutput:
-    """One claim-writing sample: the prompt sent until an answer is valid, at most `attempts` times.
+def write_claims(
+    model: ClaimWritingModel, request: WriteClaimsRequest, attempts: int, *, variant: str
+) -> WriteClaimsOutput:
+    """One claim-writing sample under a prompt variant: the variant's prompt sent until an answer is
+    valid, at most `attempts` times. An unknown variant is refused.
 
     An invalid answer whose call stopped for another reason than the end of its turn, such as
     max_tokens, says so in its failure. A call that raises (an error that stops the run, or Ctrl-C)
     carries the attempts paid for so far as `partial` before it goes on."""
+    system = system_prompt(variant)
     if attempts < 1:
         raise ValueError(f"attempts must be at least 1, not {attempts}")
     user = user_message(request)
     outputs, spent, failure = [], Usage(), ""
     for _ in range(attempts):
         try:
-            call = model.call(WRITE_CLAIMS_SYSTEM, user)
+            call = model.call(system, user)
         except BaseException as error:
-            error.partial = WriteClaimsOutput((), tuple(outputs), spent, failure=f"{type(error).__name__}: {error}")
+            error.partial = WriteClaimsOutput(
+                (), tuple(outputs), spent, failure=f"{type(error).__name__}: {error}", variant=variant
+            )
             raise
         spent = Usage(spent.input_tokens + call.usage.input_tokens, spent.output_tokens + call.usage.output_tokens)
         if call.text is None:
@@ -264,5 +298,5 @@ def write_claims(model: ClaimWritingModel, request: WriteClaimsRequest, attempts
             if call.stop_reason not in ("", "end_turn"):
                 failure += f"; stop reason {call.stop_reason}"
             continue
-        return WriteClaimsOutput(claims, tuple(outputs), spent)
-    return WriteClaimsOutput((), tuple(outputs), spent, failure=failure)
+        return WriteClaimsOutput(claims, tuple(outputs), spent, variant=variant)
+    return WriteClaimsOutput((), tuple(outputs), spent, failure=failure, variant=variant)

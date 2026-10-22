@@ -18,18 +18,21 @@ from warrant.agent.claude import ClaudeClaimWriter
 from warrant.agent.config import ModelConfig
 from warrant.agent.fake import ScriptedClaimWriter
 from warrant.agent.write_claims import (
+    FINAL_INSTRUCTIONS,
+    VARIANTS,
     WRITE_CLAIMS_PROMPT_VERSION,
-    WRITE_CLAIMS_SYSTEM,
     BusinessTerms,
     WriteClaimsRequest,
     business_terms,
     parse,
+    system_prompt,
     user_message,
     write_claims,
 )
 from warrant.store.claims import ClaimKind
 
 REPO = Path(__file__).resolve().parents[1]
+PRIMARY = VARIANTS[0]
 FREEZE = REPO / "freeze" / "write_line.yaml"
 CONFIG = ModelConfig(
     provider="bedrock",
@@ -105,25 +108,48 @@ def test_the_name_list_covers_both_frozen_schemas():
         "alien": (11, 136), "crypto": (10, 89)}
 
 
-def test_the_prompt_names_no_slot_subject_and_no_table_or_column_of_the_frozen_databases():
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_the_prompt_names_no_slot_subject_and_no_table_or_column_of_the_frozen_databases(variant):
     # The instructions and the message's own framing, not the inputs, which do name the schema.
     empty = WriteClaimsRequest(database="", schema="", battery_output="", business_terms=BusinessTerms((), ()))
-    text = (WRITE_CLAIMS_SYSTEM + "\n" + user_message(empty)).lower()
+    text = (system_prompt(variant) + "\n" + user_message(empty)).lower()
     named = sorted(name for name in _names_of_the_frozen_databases() if re.search(rf"\b{re.escape(name.lower())}\b", text))
     assert named == []
 
 
-def test_the_prompt_teaches_every_claim_kind_and_its_subject_format():
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_the_prompt_teaches_every_claim_kind_and_its_subject_format(variant):
     for kind in ClaimKind:
-        assert f'"{kind.value}"' in WRITE_CLAIMS_SYSTEM
-    flat = " ".join(WRITE_CLAIMS_SYSTEM.split())
+        assert f'"{kind.value}"' in system_prompt(variant)
+    flat = " ".join(system_prompt(variant).split())
     assert "Write a table name as the subject of a coverage claim, and a table.column otherwise" in flat
     assert "End with one JSON object that has a claims key, and no text after it" in flat
     assert WRITE_CLAIMS_PROMPT_VERSION == "1"
 
 
+def test_the_variants_are_the_confident_primary_then_the_abstain_descriptive_one():
+    assert VARIANTS == ("confident", "abstain")
+
+
+def test_the_two_system_prompts_differ_only_in_their_final_instruction():
+    confident, abstain = (system_prompt(variant).split("\n") for variant in VARIANTS)
+    assert confident[:-1] == abstain[:-1]
+    assert confident[-1] == FINAL_INSTRUCTIONS["confident"] == (
+        "Write every claim you would make about this database, including ones you are unsure of, "
+        "and let your confidence say how sure you are.")
+    assert abstain[-1] == FINAL_INSTRUCTIONS["abstain"] == (
+        "Write every claim the data supports, and none you would only be guessing.")
+
+
+def test_an_unknown_variant_is_refused():
+    with pytest.raises(ValueError, match="variant"):
+        system_prompt("cautious")
+    with pytest.raises(ValueError, match="variant"):
+        write_claims(scripted(answer()), REQUEST, attempts=1, variant="cautious")
+
+
 def test_a_valid_answer_gives_each_claim_with_its_kind_subject_statement_confidence_and_cites():
-    output = write_claims(scripted(answer(CLAIM)), REQUEST, attempts=2)
+    output = write_claims(scripted(answer(CLAIM)), REQUEST, attempts=2, variant=PRIMARY)
     assert output.failure == ""
     (claim,) = output.claims
     assert (claim.claim_kind, claim.subject, claim.statement, claim.confidence) == (
@@ -164,7 +190,7 @@ def test_a_finding_quoted_before_the_answer_is_passed_over():
 
 
 def test_an_answer_with_no_claims_is_valid():
-    output = write_claims(scripted(answer()), REQUEST, attempts=2)
+    output = write_claims(scripted(answer()), REQUEST, attempts=2, variant=PRIMARY)
     assert output.claims == () and output.failure == ""
 
 
@@ -205,20 +231,20 @@ def test_an_answer_without_a_valid_claims_list_is_invalid(text):
 
 
 def test_an_invalid_answer_is_re_sent_and_every_attempts_text_is_kept():
-    output = write_claims(scripted("not json", answer(CLAIM)), REQUEST, attempts=2)
+    output = write_claims(scripted("not json", answer(CLAIM)), REQUEST, attempts=2, variant=PRIMARY)
     assert output.failure == "" and len(output.claims) == 1
     assert output.outputs == ("not json", answer(CLAIM))
 
 
 def test_when_every_attempt_fails_the_output_is_a_failure_with_no_claims_and_every_text_kept():
-    output = write_claims(scripted("not json", None), REQUEST, attempts=2)
+    output = write_claims(scripted("not json", None), REQUEST, attempts=2, variant=PRIMARY)
     assert output.claims == () and output.failure
     assert output.outputs[0] == "not json" and output.outputs[1].startswith("failed: ")
 
 
 def test_attempts_below_one_are_refused():
     with pytest.raises(ValueError, match="attempts"):
-        write_claims(scripted(), REQUEST, attempts=0)
+        write_claims(scripted(), REQUEST, attempts=0, variant=PRIMARY)
 
 
 def test_a_call_that_raises_keeps_the_paid_attempts_on_the_error():
@@ -230,7 +256,7 @@ def test_a_call_that_raises_keeps_the_paid_attempts_on_the_error():
         raise KeyboardInterrupt
 
     with pytest.raises(KeyboardInterrupt) as raised:
-        write_claims(ScriptedClaimWriter(script), REQUEST, attempts=3)
+        write_claims(ScriptedClaimWriter(script), REQUEST, attempts=3, variant=PRIMARY)
     partial = raised.value.partial
     assert partial.claims == () and partial.outputs == ("not json",) and "KeyboardInterrupt" in partial.failure
 
@@ -248,15 +274,18 @@ def test_a_malformed_business_term_list_is_refused(raw, message):
         business_terms(raw)
 
 
-def test_the_fake_receives_the_system_prompt_and_the_user_message():
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_the_operation_sends_the_chosen_variants_system_prompt_and_records_the_variant(variant):
     fake = scripted(answer())
-    write_claims(fake, REQUEST, attempts=1)
-    assert fake.prompts == [(WRITE_CLAIMS_SYSTEM, user_message(REQUEST))]
+    output = write_claims(fake, REQUEST, attempts=1, variant=variant)
+    assert fake.prompts == [(system_prompt(variant), user_message(REQUEST))]
+    assert output.variant == variant and output.record()["variant"] == variant
 
 
 def test_the_sample_record_holds_the_claims_without_their_cites_the_outputs_and_the_tokens():
-    record = write_claims(scripted(answer(CLAIM)), REQUEST, attempts=1).record()
+    record = write_claims(scripted(answer(CLAIM)), REQUEST, attempts=1, variant=PRIMARY).record()
     assert record == {
+        "variant": "confident",
         "claims": [{"slot": {"claim_kind": "column_formula", "subject": "accountbalances.walletsum"},
                     "statement": CLAIM["statement"], "confidence": 0.8}],
         "outputs": [answer(CLAIM)],
@@ -273,31 +302,31 @@ def status_error(cls, status):
 
 def test_the_claude_claim_writer_sends_one_user_message_with_the_system_prompt_and_no_sampling_parameter(replay):
     create = replay("write_claims")
-    output = write_claims(ClaudeClaimWriter(CONFIG, create), REQUEST, attempts=2)
+    output = write_claims(ClaudeClaimWriter(CONFIG, create), REQUEST, attempts=2, variant=PRIMARY)
     assert output.failure == "" and output.claims[0].subject == "accountbalances.walletsum"
     assert (output.usage.input_tokens, output.usage.output_tokens) == (3000, 400)
     (sent,) = create.calls
     assert sent["model"] == CONFIG.model and sent["max_tokens"] == 16000
-    assert sent["system"] == WRITE_CLAIMS_SYSTEM
+    assert sent["system"] == system_prompt("confident")
     assert sent["messages"] == [{"role": "user", "content": user_message(REQUEST)}]
     assert sent["output_config"] == {"effort": "high"}
     assert set(sent) == {"model", "max_tokens", "system", "messages", "output_config"}
 
 
 def test_an_invalid_recorded_answer_is_re_sent_and_the_usage_of_both_attempts_is_summed(replay):
-    output = write_claims(ClaudeClaimWriter(CONFIG, replay("write_claims_invalid", "write_claims")), REQUEST, attempts=2)
+    output = write_claims(ClaudeClaimWriter(CONFIG, replay("write_claims_invalid", "write_claims")), REQUEST, attempts=2, variant=PRIMARY)
     assert output.failure == "" and len(output.outputs) == 2
     assert (output.usage.input_tokens, output.usage.output_tokens) == (3000 + 3000, 300 + 400)
 
 
 def test_an_answer_cut_off_by_its_stop_reason_is_invalid_and_says_why(replay):
-    output = write_claims(ClaudeClaimWriter(CONFIG, replay("write_claims_max_tokens")), REQUEST, attempts=1)
+    output = write_claims(ClaudeClaimWriter(CONFIG, replay("write_claims_max_tokens")), REQUEST, attempts=1, variant=PRIMARY)
     assert output.claims == () and "stop reason max_tokens" in output.failure
     assert (output.usage.input_tokens, output.usage.output_tokens) == (3000, 16000)
 
 
 def test_a_response_with_no_text_is_a_failed_attempt_whose_tokens_still_count(replay):
-    output = write_claims(ClaudeClaimWriter(CONFIG, replay("write_claims_empty")), REQUEST, attempts=1)
+    output = write_claims(ClaudeClaimWriter(CONFIG, replay("write_claims_empty")), REQUEST, attempts=1, variant=PRIMARY)
     assert output.claims == () and output.failure and output.outputs[0].startswith("failed: ")
     assert (output.usage.input_tokens, output.usage.output_tokens) == (3000, 50)
 
@@ -311,7 +340,7 @@ def test_a_misconfiguration_after_a_paid_attempt_keeps_its_text_and_tokens_on_th
         raise status_error(anthropic.PermissionDeniedError, 403)
 
     with pytest.raises(anthropic.PermissionDeniedError) as raised:
-        write_claims(ClaudeClaimWriter(CONFIG, create), REQUEST, attempts=2)
+        write_claims(ClaudeClaimWriter(CONFIG, create), REQUEST, attempts=2, variant=PRIMARY)
     partial = raised.value.partial
     assert len(partial.outputs) == 1 and "PermissionDeniedError" in partial.failure
     assert (partial.usage.input_tokens, partial.usage.output_tokens) == (3000, 300)
@@ -326,7 +355,7 @@ def test_a_transient_platform_error_is_a_failed_attempt_that_is_re_sent(replay):
             raise errors.pop()
         return recorded(**kwargs)
 
-    output = write_claims(ClaudeClaimWriter(CONFIG, create), REQUEST, attempts=2)
+    output = write_claims(ClaudeClaimWriter(CONFIG, create), REQUEST, attempts=2, variant=PRIMARY)
     assert output.failure == "" and output.outputs[0].startswith("failed: RateLimitError")
 
 
@@ -335,7 +364,7 @@ def test_a_misconfiguration_stops_the_operation_instead_of_being_re_sent():
         raise status_error(anthropic.PermissionDeniedError, 403)
 
     with pytest.raises(anthropic.PermissionDeniedError):
-        write_claims(ClaudeClaimWriter(CONFIG, create), REQUEST, attempts=2)
+        write_claims(ClaudeClaimWriter(CONFIG, create), REQUEST, attempts=2, variant=PRIMARY)
 
 
 def test_a_claim_writer_configuration_that_names_a_temperature_is_refused(replay):
