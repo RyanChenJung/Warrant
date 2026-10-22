@@ -89,11 +89,15 @@ class Config:
 def _known_defects(config: Config) -> Config:
     """Refuse a question whose defect is not one of the configuration's: a misspelled id would make a
     probe look like neither a probe of a defect with a reading set nor a control, and skip both
-    checks the run makes before any agent call."""
+    checks the run makes before any agent call. Refuse business terms for a database the
+    configuration does not have, too."""
     ids = {d.id for d in config.defects}
     unknown = [f"{q.id} ({q.defect!r})" for q in config.questions if q.defect is not None and q.defect not in ids]
     if unknown:
         raise ValueError("questions naming a defect the configuration does not have: " + ", ".join(unknown))
+    # A misspelled database would silently leave its claim writer with no business terms.
+    if stray := sorted(set(config.business_terms) - set(config.databases)):
+        raise ValueError("business terms for a database the configuration does not have: " + ", ".join(stray))
     return config
 
 

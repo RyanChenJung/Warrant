@@ -5,6 +5,7 @@ and each question gets its own database's store. No test calls a model.
 The fixture is `tests/fixtures/freeze_predictions.yaml` (see tests/test_write_line_stores.py).
 """
 
+import dataclasses
 import json
 import sqlite3
 from pathlib import Path
@@ -27,7 +28,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 RAW = yaml.safe_load((FIXTURES / "freeze_predictions.yaml").read_text())
 DEFECTS = tuple(load_defect(d) for d in RAW["defects"])
 BY_ID = {d.id: d for d in DEFECTS}
-PROVENANCE = Provenance(config_hash="0" * 64, repo_commit="abc1234", model="anthropic.claude-model-placeholder", prompt_version="1")
+# The answer prompt's version differs from the write-claims prompt's, so the records can tell them apart.
+PROVENANCE = Provenance(config_hash="0" * 64, repo_commit="abc1234", model="anthropic.claude-model-placeholder", prompt_version="9")
 PRICES = Prices(2.0, 10.0)
 RULES = ("empty", "all_person", "all_agent", "settlement", "all_agent_abstain", "settlement_abstain")
 QUESTIONS = (
@@ -103,8 +105,12 @@ def test_the_claim_writer_sees_the_schema_the_injected_copys_battery_output_and_
     result = go(config, tmp_path, writer=writer)
     system, user = writer.prompts[0]
     assert system == system_prompt("confident") and writer.prompts[2][0] == system_prompt("abstain")
-    battery = result.predictions.outputs[result.injected["plant"].stem].decode().strip()  # copies are named by content
-    assert battery and battery in user
+    # Copies are named by content; each database's writer sees its own injected copy's findings only.
+    battery = {db: result.predictions.outputs[result.injected[db].stem].decode().strip() for db in ("plant", "depot")}
+    assert battery["plant"] != battery["depot"]
+    for _, prompt in writer.prompts:
+        own = database_of(prompt)
+        assert battery[own] in prompt and battery[{"plant": "depot", "depot": "plant"}[own]] not in prompt
     assert "CREATE TABLE workorders" in user and "- total cost (stored in workorders.total_cost)" in user
     for hidden in ("settlement", "all_agent", "reading", "swapped", "as-named", BY_ID["site-swap"].reference_claim):
         assert hidden not in user
@@ -120,6 +126,37 @@ def test_each_question_gets_its_own_databases_store_as_its_rule_composes_it(conf
     assert by_rule[("settlement", "plant")] == ["The total cost is labour plus parts.", BY_ID["site-swap"].reference_claim]
     assert by_rule[("all_agent", "plant")] == ["The total cost is labour plus parts.", "'NORTH' marks the north site."]
     assert by_rule[("empty", "plant")] == [] and BY_ID["open-orders-cut"].reference_claim not in by_rule[("all_person", "plant")]
+
+
+def test_the_abstain_rules_are_composed_from_the_abstain_variants_sample_one(config, tmp_path):
+    def abstains_on_the_formula(system, user):
+        if system == system_prompt("abstain") and database_of(user) == "plant":
+            return json.dumps({"claims": CLAIMS["plant"][1:]})
+        return writes(system, user)
+
+    agent = ScriptedAgent(answers)
+    go(config, tmp_path, agent=agent, writer=ScriptedClaimWriter(abstains_on_the_formula))
+    plant = {rule: [c.statement for c in request.store.claims]
+             for request, rule in zip(agent.requests, [r for r in RULES for _ in QUESTIONS]) if request.database == "plant"}
+    assert "The total cost is labour plus parts." in plant["all_agent"]
+    assert plant["all_agent_abstain"] == ["'NORTH' marks the north site."]
+    assert plant["settlement_abstain"] == [BY_ID["site-swap"].reference_claim]
+
+
+@pytest.mark.parametrize("rule", ["confidence", "confidence_abstain"])
+def test_a_confidence_rule_is_refused_before_any_call_until_its_store_is_built(config, tmp_path, rule):
+    writer = ScriptedClaimWriter(writes)
+    with pytest.raises(ValueError, match="#51"):
+        go(dataclasses.replace(config, rules=("empty", rule)), tmp_path, writer=writer)
+    assert writer.prompts == [] and not (tmp_path / "results.jsonl").exists()
+
+
+def test_a_swallowed_interrupt_stops_the_run_before_its_claim_writing(config, tmp_path, monkeypatch):
+    writer = ScriptedClaimWriter(writes)
+    monkeypatch.setattr(run_module, "_signalled", ["SIGTERM"])
+    with pytest.raises(KeyboardInterrupt, match="SIGTERM"):
+        go(config, tmp_path, writer=writer)
+    assert writer.prompts == []
 
 
 def test_the_store_records_give_each_rules_slots_and_person_asks(config, tmp_path):
@@ -219,7 +256,8 @@ def test_a_claim_writing_call_stopped_after_a_paid_attempt_is_recorded_as_spent(
     stored = records(tmp_path / "results.jsonl")
     assert [r["record"] for r in stored] == ["start", "spent"]
     assert (stored[1]["operation"], stored[1]["variant"], stored[1]["database"], stored[1]["sample"],
-            stored[1]["input_tokens"]) == ("write_claims", "confident", "plant", 1, 100_000)
+            stored[1]["input_tokens"], stored[1]["prompt_version"]) == (
+        "write_claims", "confident", "plant", 1, 100_000, WRITE_CLAIMS_PROMPT_VERSION)
 
 
 def test_the_run_stops_before_a_claim_writing_call_that_could_pass_the_cap(config, tmp_path):
@@ -243,6 +281,15 @@ def test_the_business_terms_are_read_from_the_configuration(write_line_config):
         "workorders": BusinessTerms(("total cost",), (("total cost", "workorders.total_cost"),))}
 
 
+def test_business_terms_for_a_database_the_configuration_does_not_have_are_refused(write_line_config):
+    # A misspelled database would silently leave its claim writer with no business terms.
+    raw = yaml.safe_load(write_line_config.read_text())
+    raw["business_terms"] = {"work_orders": {"terms": ["total cost"]}}
+    write_line_config.write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValueError, match="work_orders"):
+        load_config(write_line_config)
+
+
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -252,6 +299,25 @@ def test_claim_writing_waits_for_a_complete_judge_validation_of_the_runs_judge_m
     assert run_module._claim_writing_problems(pilot, validation) == []
     assert run_module._claim_writing_problems(pilot, tmp_path / "none.jsonl") == [
         f"no judge validation in {tmp_path / 'none.jsonl'}"]
+
+
+def test_the_command_hands_the_run_the_claim_writer_it_built(write_line_config, tmp_path, monkeypatch):
+    raw = yaml.safe_load(write_line_config.read_text())
+    write_line_config.write_text(yaml.safe_dump({**raw, "rules": ["empty", "all_agent"]}))
+    writer, given = ScriptedClaimWriter(writes), {}
+
+    def stopped(*args, **kwargs):
+        given.update(kwargs)
+        raise RunStopped("stopped", "f" * 32)
+
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: ScriptedAgent(answers))
+    monkeypatch.setattr(run_module, "ClaudeClaimWriter", lambda model: writer)
+    monkeypatch.setattr(run_module, "_claim_writing_problems", lambda config, path: [])
+    monkeypatch.setattr(run_module, "run", stopped)
+    assert run_module.main(["--config", str(write_line_config), "--work-dir", str(tmp_path / "work"),
+                            "--results", str(tmp_path / "results.jsonl"),
+                            "--judge-validation", str(tmp_path / "judge_validation.jsonl")]) == 3
+    assert given["claim_writer"] is writer
 
 
 def test_the_command_writes_no_claim_before_the_judge_validation_clears_it(write_line_config, tmp_path, monkeypatch, capsys):

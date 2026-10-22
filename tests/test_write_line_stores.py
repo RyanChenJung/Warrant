@@ -124,6 +124,8 @@ def test_a_store_holds_only_its_own_databases_claims(warrants):
 
 def test_everything_from_a_person_holds_the_reference_claims_with_their_warrants(warrants):
     plant = compose("all_person", "plant", DEFECTS, warrants)
+    # Slot order, (database, claim kind, subject), not the freeze's order.
+    assert statements(plant) == [BY_ID[d].reference_claim for d in ("total-is-sum", "tasks-short-cut", "site-swap")]
     assert {d: (c.source, c.warrant) for d, c in plant.slots.items()} == {
         "tasks-short-cut": (Source.PERSON, WarrantKind.DATA), "total-is-sum": (Source.PERSON, WarrantKind.DATA),
         "site-swap": (Source.PERSON, WarrantKind.DECLARATION)}

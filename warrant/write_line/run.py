@@ -418,6 +418,9 @@ def run(
     if first_pass_estimate is not None and spend is None:
         raise ValueError("the first-pass check needs the run's spend, for its prices")
     variants = list(dict.fromkeys(v for v in map(variant_of, config.rules) if v is not None))
+    if later := [r for r in config.rules if r.removesuffix("_abstain") == "confidence"]:
+        # Refused before any call: a run that paid for its samples could not compose these stores yet.
+        raise ValueError(f"the {', '.join(later)} rule's store comes with #51")
     if variants and claim_writer is None:
         raise ValueError(f"the rules {', '.join(r for r in config.rules if variant_of(r))} need a claim writer")
     if tolerance is None:
