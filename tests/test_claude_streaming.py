@@ -1,7 +1,9 @@
 """The Claude models stream their responses (ADR 0013): the SDK refuses a non-streamed request whose
 max_tokens could take over ten minutes, and claim writing needs more room than that allows. An error
 event inside a stream arrives with HTTP status 200, so its type says whether it is worth another
-attempt, and a connection lost mid-stream is retried like any lost connection. No test calls a model.
+attempt. The SDK retries only the request that opens a stream, so a transient failure inside one is
+retried here with the SDK's count and backoff, before it uses up one of the caller's attempts. No
+test calls a model.
 """
 
 import json
@@ -61,10 +63,15 @@ class Messages:
         return Stream()
 
 
+RETRIES = anthropic.DEFAULT_MAX_RETRIES  # the SDK's, which a failure inside a stream gets too
+
+
 @pytest.fixture
 def platform(monkeypatch):
-    """The client factory, giving the models a stand-in `messages` set up by each test."""
-    holder = {}
+    """The client factory, giving the models a stand-in `messages` set up by each test; the waits
+    between retries are recorded, not slept."""
+    holder = {"waits": []}
+    monkeypatch.setattr(claude.time, "sleep", holder["waits"].append)
 
     class Client:
         @property
@@ -101,17 +108,34 @@ def test_each_model_streams_its_response_and_reads_the_final_message(platform, r
 
 @pytest.mark.parametrize("kind", ["overloaded_error", "api_error", "rate_limit_error", "timeout_error"])
 def test_a_transient_error_event_mid_stream_is_retried_and_then_recorded_as_a_failure(platform, request_for, sql_tool, kind):
-    platform["messages"] = Messages(mid_stream(kind), mid_stream(kind))
+    # Each of the agent's two attempts tries the SDK's 1 + RETRIES times before it fails.
+    platform["messages"] = Messages(*[mid_stream(kind)] * (2 * (1 + RETRIES)))
     output = ClaudeAgent(CONFIG).answer(request_for, sql_tool)
-    assert output.response is None and kind in output.failure
-    platform["messages"] = Messages(mid_stream(kind))
+    assert output.response is None and kind in output.failure and platform["messages"].steps == []
+    platform["messages"] = Messages(*[mid_stream(kind)] * (1 + RETRIES))
     assert ClaudeClaimWriter(CONFIG).call("system", "user").text is None
 
 
+def test_a_short_overload_inside_a_stream_is_absorbed_with_the_sdks_backoff(platform):
+    platform["messages"] = Messages(mid_stream("overloaded_error"), mid_stream("overloaded_error"),
+                                    recorded("write_claims"))
+    assert ClaudeClaimWriter(CONFIG).call("system", "user").text
+    assert platform["waits"] == [0.5, 1.0]
+
+
 def test_another_error_event_mid_stream_stops_the_run(platform, request_for, sql_tool):
-    platform["messages"] = Messages(mid_stream("invalid_request_error"))
+    platform["messages"] = Messages(mid_stream("invalid_request_error"), recorded("answer"))
     with pytest.raises(anthropic.APIStatusError):
         ClaudeAgent(CONFIG).answer(request_for, sql_tool)
+    assert platform["waits"] == []  # not retried
+
+
+def test_a_request_that_fails_before_its_stream_opens_is_left_to_the_sdk(platform, request_for, sql_tool):
+    # The SDK has retried it already, so it is not retried again here; a 5xx is still transient.
+    platform["messages"] = Messages(anthropic.InternalServerError(
+        "boom", response=httpx.Response(503, request=REQUEST), body=None), recorded("answer"))
+    output = ClaudeAgent(CONFIG).answer(request_for, sql_tool)
+    assert output.failure == "" and platform["waits"] == []
 
 
 def test_a_connection_lost_mid_stream_is_retried_like_any_lost_connection(platform, request_for, sql_tool):
@@ -119,6 +143,7 @@ def test_a_connection_lost_mid_stream_is_retried_like_any_lost_connection(platfo
                                     recorded("answer"))
     output = ClaudeAgent(CONFIG).answer(request_for, sql_tool)
     assert output.failure == "" and output.response.kind == ResponseKind.ANSWER
-    platform["messages"] = Messages(httpx.ReadTimeout("timed out"))
+    assert platform["waits"] == [0.5]  # retried inside the attempt
+    platform["messages"] = Messages(*[httpx.ReadTimeout("timed out")] * (1 + RETRIES))
     judged = ClaudeJudge(CONFIG).call("a filled rubric")
     assert judged.text is None and "APIConnectionError" in judged.failure

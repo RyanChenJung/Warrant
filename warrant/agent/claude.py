@@ -9,6 +9,7 @@ recorded responses, so nothing but the smoke command reaches the real model. Aga
 
 import json
 import re
+import time
 from typing import Any, Callable, Mapping
 
 import anthropic
@@ -65,22 +66,39 @@ def streamed(messages) -> Callable[..., Any]:
     """A `messages.create`-shaped callable that streams the response and returns its final message.
 
     The SDK refuses a request that is not streamed when its max_tokens could take over ten minutes
-    (about 21,000 tokens), and claim writing needs more room than that (ADR 0013). A connection lost
-    mid-stream surfaces as the HTTP library's error, so it is turned into the SDK's connection error
-    and retried like any other lost connection."""
+    (about 21,000 tokens), and claim writing needs more room than that (ADR 0013). The SDK retries
+    the request that opens a stream, with backoff. A failure inside the open stream comes after that
+    loop: an error event, or a connection lost mid-stream, which surfaces as the HTTP library's error
+    and is turned into the SDK's connection error. So a transient one is retried here, with the SDK's
+    count and backoff, as it was when it came back as a failed response."""
+    retries = getattr(getattr(messages, "_client", None), "max_retries", anthropic.DEFAULT_MAX_RETRIES)
 
     def create(**kwargs):
-        try:
-            with messages.stream(**kwargs) as stream:
-                return stream.get_final_message()
-        except httpx.TransportError as error:
+        for retry in range(retries + 1):
             try:
-                request = error.request
-            except RuntimeError:  # an error raised before the request was attached
-                request = httpx.Request("POST", "https://bedrock.invalid")
-            raise anthropic.APIConnectionError(message=f"{type(error).__name__}: {error}", request=request) from error
+                with messages.stream(**kwargs) as stream:
+                    return stream.get_final_message()
+            except httpx.TransportError as error:
+                failure = _connection_error(error)
+            except anthropic.APIStatusError as error:
+                if error.status_code != 200:  # the opening request, which the SDK has retried already
+                    raise
+                failure = error
+            if retry == retries or not _transient(failure):
+                raise failure
+            time.sleep(min(0.5 * 2.0**retry, 8.0))  # the SDK's backoff, without its jitter
 
     return create
+
+
+def _connection_error(error: httpx.TransportError) -> anthropic.APIConnectionError:
+    try:
+        request = error.request
+    except RuntimeError:  # an error raised before the request was attached
+        request = httpx.Request("POST", "https://bedrock.invalid")
+    failure = anthropic.APIConnectionError(message=f"{type(error).__name__}: {error}", request=request)
+    failure.__cause__ = error
+    return failure
 
 
 def _unfenced(text: str) -> str:
@@ -226,9 +244,9 @@ class ClaudeJudge:
 
 class ClaudeClaimWriter:
     """The Claude claim-writing model (#50): one call per sample, the write-claims system prompt and
-    one user message, no tools. Effort and max_tokens are the configuration's, fixed before the first
-    model call on the freeze's defects; thinking is the model's default and no thinking parameter is
-    sent. No sampling parameter is ever sent (freeze, global.claim_writing.sampling), so a
+    one user message, no tools. Effort and max_tokens are the configuration's: effort as fixed before
+    the first model call on the freeze's defects, max_tokens as raised before the run's first call
+    (ADR 0013); thinking is the model's default and no thinking parameter is sent. No sampling parameter is ever sent (freeze, global.claim_writing.sampling), so a
     configuration that names a temperature is refused."""
 
     def __init__(self, config: ModelConfig, create: Callable[..., Any] | None = None):
