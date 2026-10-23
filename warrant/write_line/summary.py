@@ -9,7 +9,9 @@ reported as repeated runs and never used. `spent` records add cost and are never
 
 - **Confirmatory**: the settlement rule against the confidence rule of the `confident` variant (ADR
   0012) at the frozen k, by `write_line_test` (global.confirmatory_test) on Q*, the probes of the slots
-  the two stores fill from different sources; "rules coincide" when there are none.
+  the two stores fill from different sources; "rules coincide" when there are none. Each rule's
+  accuracy and wrong answers are over Q*, with the same figures over all defect probes beside them,
+  labelled descriptive.
 - **Descriptive**: per variant, the per-kind contributions by `paired_difference` (global.outcome_rule),
   the allocation outcomes and their agreement with the committed predictions (H1), and the curve of
   wrong writes against person asks (global.matched_asks, global.judge.wrong_write); the per-slot
@@ -43,6 +45,7 @@ COINCIDE = "rules coincide; H3 not tested at write time"
 NOT_ADDITIVE = ("each rule's method cost holds everything that rule needs, so a call two rules need (sample 1) "
                 "is in both, and the method costs do not add up across rules")
 NO_CONTRIBUTION = "no_measurable_contribution"
+ALL_PROBES = "all defect probes, descriptive"
 VARIANTS = ("confident", "abstain")
 
 
@@ -147,11 +150,18 @@ def _comparison(selected: Selected, config: Config, variant: str, k: int, seed: 
     s, c = _sources(settlement), _sources(confidence)
     slots = sorted(d for d in s.keys() | c.keys() if s.get(d) != c.get(d))
     questions = sorted(q for q, d in probes.items() if d in slots)
-    probe_answers = [a for a in selected.answers if a["question_id"] in probes]
+
+    def per_rule(on: Iterable[str]) -> dict:
+        on = set(on)
+        return {base: _per_rule([a for a in selected.answers if a["question_id"] in on and a["rule"] == _rule(base, variant)],
+                                store)
+                for base, store in (("settlement", settlement), ("confidence", confidence))}
+
     found = {
         "k": k,
-        "rules": {base: _per_rule([a for a in probe_answers if a["rule"] == _rule(base, variant)], store)
-                  for base, store in (("settlement", settlement), ("confidence", confidence))},
+        # Over Q*, the test's question set; and over every defect probe, beside it but not part of it.
+        "rules": per_rule(questions),
+        "all_defect_probes": {"label": ALL_PROBES, "rules": per_rule(probes)},
         "slots": slots,
         "questions": questions,
         "result": None,
@@ -442,7 +452,9 @@ def _report(summary: Mapping) -> str:
         lines.append(f"  Q*: {len(c['questions'])} probes on {', '.join(c['slots'])}; T = {t['statistic']}, n = {t['n']}, "
                      f"p = {t['p_exact']} (two-sided {t['two_sided_p_exact']}), significant: {t['significant']}")
     for rule, r in c["rules"].items():
-        lines.append(f"  {rule}: accuracy {r['accuracy']}, {r['wrong_answers']} wrong answers, {r['person_asks']} asks")
+        a = c["all_defect_probes"]["rules"][rule]
+        lines.append(f"  {rule} on Q*: accuracy {r['accuracy']}, {r['wrong_answers']} wrong answers, {r['person_asks']} asks; "
+                     f"{ALL_PROBES}: accuracy {a['accuracy']}, {a['wrong_answers']} wrong answers")
     lines.append("descriptive:")
     for variant, v in summary["descriptive"]["variants"].items():
         for kind, k in v["contributions"].items():
