@@ -256,12 +256,22 @@ def test_the_rules_are_compared_by_the_frozen_sign_flip_test_at_k_asks_labelled_
     assert test["mean_difference"] == pytest.approx(1.0)
 
 
-def test_accuracy_and_wrong_answers_are_reported_per_compared_rule_over_the_probes(result):
-    rules = result["confirmatory"]["rules"]
-    assert rules["settlement"]["accuracy"] == pytest.approx(1.0)
-    assert rules["confidence"]["accuracy"] == pytest.approx(2 / 5)
-    assert rules["confidence"]["wrong_answers"] == 9 and rules["settlement"]["wrong_answers"] == 0
+def test_accuracy_and_wrong_answers_per_compared_rule_are_over_q_star_with_all_probes_beside_them(result):
+    confirmatory = result["confirmatory"]
+    # Over Q*, the test's question set (f1, v1, v2): every confidence answer wrong, every settlement
+    # answer right.
+    rules = confirmatory["rules"]
+    assert rules["settlement"]["answers"] == rules["confidence"]["answers"] == 9
+    assert (rules["settlement"]["accuracy"], rules["settlement"]["wrong_answers"]) == (1.0, 0)
+    assert (rules["confidence"]["accuracy"], rules["confidence"]["wrong_answers"]) == (0.0, 9)
     assert rules["settlement"]["failure_rate"] == rules["settlement"]["clarification_rate"] == 0
+    # Over all five defect probes, labelled apart: c1 and c2 are right under both rules.
+    probes = confirmatory["all_defect_probes"]
+    assert probes["label"] == "all defect probes, descriptive"
+    assert probes["rules"]["settlement"]["answers"] == probes["rules"]["confidence"]["answers"] == 15
+    assert probes["rules"]["confidence"]["accuracy"] == pytest.approx(2 / 5)
+    assert (probes["rules"]["confidence"]["wrong_answers"], probes["rules"]["settlement"]["wrong_answers"]) == (9, 0)
+    assert rules["settlement"]["person_asks"] == probes["rules"]["settlement"]["person_asks"] == 2
 
 
 def test_the_confirmatory_comparison_is_also_reported_per_slot_of_q_star(result):
@@ -283,6 +293,9 @@ def test_rules_whose_stores_coincide_report_the_frozen_wording_and_no_test():
     assert confirmatory["result"] == COINCIDE == "rules coincide; H3 not tested at write time"
     assert confirmatory["test"] is None and confirmatory["questions"] == []
     assert confirmatory["ranking"] == RANKING and confirmatory["scores"] == dict.fromkeys(RANKING)
+    # Q* is empty, so its per-rule figures count nothing; the all-probes ones are still given.
+    assert confirmatory["rules"]["confidence"]["answers"] == 0 and confirmatory["rules"]["confidence"]["accuracy"] is None
+    assert confirmatory["all_defect_probes"]["rules"]["confidence"]["answers"] == 15
 
 
 def test_a_store_whose_person_asks_differ_from_k_is_refused():
@@ -370,7 +383,7 @@ def test_sample_one_is_the_first_without_a_failure(result):
 
 
 def test_spent_records_add_cost_but_are_never_responses(result):
-    assert result["confirmatory"]["rules"]["settlement"]["answers"] == 3 * len(PROBES)
+    assert result["confirmatory"]["all_defect_probes"]["rules"]["settlement"]["answers"] == 3 * len(PROBES)
     answering = result["descriptive"]["cost"]["answering"]
     assert answering["settlement"]["input_tokens"] == answering["confidence"]["input_tokens"] + 100
 
