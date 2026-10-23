@@ -459,7 +459,7 @@ def test_the_runs_total_spend_sits_beside_the_per_rule_costs_and_is_not_their_su
     total_out = sum(t["output_tokens"] for t in tokens.values())
     assert cost["total_spend"] == {"input_tokens": total_in, "output_tokens": total_out,
                                    "dollars": pytest.approx((total_in * 2 + total_out * 10) / 1e6)}
-    assert "not additive" in cost["note"]
+    assert cost["note"] == NOT_ADDITIVE
     assert "total spend" in summary_module._report(result)
 
 

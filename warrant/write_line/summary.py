@@ -1,6 +1,6 @@
 """The write line's summary (#53), recomputed from stored results with no model call.
 
-    uv run python -m warrant.write_line.summary --config <run config> --results <results.jsonl> [--out <summary.json>]
+    uv run python -m warrant.write_line.summary --config <run config> --results <results.jsonl> [--out <summary.json, default results/thin/summary.json>]
 
 It reads the run's records in the format of #53's comments: one complete run, the first whose
 `complete` record is in the file for this configuration (`run_ids`); within it, each claim's first
@@ -324,7 +324,7 @@ def _calls(records: Iterable[Mapping], prices) -> dict:
             "seconds_median": statistics.median(seconds) if seconds else None}
 
 
-def _cost(selected: Selected, config: Config, validation: list[Mapping] | None) -> dict:
+def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, tokens: Mapping) -> dict:
     """Cost and time per rule in three classes (#53, 2026-10-22): method, answering and evaluation."""
     prices = prices_for(selected.model)
     spent = selected.of["spent"]
@@ -335,6 +335,9 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None) 
         return ([r for r in selected.of["sample"] if wanted(r)]
                 + [r for r in spent if r.get("operation") == "write_claims" and wanted(r)])
 
+    def judgements(variant: str) -> list[Mapping]:
+        return [r for r in selected.of["judgement"] if r.get("variant", "confident") == variant]
+
     start = selected.of["start"][0] if selected.of["start"] else {}
     battery = float(sum((start.get("battery_s") or {}).values()))
     method = {}
@@ -343,8 +346,7 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None) 
         if variant is None:
             method[rule] = None
         elif base == "confidence":
-            judgements = [r for r in selected.of["judgement"] if r.get("variant", "confident") == variant]
-            method[rule] = _calls(samples(variant, False) + judgements, prices)
+            method[rule] = _calls(samples(variant, False) + judgements(variant), prices)
         else:
             method[rule] = _calls(samples(variant, True), prices)
             if base == "settlement":
@@ -353,13 +355,24 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None) 
     answering = {rule: _calls([r for r in selected.answers if r["rule"] == rule]
                               + [r for r in spent if r.get("operation") == "answer" and r.get("rule") == rule], prices)
                  for rule in config.rules}
-    evaluation = None if validation is None else _calls([r for r in validation if "input_tokens" in r], prices)
+    # A variant's judgements are method cost of its confidence rule; without that rule the judge runs
+    # only for the analysis, so they are evaluation cost (#53, 2026-10-23), as is the validation file.
+    evaluation = {
+        "judge_validation": None if validation is None else _calls([r for r in validation if "input_tokens" in r], prices),
+        "judgements": {v: _calls(judgements(v), prices) for v in VARIANTS
+                       if _rule("confidence", v) not in config.rules and judgements(v)},
+    }
+    spend_in = sum(t["input_tokens"] for t in tokens.values())
+    spend_out = sum(t["output_tokens"] for t in tokens.values())
     return {
         "label": DESCRIPTIVE,
         "note": NOT_ADDITIVE,
         "method": method,
         "answering": answering,
         "evaluation": evaluation,
+        # What the run paid, each call once; the judge's validation file is not in it.
+        "total_spend": {"input_tokens": spend_in, "output_tokens": spend_out,
+                        "dollars": prices.cost(spend_in, spend_out)},
         # The person is simulated by the written reference claims: asks only, no money or time.
         "person_asks": {rule: sum(_store(selected, rule)["person_asks"].values()) for rule in config.rules},
     }
@@ -400,6 +413,7 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
         if methods and (problems := validation_problems(validation, json.loads(methods.pop()), selected.model)):
             raise ValueError("; ".join(problems))
         validated = [json.loads(line) for line in Path(validation).read_text().splitlines()]
+    tokens = _tokens(selected)
     settings = _settings(config.global_part)
     seed = config.global_part["seeds"]["bootstrap"]
     k = settlement_ask_count(predictions)
@@ -435,8 +449,8 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
             "flip_rate": flip_rate(selected.answers),
             "slots": {v: _slots(selected, config, predictions, v) for v in variants},
             "judge": {v: _judge(selected, config, v) for v in variants},
-            "cost": _cost(selected, config, validated),
-            "tokens": _tokens(selected),
+            "cost": _cost(selected, config, validated, tokens),
+            "tokens": tokens,
         },
     }
 
@@ -455,6 +469,9 @@ def _report(summary: Mapping) -> str:
         a = c["all_defect_probes"]["rules"][rule]
         lines.append(f"  {rule} on Q*: accuracy {r['accuracy']}, {r['wrong_answers']} wrong answers, {r['person_asks']} asks; "
                      f"{ALL_PROBES}: accuracy {a['accuracy']}, {a['wrong_answers']} wrong answers")
+    cost = summary["descriptive"]["cost"]
+    lines.append(f"total spend (each call once, validation file apart): ${cost['total_spend']['dollars']:.4f}; "
+                 f"per-rule method cost: {cost['note']}")
     lines.append("descriptive:")
     for variant, v in summary["descriptive"]["variants"].items():
         for kind, k in v["contributions"].items():
@@ -473,7 +490,8 @@ def main(argv=None) -> int:
     parser.add_argument("--predictions", type=Path,
                         help="the committed predictions (default: those naming the configuration's injection record)")
     parser.add_argument("--judge-validation", type=Path, help="the judge's validation file")
-    parser.add_argument("--out", type=Path, help="where to write the summary as JSON")
+    parser.add_argument("--out", type=Path, default=Path("results/thin/summary.json"),
+                        help="where to write the summary as JSON (default: results/thin/summary.json, beside the run's results)")
     args = parser.parse_args(argv)
     config = load_config(args.config)
     try:
@@ -487,9 +505,8 @@ def main(argv=None) -> int:
     except ValueError as error:
         print(f"refused: {error}")
         return 1
-    if args.out:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(summary, indent=2) + "\n")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(summary, indent=2) + "\n")
     print(_report(summary))
     return 0
 
