@@ -1,5 +1,7 @@
 # Freeze the full run's configuration at its first model call, and add slots only on a date
 
+Status: amended by ADR 0013.
+
 Two rules for the write line's full thin run (#54), decided on 2026-10-21 before any agent claim
 was written. Both are fixed now because changing them after results exist would be fitting the
 study to its answers.

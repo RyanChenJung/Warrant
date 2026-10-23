@@ -3,14 +3,17 @@ claim-writing model (#50).
 
 One request, a tool loop over exactly the tools the request offers, then one structured response
 (ADR 0008). The single seam is `create`, a `messages.create`-shaped callable: tests pass a replay of
-recorded responses, so nothing but the smoke command reaches the real model.
+recorded responses, so nothing but the smoke command reaches the real model. Against the platform,
+`create` streams the response and returns its final message (ADR 0013).
 """
 
 import json
 import re
+import time
 from typing import Any, Callable, Mapping
 
 import anthropic
+import httpx2 as httpx
 
 from warrant.agent.config import ModelConfig, client
 from warrant.agent.interface import AgentOutput, AnswerRequest, Response, ResponseKind, Tool, Usage
@@ -21,6 +24,9 @@ from warrant.agent.write_claims import ClaimWritingCall
 
 
 TRANSIENT_STATUS = frozenset({408, 409, 429})
+# An error event inside a stream arrives with the stream's HTTP status, 200, so its type says whether
+# it is worth another attempt: the types of the transient statuses above and of 5xx.
+TRANSIENT_ERROR_TYPES = frozenset({"rate_limit_error", "api_error", "overloaded_error", "timeout_error"})
 
 # The prompt asks for JSON and no other text, but a model that wraps it in a markdown fence has
 # still answered.
@@ -49,7 +55,50 @@ def _transient(error: anthropic.APIError) -> bool:
     if isinstance(error, anthropic.APIConnectionError):
         return True
     status = getattr(error, "status_code", None)
+    if status == 200:  # an error event inside a streamed response
+        body = getattr(error, "body", None)
+        kind = (body.get("error") or {}).get("type") if isinstance(body, dict) else None
+        return kind in TRANSIENT_ERROR_TYPES
     return status is not None and (status in TRANSIENT_STATUS or status >= 500)
+
+
+def streamed(messages) -> Callable[..., Any]:
+    """A `messages.create`-shaped callable that streams the response and returns its final message.
+
+    The SDK refuses a request that is not streamed when its max_tokens could take over ten minutes
+    (about 21,000 tokens), and claim writing needs more room than that (ADR 0013). The SDK retries
+    the request that opens a stream, with backoff. A failure inside the open stream comes after that
+    loop: an error event, or a connection lost mid-stream, which surfaces as the HTTP library's error
+    and is turned into the SDK's connection error. So a transient one is retried here, with the SDK's
+    count and backoff, as it was when it came back as a failed response."""
+    retries = getattr(getattr(messages, "_client", None), "max_retries", anthropic.DEFAULT_MAX_RETRIES)
+
+    def create(**kwargs):
+        for retry in range(retries + 1):
+            try:
+                with messages.stream(**kwargs) as stream:
+                    return stream.get_final_message()
+            except httpx.TransportError as error:
+                failure = _connection_error(error)
+            except anthropic.APIStatusError as error:
+                if error.status_code != 200:  # the opening request, which the SDK has retried already
+                    raise
+                failure = error
+            if retry == retries or not _transient(failure):
+                raise failure
+            time.sleep(min(0.5 * 2.0**retry, 8.0))  # the SDK's backoff, without its jitter
+
+    return create
+
+
+def _connection_error(error: httpx.TransportError) -> anthropic.APIConnectionError:
+    try:
+        request = error.request
+    except RuntimeError:  # an error raised before the request was attached
+        request = httpx.Request("POST", "https://bedrock.invalid")
+    failure = anthropic.APIConnectionError(message=f"{type(error).__name__}: {error}", request=request)
+    failure.__cause__ = error
+    return failure
 
 
 def _unfenced(text: str) -> str:
@@ -104,7 +153,7 @@ def _parse(text: str) -> Response:
 class ClaudeAgent:
     def __init__(self, config: ModelConfig, create: Callable[..., Any] | None = None):
         self._config = config
-        self._create = create or client(config).messages.create
+        self._create = create or streamed(client(config).messages)
 
     def answer(self, request: AnswerRequest, tools: Mapping[str, Tool]) -> AgentOutput:
         spent = Usage()
@@ -186,7 +235,7 @@ class ClaudeJudge:
         if config.temperature is not None:
             raise ValueError(f"the judge sends no sampling parameter, but the configuration names temperature {config.temperature}")
         self._config = config
-        self._create = create or client(config).messages.create
+        self._create = create or streamed(client(config).messages)
 
     def call(self, prompt: str) -> JudgeCall:
         text, usage, failure, _ = _text_call(self._create, self._config, prompt)
@@ -195,16 +244,16 @@ class ClaudeJudge:
 
 class ClaudeClaimWriter:
     """The Claude claim-writing model (#50): one call per sample, the write-claims system prompt and
-    one user message, no tools. Effort and max_tokens are the configuration's, fixed before the first
-    model call on the freeze's defects; thinking is the model's default and no thinking parameter is
-    sent. No sampling parameter is ever sent (freeze, global.claim_writing.sampling), so a
+    one user message, no tools. Effort and max_tokens are the configuration's: effort as fixed before
+    the first model call on the freeze's defects, max_tokens as raised before the run's first call
+    (ADR 0013); thinking is the model's default and no thinking parameter is sent. No sampling parameter is ever sent (freeze, global.claim_writing.sampling), so a
     configuration that names a temperature is refused."""
 
     def __init__(self, config: ModelConfig, create: Callable[..., Any] | None = None):
         if config.temperature is not None:
             raise ValueError(f"claim writing sends no sampling parameter, but the configuration names temperature {config.temperature}")
         self._config = config
-        self._create = create or client(config).messages.create
+        self._create = create or streamed(client(config).messages)
 
     def call(self, system: str, user: str) -> ClaimWritingCall:
         text, usage, failure, stop_reason = _text_call(self._create, self._config, user, system)
