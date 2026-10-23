@@ -242,3 +242,31 @@ def test_the_audit_covers_the_confident_variants_claims_only(config, orders):
     for row in rows:
         row["label"] = truth[letters[row["letter"]]]  # the confident claim's own judge labels
     assert agreement(rows, items, records, RUN).agree == 2
+
+
+def test_the_sheet_can_be_built_from_a_run_whose_judging_is_done_before_it_completes(config, orders, tmp_path, capsys):
+    # The audit starts once claim writing and judging are done, not after the answers (#123): the
+    # stores are recorded only after every judgement, so they show the judging is done.
+    results = tmp_path / "results.jsonl"
+    holds = {reading: "holds" for reading in orders["orders-cut"]}
+    for record in [{"run_id": RUN, "record": "start"},
+                   judgement(config, "orders-cut", 1, 1, ORDERS_CLAIM, holds),
+                   {"run_id": RUN, "record": "store", "rule": "empty"}]:
+        append(results, PROVENANCE, record)
+    sheet, key = tmp_path / "sheet.csv", tmp_path / "key.json"
+    with pytest.raises(ValueError, match="no run in the results has a complete record"):
+        main(["sheet", "--config", str(CONFIG), "--results", str(results), "--sheet", str(sheet), "--key", str(key)])
+    assert main(["sheet", "--config", str(CONFIG), "--results", str(results), "--sheet", str(sheet), "--key", str(key),
+                 "--run-id", RUN]) == 0
+    assert read_key(key)[0] == RUN and {row["claim"] for row in read_sheet(sheet)} == {ORDERS_CLAIM}
+
+
+def test_a_run_still_judging_is_refused(config, orders, tmp_path, capsys):
+    results = tmp_path / "results.jsonl"
+    for record in [{"run_id": RUN, "record": "start"},
+                   judgement(config, "orders-cut", 1, 1, ORDERS_CLAIM)]:
+        append(results, PROVENANCE, record)
+    with pytest.raises(SystemExit):
+        main(["sheet", "--config", str(CONFIG), "--results", str(results), "--sheet", str(tmp_path / "s.csv"),
+              "--key", str(tmp_path / "k.json"), "--run-id", RUN])
+    assert "judging is not done" in capsys.readouterr().err
