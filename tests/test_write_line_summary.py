@@ -17,13 +17,20 @@ below from small tables, so that every figure the tests check can be worked out 
 
 import json
 import shutil
+import sqlite3
 from pathlib import Path
 
 import pytest
+import yaml
 
-from warrant.store.results import config_hash
+from warrant.agent.fake import ScriptedAgent, ScriptedClaimWriter, ScriptedJudge
+from warrant.agent.interface import Response, ResponseKind
+from warrant.store.results import Provenance, config_hash
 from warrant.write_line import summary as summary_module
-from warrant.write_line.config import load_config
+from warrant.write_line.config import Config, Question, load_config
+from warrant.write_line.predict import BatterySettings
+from warrant.write_line.predict import record as predictions_record
+from warrant.write_line.run import run
 from warrant.write_line.summary import COINCIDE, NOT_ADDITIVE, main, summarise
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -438,3 +445,53 @@ def test_the_summary_makes_no_model_call(tmp_path, monkeypatch, capsys):
     written = json.loads(out.read_text())
     assert written["confirmatory"]["test"]["p_exact"] == "1/8"
     assert "confirmatory" in capsys.readouterr().out
+
+
+# The records the run writes (#54's run, with scripted fakes) --------------------------------------------
+
+
+def test_the_summary_reads_the_records_the_run_writes(tmp_path):
+    """The real run, with the scripted fakes, on the work-order fixture: what it stores is what the
+    summary reads, so the two cannot drift apart."""
+    con = sqlite3.connect(tmp_path / "workorders.sqlite")
+    con.executescript((FIXTURES / "workorders.sql").read_text())
+    con.commit()
+    con.close()
+    frozen = yaml.safe_load((Path(__file__).parents[1] / "freeze" / "write_line.yaml").read_text())["global"]
+    global_part = {**CONFIG.global_part, **{k: frozen[k] for k in ("judge", "confidence_combination", "matched_asks")}}
+    config = Config(
+        databases={name: tmp_path / "workorders.sqlite" for name in ("plant", "depot")},
+        defects=CONFIG.defects,
+        questions=(Question("orders", "plant", "How many work orders are there?", "SELECT COUNT(*) FROM workorders", None),),
+        rules=RULES, runs=3, global_part=global_part,
+    )
+
+    def write(system, user):
+        database = user.split("\n", 1)[0].removeprefix("Database: ")
+        claims = [] if database == "depot" else [
+            {"claim_kind": kind, "subject": subject, "statement": f"A claim on {subject}.", "confidence": 0.9, "cites": []}
+            for kind, subject in (SLOT["total-is-sum"], SLOT["site-swap"])]
+        return json.dumps({"claims": claims})
+
+    def judge(prompt):
+        letters = [line[0] for line in prompt.split("Readings:", 1)[1].splitlines() if line[1:3] == ". "]
+        return json.dumps(dict.fromkeys(letters, "holds"))
+
+    provenance = Provenance(config_hash=HASH, repo_commit="abc1234", model=MODEL, prompt_version="1")
+    results = tmp_path / "results.jsonl"
+    done = run(config, ScriptedAgent(lambda request, tools: Response(ResponseKind.ANSWER, final_sql="SELECT 1", value=1)),
+               tmp_path / "work", provenance, results,
+               claim_writer=ScriptedClaimWriter(write), judge_model=ScriptedJudge(judge))
+    predictions = predictions_record(done.predictions, BatterySettings.from_freeze({"global": global_part}), {}, "")
+    records = [json.loads(line) for line in results.read_text().splitlines()]
+
+    found = summarise(config, records, predictions, config_hash=HASH)
+
+    assert found["run_id"] == done.run_id and found["confirmatory"]["k"] == 2
+    curve = found["descriptive"]["variants"]["confident"]["curve"]
+    assert [p["k"] for p in curve["points"]] == [0, 1, 2, 3, 4] and curve["settlement"]["asks"] == 2
+    assert found["descriptive"]["slots"]["confident"]["total-is-sum"]["samples_filling"] == 10
+    cost = found["descriptive"]["cost"]
+    assert cost["answering"]["empty"]["calls"] == 3
+    assert cost["method"]["confidence"]["calls"] > cost["method"]["settlement"]["calls"] == 2
+    assert cost["method"]["settlement"]["battery_s"] > 0
