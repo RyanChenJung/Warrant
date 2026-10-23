@@ -18,6 +18,7 @@ below from small tables, so that every figure the tests check can be worked out 
 import json
 import shutil
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -421,9 +422,57 @@ def test_cost_and_time_per_rule_follow_the_three_classes(result):
     assert cost["answering"]["empty"] == {"calls": 18, "input_tokens": 1800, "output_tokens": 180,
                                           "dollars": pytest.approx(0.0054), "seconds_total": 54.0, "seconds_median": 3.0}
     assert cost["answering"]["settlement"]["seconds_total"] == 55.0
-    assert cost["evaluation"] is None  # no judge validation was given
+    assert cost["evaluation"] == {"judge_validation": None, "judgements": {}}  # none given, and both variants rank
     assert cost["person_asks"] == {"empty": 0, "all_person": 4, "all_agent": 0, "settlement": 2, "confidence": 2,
                                    "all_agent_abstain": 0, "settlement_abstain": 2, "confidence_abstain": 2}
+
+
+def test_judgements_of_a_variant_without_its_confidence_rule_are_evaluation_cost():
+    records = build()
+    called = [r for r in records if r["record"] == "judgement" and r["variant"] == "abstain" and not r["without_a_call"]]
+    assert called
+    config = replace(CONFIG, rules=tuple(r for r in CONFIG.rules if r != "confidence_abstain"))
+    cost = summarise(config, records, PREDICTIONS, config_hash=HASH)["descriptive"]["cost"]
+    evaluation = cost["evaluation"]["judgements"]
+    assert list(evaluation) == ["abstain"] and evaluation["abstain"]["calls"] == len(called)
+    assert evaluation["abstain"]["input_tokens"] == 500 * len(called)
+    # The confident variant keeps its confidence rule, so its judgements stay that rule's method cost.
+    assert cost["method"]["confidence"]["calls"] == 24
+    assert "confidence_abstain" not in cost["method"]
+    assert cost["evaluation"]["judge_validation"] is None
+
+
+def test_the_judge_validation_file_is_evaluation_cost_charged_to_no_rule(monkeypatch, tmp_path):
+    monkeypatch.setattr(summary_module, "validation_problems", lambda path, method, model: [])
+    path = tmp_path / "judge_validation.jsonl"
+    path.write_text(json.dumps({"input_tokens": 700, "output_tokens": 70, "duration_s": 1.5}) + "\n"
+                    + json.dumps({"record": "note"}) + "\n")
+    cost = summarise_(validation=path)["descriptive"]["cost"]
+    assert cost["evaluation"]["judge_validation"]["input_tokens"] == 700
+    assert cost["method"]["confidence"]["calls"] == 24
+
+
+def test_the_runs_total_spend_sits_beside_the_per_rule_costs_and_is_not_their_sum(result):
+    cost = result["descriptive"]["cost"]
+    tokens = result["descriptive"]["tokens"]
+    total_in = sum(t["input_tokens"] for t in tokens.values())
+    total_out = sum(t["output_tokens"] for t in tokens.values())
+    assert cost["total_spend"] == {"input_tokens": total_in, "output_tokens": total_out,
+                                   "dollars": pytest.approx((total_in * 2 + total_out * 10) / 1e6)}
+    assert "not additive" in cost["note"]
+    assert "total spend" in summary_module._report(result)
+
+
+def test_the_summary_is_written_to_results_thin_by_default(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    results = tmp_path / "results.jsonl"
+    results.write_text("\n".join(json.dumps(r) for r in build()) + "\n")
+    predictions = tmp_path / "predictions.json"
+    predictions.write_text(json.dumps(PREDICTIONS))
+    monkeypatch.setattr(summary_module, "config_hash", lambda path: HASH)
+    assert main(["--config", str(FIXTURES / "write_line_summary.yaml"), "--results", str(results),
+                 "--predictions", str(predictions)]) == 0
+    assert list((tmp_path / "results" / "thin").glob("*.json"))
 
 
 def test_token_totals_are_reported_per_operation(result):
