@@ -5,9 +5,9 @@ freeze: freeze_predictions.yaml
 rules: [empty, all_person, all_agent, settlement, confidence, all_agent_abstain, settlement_abstain, confidence_abstain]
 runs: 3
 questions:
-  - {id: v1, database: plant, defect: site-swap, text: How many work orders are at the north site?, gold_sql: SELECT 1}
-  - {id: v2, database: plant, defect: site-swap, text: How many work orders are at the south site?, gold_sql: SELECT 1}
-  - {id: f1, database: plant, defect: total-is-sum, text: What is the total cost of all work orders?, gold_sql: SELECT 1}
-  - {id: c1, database: plant, defect: tasks-short-cut, text: How many tasks are there?, gold_sql: SELECT 1}
-  - {id: c2, database: depot, defect: open-orders-cut, text: How many work orders are there?, gold_sql: SELECT 1}
-  - {id: ctl, database: plant, text: How many sites are there?, gold_sql: SELECT 1}
+  - {id: v1, database: plant, defect: site-swap, text: "How many work orders are at the north site?", gold_sql: SELECT 1}
+  - {id: v2, database: plant, defect: site-swap, text: "How many work orders are at the south site?", gold_sql: SELECT 1}
+  - {id: f1, database: plant, defect: total-is-sum, text: "What is the total cost of all work orders?", gold_sql: SELECT 1}
+  - {id: c1, database: plant, defect: tasks-short-cut, text: "How many tasks are there?", gold_sql: SELECT 1}
+  - {id: c2, database: depot, defect: open-orders-cut, text: "How many work orders are there?", gold_sql: SELECT 1}
+  - {id: ctl, database: plant, text: "How many sites are there?", gold_sql: SELECT 1}
