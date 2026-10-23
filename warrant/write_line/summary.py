@@ -408,7 +408,7 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
             found["curve"] = _curve(selected, config, v)
             found["rules_coincide"] = comparisons[v]["result"] == COINCIDE
             if v != "confident":
-                found["comparison"] = {k_: val for k_, val in comparisons[v].items()}
+                found["comparison"] = comparisons[v]
         descriptive_variants[v] = found
     return {
         "run_id": selected.run_id,
