@@ -9,8 +9,23 @@ from warrant.agent.config import client as real_client
 
 
 class FakeClient:
+    """Streams the replayed responses as the platform's client does (ADR 0013)."""
+
     def __init__(self, create):
-        self.messages = type("Messages", (), {"create": staticmethod(create)})()
+        class Stream:
+            def __init__(self, kwargs):
+                self.kwargs = kwargs
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def get_final_message(self):
+                return create(**self.kwargs)
+
+        self.messages = type("Messages", (), {"stream": staticmethod(lambda **kwargs: Stream(kwargs))})()
 
 
 def test_the_smoke_command_answers_one_question_and_reports_its_usage(

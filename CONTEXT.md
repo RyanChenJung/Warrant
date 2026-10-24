@@ -145,6 +145,13 @@ written into the stores; the others show how consistently the agent states each 
 confidence rule ranks by before the agent's self-reported confidence.
 _Avoid_: draw, rollout, attempt
 
+**Prompt variant**:
+One of the two instructions the agent writes its claims under, which differ only in their last
+sentence: the primary one (`confident`) has it write every claim it would make with a stated
+confidence, and the descriptive one (`abstain`) has it write none it would only be guessing. Each
+rule that reads claim-writing samples runs under both, each variant on its own samples.
+_Avoid_: prompt condition, mode, arm
+
 **Hybrid rule**:
 The settlement rule, except that a claim the battery did not settle is still written by the agent,
 as a provisional claim, when its confidence is very high.

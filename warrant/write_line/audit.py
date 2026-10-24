@@ -1,15 +1,18 @@
 """The blind audit's sheet and its agreement with the judge (#123, `global.judge.audit`).
 
-A teammate who did not author the defects labels every distinct agent claim on a slot, blind. The
-sheet has one row per claim and reading: the claim, its slot's kind and subject, and the reading,
-lettered in the slot's frozen reading order, which is what the judge sees. It never shows the
-judge's labels, the true reading, the defect id or the reading ids. The key that maps each item back
-to its defect, its occurrences in the claim-writing samples and each letter's reading stays with the
-lead, as does the run it was built from: the first run with a complete record, the one the freeze
-uses (`global.judge.runs`). Agreement is computed afterwards from the filled sheet, the key and that
-run's judgement records; the judge's labels stand either way.
+A teammate who did not author the defects labels every distinct agent claim on a slot of the primary
+prompt variant (ADR 0012), blind. The sheet has one row per claim and reading: the claim, its slot's
+kind and subject, and the reading, lettered in the slot's frozen reading order, which is what the
+judge sees. It never shows the judge's labels, the true reading, the defect id or the reading ids.
 
-    uv run python -m warrant.write_line.audit sheet --config <run config> --results <results> --sheet <csv> --key <json>
+The key that maps each item back to its defect, its occurrences in the claim-writing samples and
+each letter's reading stays with the lead. So does the run it was built from: the first run with a
+complete record, the one the freeze uses (`global.judge.runs`). Or, given with `--run-id`, a run whose
+judging is done, so the audit can start before the answers (#123). Agreement is computed afterwards
+from the filled sheet, the key and that run's judgement records; the judge's labels stand either
+way.
+
+    uv run python -m warrant.write_line.audit sheet --config <run config> --results <results> --sheet <csv> --key <json> [--run-id <id>]
     uv run python -m warrant.write_line.audit agreement --results <results> --sheet <filled csv> --key <json> [--auditor <name> --out <audit.jsonl>]
 
 Neither calls a model.
@@ -29,6 +32,9 @@ from warrant.write_line.config import Config, load_config
 from warrant.write_line.validate_judge import OPERATION as VALIDATION
 
 FIELDS = ("item", "claim_kind", "subject", "claim", "letter", "reading", "label", "notes")
+# The prompt variant the audit covers (ADR 0012): the abstain variant's claims are judged, not audited.
+# A judgement record without a variant predates the two variants and is the primary one's.
+AUDITED = "confident"
 LABELS = ("holds", "fails", "not_addressed")
 # Written with a byte-order mark, so that a spreadsheet opens the claims as UTF-8, and read without it.
 ENCODING = "utf-8-sig"
@@ -68,10 +74,18 @@ def used_run(records: Iterable[Mapping]) -> str:
     return run
 
 
+def judging_done(records: Iterable[Mapping], run: str) -> bool:
+    """Whether the run's judging is done: the run records its stores only after every judgement (#53),
+    so the sheet can be built then, before the answers (#123)."""
+    return any(r.get("record") == "store" and r.get("run_id") == run for r in records)
+
+
 def _judgements(records: Iterable[Mapping], run: str) -> list[Mapping]:
-    """The run's complete judgement records; one that stopped on an error has no labels to compare."""
+    """The run's complete judgement records of the audited variant; one that stopped on an error has no
+    labels to compare."""
     return [r for r in records
-            if r.get("record") == "judgement" and r.get("run_id") == run and r.get("complete")]
+            if r.get("record") == "judgement" and r.get("run_id") == run and r.get("complete")
+            and r.get("variant", AUDITED) == AUDITED]
 
 
 def audit_items(records: Sequence[Mapping], run: str) -> list[Item]:
@@ -230,6 +244,8 @@ def main(argv=None) -> int:
     sheet.add_argument("--results", required=True, type=Path)
     sheet.add_argument("--sheet", required=True, type=Path)
     sheet.add_argument("--key", required=True, type=Path)
+    sheet.add_argument("--run-id", help="build the sheet from this run once its judging is done, before it completes; "
+                                        "by default, the first run with a complete record")
     agree = commands.add_parser("agreement", help="compare a filled sheet with the judge's labels")
     agree.add_argument("--results", required=True, type=Path)
     agree.add_argument("--sheet", required=True, type=Path)
@@ -240,7 +256,9 @@ def main(argv=None) -> int:
 
     records = _records(args.results)
     if args.command == "sheet":
-        run = used_run(records)
+        if args.run_id and not judging_done(records, args.run_id):
+            parser.error(f"run {args.run_id}'s judging is not done: it has no store record yet")
+        run = args.run_id or used_run(records)
         items = audit_items(records, run)
         write_sheet(args.sheet, sheet_rows(items, load_config(args.config)))
         write_key(args.key, run, items)

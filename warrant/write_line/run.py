@@ -1,23 +1,35 @@
-"""The write-line entry point: build the reading databases, predict, compute gold answers, compose
-stores, ask the agent, score. With `stop_after_prediction` it returns before any agent call (#37).
+"""The write-line entry point: build the reading databases, predict, compute gold answers, write
+claims, compose stores, ask the agent, score. With `stop_after_prediction` it returns before any
+agent call (#37).
 
-The tracer bullet (#27) supports two allocation rules, the empty store and everything from a
-person; #50 and #51 add the others.
+The rules are the empty store, everything from a person, and, from sample 1 of each prompt variant
+(ADR 0012), everything from the agent and the settlement rule (#50), and the confidence rule, which
+ranks the slots by samples 1 to 10 and the judge's profiles of their slot claims (#51).
 """
 
 import argparse
 import json
 import signal
 import sqlite3
+import time
 import uuid
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from warrant.agent.claude import ClaudeAgent
+from warrant.agent.claude import ClaudeAgent, ClaudeClaimWriter, ClaudeJudge
+from warrant.agent.config import ModelConfig
 from warrant.agent.interface import Agent, AnswerRequest, ResponseKind, Tool, Usage
+from warrant.agent.judge import JUDGE_PROMPT_VERSION, Judge, JudgeMethod, JudgeModel
 from warrant.agent.tools import ReadOnlySQL
+from warrant.agent.write_claims import (
+    WRITE_CLAIMS_PROMPT_VERSION,
+    BusinessTerms,
+    ClaimWritingModel,
+    WriteClaimsRequest,
+    write_claims,
+)
 from warrant.config import data_dir
 from warrant.data.sqlite import query, query_with_columns, schema
 from warrant.defects.audit import Audit
@@ -37,8 +49,17 @@ from warrant.scoring.classify import (
     rule_based_refusal_check,
     score,
 )
-from warrant.store.claims import Claim, KnowledgeStore, Source, Toulmin, WarrantKind
+from warrant.store.claims import KnowledgeStore
 from warrant.store.results import Provenance, append, provenance_for
+from warrant.write_line.confidence import (
+    CombinationRule,
+    allocation,
+    ranking,
+    scores,
+    settlement_ask_count,
+    slot_claim_index,
+    with_sample_one_claim,
+)
 from warrant.write_line.config import Config, Question, load_config
 from warrant.write_line.guards import (
     Spend,
@@ -48,9 +69,13 @@ from warrant.write_line.guards import (
     over_estimate,
     predictions_differ,
     prices_for,
+    validation_problems,
 )
 from warrant.write_line.predict import BatterySettings, Predictions, predict
+from warrant.write_line.judging import judge_request, reading_orders_for, slot_order
 from warrant.write_line.predict import record as predictions_record
+from warrant.write_line.stores import compose, store_record, variant_of
+from warrant.write_line.warrants import slot_warrants
 
 REPO = Path(__file__).resolve().parents[2]
 # The pilot's answers give the mean tokens per answer the first-pass estimate uses (#54).
@@ -99,7 +124,7 @@ class WriteLineResult:
     # when fewer than two runs were scored.
     flips: dict[tuple[str, str], bool | None]
     gold: dict[str, GoldAnswer]
-    stores: dict[str, KnowledgeStore]
+    stores: dict[str, dict[str, KnowledgeStore]]  # per rule, each database's store
     injected: dict[str, Path]
     # Per defect, what its transformation did to the injected copy (#35).
     audits: dict[str, Audit]
@@ -149,25 +174,6 @@ def _checked(tool: Tool) -> Tool:
         finally:
             _stop_if_signalled()
     return call
-
-
-def _person_claim(defect: Defect) -> Claim:
-    # No battery runs yet, so the warrant kind is a placeholder until #50 computes it.
-    return Claim(
-        slot=defect.slot,
-        statement=defect.reference_claim,
-        source=Source.PERSON,
-        warrant=WarrantKind.NONE,
-        toulmin=Toulmin(backing="the person"),
-    )
-
-
-def compose(rule: str, defects: tuple[Defect, ...]) -> KnowledgeStore:
-    if rule == "empty":
-        return KnowledgeStore()
-    if rule == "all_person":
-        return KnowledgeStore(tuple(_person_claim(d) for d in defects))
-    raise ValueError(f"unknown allocation rule: {rule!r}")
 
 
 def _record(row: ResultRow, run_id: str = "") -> dict:
@@ -280,6 +286,17 @@ def _answer_prompt(record: dict) -> bool:
         record.get("record") == "spent" and record.get("operation") == "answer")
 
 
+def _write_claims(record: dict) -> bool:
+    """Whether the record carries the write-claims prompt's version: a sample, or a call paid for while
+    writing one."""
+    return record.get("record") == "sample" or (
+        record.get("record") == "spent" and record.get("operation") == "write_claims")
+
+
+# The fields `append` adds to every record from the run's provenance.
+PROVENANCE_FIELDS = ("config_hash", "repo_commit", "model", "prompt_version", "timestamp")
+
+
 def _runs(records: list[dict], config_hash: str) -> tuple[list[str], set[str], set[str]]:
     """This configuration's run ids in the order they were started, the complete ones, and the ones set
     aside: started before the configuration's first complete run. The summary uses the first complete
@@ -295,7 +312,7 @@ def _runs(records: list[dict], config_hash: str) -> tuple[list[str], set[str], s
 def _earlier_records(results: Path | None, provenance: Provenance | None, run_id: str, config: Config) -> list[dict]:
     """The stored records of the run being resumed, refused unless the run is incomplete, was not set
     aside for a run of its configuration that has since completed, and was made with this
-    configuration, this answer prompt and these rules and runs."""
+    configuration, these answer, write-claims and judge prompts, and these rules and runs."""
     if results is None or provenance is None or not Path(results).exists():
         raise ValueError(f"no run {run_id} to resume: no results file")
     stored = _read(results)
@@ -311,6 +328,10 @@ def _earlier_records(results: Path | None, provenance: Provenance | None, run_id
                          "and the summary uses the first complete run")
     if any(r.get("prompt_version") != provenance.prompt_version for r in mine if _answer_prompt(r)):
         raise ValueError(f"run {run_id} was made with another answer prompt version; a run is resumed with its own")
+    if any(r.get("prompt_version") != WRITE_CLAIMS_PROMPT_VERSION for r in mine if _write_claims(r)):
+        raise ValueError(f"run {run_id} was made with another write-claims prompt version; a run is resumed with its own")
+    if any(r.get("prompt_version") != JUDGE_PROMPT_VERSION for r in mine if r.get("record") == "judgement"):
+        raise ValueError(f"run {run_id} was made with another judge prompt version; a run is resumed with its own")
     start = next(r for r in mine if r.get("record") == "start")
     if (start["rules"], start["runs"]) != (list(config.rules), config.runs):
         raise ValueError(f"run {run_id} was started with other rules or runs; a run is resumed with its own")
@@ -375,6 +396,8 @@ def run(
     first_pass_estimate: float | None = None,
     approve_first_pass: bool = False,
     committed_predictions: Mapping | None = None,
+    claim_writer: ClaimWritingModel | None = None,
+    judge_model: JudgeModel | None = None,
 ) -> WriteLineResult:
     """Ask every question under every rule `config.runs` times and score the responses.
 
@@ -385,12 +408,20 @@ def run(
     set, the predicted outcomes are computed first, from the global part's battery settings, and with
     `stop_after_prediction` the run returns them before any agent call.
 
-    Every stored record carries the run's id and its type: a start record, one answer record per
-    (question, rule, run), and a complete record once every answer is stored (#53). A call paid for
-    whose answer is not stored, because the run stopped during it, leaves a spent record with its
-    tokens. Given a `run_id`, the run resumes that run from `results`: it makes only the calls still
-    missing, refusing a complete run, one set aside for a run that has since completed, and one made
-    with another configuration, answer prompt, rules or runs. Given a `spend`, which the caller builds from every record already paid for
+    Every stored record carries the run's id and its type (#53): a start record; sample 1 of each
+    prompt variant the rules read, on every database, written by `claim_writer`, a failed one stopping
+    the run so that a resume draws it again; samples 2 to 10 of each variant a confidence rule ranks;
+    given a `judge_model`, one judgement record per claim on a slot in every sample; one store record
+    per rule, the confidence rule's with its scores and ranking; one answer record per (question,
+    rule, run); and a complete record once every answer is stored. Each question is given its rule's store on its own database. A call paid for whose result
+    is not stored, because the run stopped during it, leaves a spent record with its tokens. Every
+    record of a model call carries its wall time, and the start record the battery's on each
+    database's injected copy. Given a `run_id`, the run resumes that run from `results`: it makes only
+    the calls still missing, reuses its samples, recomposes its stores and refuses them if they differ
+    from the stored ones, and refuses a complete run, one set aside for a run that has since
+    completed, and one made with another configuration, answer, write-claims or judge prompt, rules
+    or runs.
+    Given a `spend`, which the caller builds from every record already paid for
     (`Spend.from_records`), it stops before a call that could take the spend past its cap. Given a
     `first_pass_estimate`, it pauses after run 0 when that pass's answers cost more than twice the
     estimate, unless the lead approves it with `approve_first_pass` when resuming a run whose first
@@ -402,6 +433,17 @@ def run(
     """
     if first_pass_estimate is not None and spend is None:
         raise ValueError("the first-pass check needs the run's spend, for its prices")
+    variants = list(dict.fromkeys(v for v in map(variant_of, config.rules) if v is not None))
+    # The variants a confidence rule ranks, whose samples 2 to 10 are written and judged too (#51).
+    ranked = [v for v in variants if any(variant_of(r) == v and r.removesuffix("_abstain") == "confidence"
+                                         for r in config.rules)]
+    if variants and claim_writer is None:
+        raise ValueError(f"the rules {', '.join(r for r in config.rules if variant_of(r))} need a claim writer")
+    if ranked and judge_model is None:
+        raise ValueError("the confidence rules rank the judge's profiles, so they need a judge model")
+    # Read before any call, so that a configuration that cannot rank or judge stops before it pays.
+    combination = CombinationRule.from_freeze(config.global_part) if ranked else None
+    method = JudgeMethod.from_freeze(config.global_part) if judge_model is not None else None
     if tolerance is None:
         tolerance = (config.global_part or {}).get("numeric_tolerance", TOLERANCE)
     built = build(list(config.defects), config.databases, work_dir)
@@ -415,8 +457,9 @@ def run(
             raise ValueError("defects with reading sets need the global part's battery settings to predict")
         settings = BatterySettings.from_freeze({"global": config.global_part})
         predictions = predict(config.defects, built, config.databases, settings, work_dir / "battery")
+        computed = predictions_record(predictions, settings, {}, "")
         if committed_predictions is not None:
-            problems = predictions_differ(predictions_record(predictions, settings, {}, ""), committed_predictions)
+            problems = predictions_differ(computed, committed_predictions)
             if problems:
                 raise ValueError("the recomputed predictions differ from the committed ones: " + "; ".join(problems))
     if stop_after_prediction:
@@ -433,7 +476,19 @@ def run(
     if rejected:
         raise ValueError("questions the run cannot score: " + "; ".join(rejected))
     expected = {question_id: Result(g.columns, g.rows) for question_id, g in gold.items()}
-    stores = {rule: compose(rule, config.defects) for rule in config.rules}
+    if variants and predictions is None:
+        raise ValueError("the rules that read claim-writing samples need the predicted outcomes, "
+                         "but no defect has a reading set")
+    warrants = slot_warrants(config.defects, computed) if predictions is not None else {}
+    # The baseline battery's output on each database's injected copy, the one the claim writer sees, and
+    # its wall time: the true reading's database is the injected copy, so prediction ran it already.
+    battery = {name: predictions.outputs[content] for name, content in built.injected.items()
+               if predictions is not None and content in predictions.outputs}
+    battery_s = {name: predictions.seconds[content] for name, content in built.injected.items()
+                 if predictions is not None and content in predictions.seconds}
+    if variants and (missing := [name for name in config.databases if name not in battery]):
+        raise ValueError(f"no baseline battery output on the injected copy of {', '.join(missing)}")
+    attempts = config.model.attempts if config.model is not None else ModelConfig.attempts
 
     keep = results is not None and provenance is not None
     earlier: list[dict] = []
@@ -455,10 +510,161 @@ def run(
                          "complete first pass")
     approved = approve_first_pass or any(r.get("first_pass_approved") for r in earlier if r.get("record") == "start")
     write({"record": "start", "run_id": run_id, "rules": list(config.rules), "runs": config.runs,
-           "resumed": bool(earlier), "first_pass_approved": approved})
+           "resumed": bool(earlier), "first_pass_approved": approved, "battery_s": battery_s})
+
+    def check_the_cap() -> None:
+        if spend is not None and not spend.allows_another_call():
+            raise RunStopped(
+                f"stopped before a call that could take the spend past the ${spend.cap:.2f} cap "
+                f"(${spend.total:.2f} spent so far); raising the cap is the lead's decision (#54)", run_id)
+
+    def spent(usage: Usage, started: float, error: BaseException, **fields) -> None:
+        """Record the tokens of a call paid for whose result is not stored, so the cap counts them."""
+        if usage.input_tokens or usage.output_tokens:
+            if spend is not None:
+                spend.add(usage.input_tokens, usage.output_tokens)
+            write({"record": "spent", "run_id": run_id, **fields, "input_tokens": usage.input_tokens,
+                   "output_tokens": usage.output_tokens, "error": f"{type(error).__name__}: {error}",
+                   "duration_s": time.monotonic() - started})
 
     rows = []
     try:
+        def draw(variant: str, database: str, number: int) -> dict:
+            """Write one claim-writing sample, recorded as it returns."""
+            _stop_if_signalled()
+            check_the_cap()
+            request = WriteClaimsRequest(database, schema(injected[database]), battery[database].decode(),
+                                         config.business_terms.get(database, BusinessTerms((), ())))
+            started = time.monotonic()
+            try:
+                output = write_claims(claim_writer, request, attempts, variant=variant)
+            except BaseException as error:
+                partial = getattr(error, "partial", None)
+                spent(partial.usage if partial is not None else Usage(), started, error,
+                      operation="write_claims", variant=variant, database=database, sample=number,
+                      prompt_version=WRITE_CLAIMS_PROMPT_VERSION)
+                raise
+            if spend is not None:
+                spend.add(output.usage.input_tokens, output.usage.output_tokens)
+            record = {"record": "sample", "run_id": run_id, "database": database, "sample": number, **output.record(),
+                      "prompt_version": WRITE_CLAIMS_PROMPT_VERSION, "duration_s": time.monotonic() - started}
+            write(record)
+            return record
+
+        # Claim writing (#50, #51): sample 1 of each variant the rules read, on every database, then
+        # samples 2 to 10 of each variant a confidence rule ranks. A resumed run reuses the samples it
+        # has, since a sample drawn again would be another claim set. A failed sample 1 has no claim set
+        # to keep: it stops the run before the stores, and a resume draws it again, its record kept, so
+        # the run uses each database's first sample 1 without a failure (decided by the lead on
+        # 2026-10-22). A failed later sample counts as having no claim, which the freeze counts as
+        # disagreeing, and is not drawn again.
+        samples: dict[tuple[str, str, int], dict] = {}
+        for r in earlier:
+            if r.get("record") == "sample" and (r["sample"] > 1 or not r.get("failure")):
+                samples.setdefault((r["variant"], r["database"], r["sample"]), r)
+        for variant in variants:
+            for database in config.databases:
+                if (variant, database, 1) not in samples:
+                    record = draw(variant, database, 1)
+                    if record["failure"]:
+                        raise RunStopped(f"sample 1 of {database} under the {variant} variant failed after its "
+                                         f"attempts ({record['failure']}); resume the run to draw it again", run_id)
+                    samples[(variant, database, 1)] = record
+        last = combination.samples if combination is not None else 1
+        for variant in ranked:
+            for database in config.databases:
+                for number in range(2, last + 1):
+                    if (variant, database, number) not in samples:
+                        samples[(variant, database, number)] = draw(variant, database, number)
+
+        # Judging (#51, #120): every claim on a slot in every sample, sample 1's first, each in its slot's
+        # reading order, before the stores. Each variant's samples have their own judgements (ADR 0012):
+        # within a variant, a claim string already judged on its slot agrees without a call, across
+        # invocations too. A judgement cut short by an error keeps its paid answers and is judged again
+        # on resume, since a claim's judgement is its first complete one (#53).
+        if method is not None:
+            orders = reading_orders_for(config)
+            judged = {(r["variant"], r["defect"], r["sample"], r["index"])
+                      for r in earlier if r.get("record") == "judgement" and r.get("complete")}
+            labelled = {(r["variant"], r["defect"], r["claim"]): r for r in earlier
+                        if r.get("record") == "judgement" and r.get("complete") and not r.get("without_a_call")}
+            for variant in variants:
+                judge = Judge(judge_model, method)  # its own cache of judged strings, this variant's only
+                for database in config.databases:
+                    for number in range(1, (last if variant in ranked else 1) + 1):
+                        sample = samples[(variant, database, number)]
+                        if sample.get("failure"):
+                            continue
+                        for d in sorted((d for d in config.defects if d.database == database and d.readings),
+                                        key=slot_order):
+                            index = slot_claim_index(sample, d)
+                            if index is None or (variant, d.id, number, index) in judged:
+                                continue
+                            request = judge_request(d, sample["claims"][index]["statement"], orders[d.id])
+                            fields = {"record": "judgement", "run_id": run_id, "defect": d.id, "variant": variant,
+                                      "sample": number, "index": index}
+                            if (variant, d.id, request.claim) in labelled:
+                                first = labelled[(variant, d.id, request.claim)]
+                                write({**fields, "complete": True, "error": "", "slot": first["slot"],
+                                       "claim": request.claim, "reading_order": first["reading_order"],
+                                       "labels": first["labels"], "valid": [], "answers": [], "resent": 0, "splits": [],
+                                       "without_a_call": True, "input_tokens": 0, "output_tokens": 0,
+                                       "method": first["method"], "prompt_version": JUDGE_PROMPT_VERSION,
+                                       "duration_s": 0.0})
+                                continue
+                            _stop_if_signalled()
+                            check_the_cap()
+                            started = time.monotonic()
+                            try:
+                                judgement = judge.judge(request)
+                            except BaseException as error:
+                                if judge.interrupted is not None:
+                                    usage = judge.interrupted.usage
+                                    if spend is not None:
+                                        spend.add(usage.input_tokens, usage.output_tokens)
+                                    write({**fields, "complete": False, "error": f"{type(error).__name__}: {error}",
+                                           **judge.interrupted.record(), "prompt_version": JUDGE_PROMPT_VERSION,
+                                           "duration_s": time.monotonic() - started})
+                                raise
+                            if spend is not None:
+                                spend.add(judgement.usage.input_tokens, judgement.usage.output_tokens)
+                            record = {**fields, "complete": True, "error": "", **judgement.record(),
+                                      "prompt_version": JUDGE_PROMPT_VERSION, "duration_s": time.monotonic() - started}
+                            write(record)
+                            labelled[(variant, d.id, request.claim)] = record
+
+        # The confidence rule's allocation, per ranked variant: its k least confident slots go to a
+        # person, k being the settlement rule's ask count in the committed predictions (#51).
+        ranks = {}
+        for variant in ranked:
+            # The samples the run uses (a redrawn sample 1's failed record left out) and the judgements.
+            view = ([r for (v, _, _), r in samples.items() if v == variant]
+                    + [r for r in stored if r.get("record") == "judgement" and r.get("variant") == variant])
+            found = scores(view, config.defects, combination)
+            order = ranking(found, config.defects, combination)
+            ranks[variant] = (found, order, allocation(order, settlement_ask_count(computed),
+                                                       with_sample_one_claim(view, config.defects)))
+
+        # The stores, one per rule and database, each recorded once per run, before the first answer.
+        composed = {rule: {database: compose(rule, database, config.defects, warrants,
+                                             samples.get((variant_of(rule), database, 1)),
+                                             ranks[variant_of(rule)][2] if rule.removesuffix("_abstain") == "confidence"
+                                             else None)
+                           for database in config.databases}
+                    for rule in config.rules}
+        recorded = {r["rule"]: {k: v for k, v in r.items() if k not in PROVENANCE_FIELDS}
+                    for r in earlier if r.get("record") == "store"}
+        for rule in config.rules:
+            extra = {}
+            if rule.removesuffix("_abstain") == "confidence":
+                extra = {"scores": ranks[variant_of(rule)][0], "ranking": ranks[variant_of(rule)][1]}
+            record = {**store_record(rule, composed[rule], config.defects, **extra), "run_id": run_id}
+            if rule not in recorded:
+                write(record)
+            elif recorded[rule] != record:
+                raise ValueError(f"the {rule} stores composed now differ from the stored ones of run {run_id}")
+        stores = {rule: {database: c.store for database, c in by_database.items()} for rule, by_database in composed.items()}
+
         for run_index in range(config.runs):
             if run_index == 1 and first_pass_estimate is not None and not approved:
                 actual = first_pass_cost(stored, spend.prices)
@@ -470,10 +676,7 @@ def run(
                 for q in config.questions:
                     if (q.id, rule, run_index) in done:
                         continue
-                    if spend is not None and not spend.allows_another_call():
-                        raise RunStopped(
-                            f"stopped before a call that could take the spend past the ${spend.cap:.2f} cap "
-                            f"(${spend.total:.2f} spent so far); raising the cap is the lead's decision (#54)", run_id)
+                    check_the_cap()
                     path = injected[q.database]
                     request = AnswerRequest(
                         database=q.database,
@@ -481,32 +684,27 @@ def run(
                         question=q.text,
                         run=run_index,
                         schema=schema(path),
-                        store=stores[rule],
+                        store=stores[rule][q.database],
                         tools=(ReadOnlySQL.name,),
                     )
                     output = None
+                    started = time.monotonic()
                     try:
                         _stop_if_signalled()
                         output = agent.answer(request, {ReadOnlySQL.name: _checked(ReadOnlySQL(path))})
+                        duration = time.monotonic() - started  # the agent's own SQL queries included
                         row = _scored(q, rule, run_index, output, path, expected.get(q.id), tolerance, refusal_check)
                         _stop_if_signalled()  # an interrupt swallowed while scoring, perhaps changing the score
                     except BaseException as error:
                         # The call was paid for although its answer is not stored: its tokens are
-                        # recorded, so the cap counts them, and the answer stays missing, so a resume
-                        # asks again.
-                        usage = output.usage if output is not None else getattr(error, "usage", Usage())
-                        if usage.input_tokens or usage.output_tokens:
-                            if spend is not None:
-                                spend.add(usage.input_tokens, usage.output_tokens)
-                            write({"record": "spent", "run_id": run_id, "operation": "answer",
-                                   "question_id": q.id, "rule": rule, "run": run_index,
-                                   "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
-                                   "error": f"{type(error).__name__}: {error}"})
+                        # recorded, and the answer stays missing, so a resume asks again.
+                        spent(output.usage if output is not None else getattr(error, "usage", Usage()), started, error,
+                              operation="answer", question_id=q.id, rule=rule, run=run_index)
                         raise
                     if spend is not None:
                         spend.add(output.usage.input_tokens, output.usage.output_tokens)
                     rows.append(row)
-                    write(_record(row, run_id))
+                    write({**_record(row, run_id), "duration_s": duration})
         write({"record": "complete", "run_id": run_id,
                "answers": sum(r.get("record") == "answer" for r in stored)})
     except BaseException as error:
@@ -576,6 +774,16 @@ def committed_predictions_for(config: Config, directory: Path = REPO / "predicti
     return found[0]
 
 
+def _claim_writing_problems(config: Config, judge_validation: Path) -> list[str]:
+    """Why the run may not make its first claim-writing call (#54, `global.judge.validation`): the
+    judge's validation must be complete, with this run's judge method and model."""
+    try:
+        method = JudgeMethod.from_freeze(config.global_part or {})
+    except (KeyError, ValueError) as error:
+        return [f"the configuration's judge method: {error!r}"]
+    return validation_problems(judge_validation, method.record(), config.model.model)
+
+
 def main(argv=None) -> int:
     """Run one configuration against the configured model: `python -m warrant.write_line.run`."""
     parser = argparse.ArgumentParser(description="Run the write line against the configured model.")
@@ -612,12 +820,16 @@ def main(argv=None) -> int:
                      "start another only on purpose, with --new-run")
     try:
         agent = ClaudeAgent(config.model)
+        claim_writer = ClaudeClaimWriter(config.model) if any(map(variant_of, config.rules)) else None
+        judge_model = ClaudeJudge(config.model) if claim_writer is not None else None
         # The cap covers every call already paid for: every run in the results file, a repeated run
         # included, and the judge validation (#54).
         spend = Spend.from_records(stored + _read(args.judge_validation), prices_for(config.model.model))
         committed = committed_predictions_for(config)
     except ValueError as error:
         parser.error(f"{args.config}: {error}")  # a misconfiguration, before any question is asked
+    if claim_writer is not None and (problems := _claim_writing_problems(config, args.judge_validation)):
+        parser.error("no claim is written before the judge's validation clears it: " + "; ".join(problems))
     mean_input, mean_output = mean_tokens(json.loads(line) for line in PILOT_RESULTS.read_text().splitlines())
     estimate = answer_estimate(len(config.questions) * len(config.rules), mean_input, mean_output, spend.prices)
     # A signal already ignored, as nohup ignores SIGHUP, stays ignored.
@@ -636,6 +848,8 @@ def main(argv=None) -> int:
             first_pass_estimate=estimate,
             approve_first_pass=args.approve_first_pass,
             committed_predictions=committed,
+            claim_writer=claim_writer,
+            judge_model=judge_model,
         )
     except RunStopped as stop:
         print(f"run {stop.run_id} stopped: {stop}")

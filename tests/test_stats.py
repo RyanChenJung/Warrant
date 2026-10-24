@@ -104,7 +104,7 @@ def test_the_statistics_read_only_the_answer_records_of_a_whole_results_file(sto
     # A call paid for whose answer was not stored (#54) carries no response class.
     whole.insert(1, {"record": "spent", "operation": "answer", "question_id": "open-order-hours", "rule": "empty",
                      "run": 0, "input_tokens": 10, "output_tokens": 1})
-    assert {r["record"] for r in whole} == {"start", "answer", "spent", "complete"}
+    assert {r["record"] for r in whole} == {"start", "store", "answer", "spent", "complete"}
     assert paired_difference(whole, "all_person", "empty", seed=0) == paired_difference(stored, "all_person", "empty", seed=0)
     assert flip_rate(whole) == flip_rate(stored)
 

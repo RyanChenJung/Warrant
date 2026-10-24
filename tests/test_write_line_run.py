@@ -22,6 +22,7 @@ from warrant.write_line.run import RunStopped, committed_predictions_for, main, 
 REPO = Path(__file__).resolve().parents[1]
 PROVENANCE = Provenance(config_hash="0" * 64, repo_commit="abc1234", model="anthropic.claude-model-placeholder", prompt_version="1")
 PRICES = Prices(2.0, 10.0)
+STORES = ["store"] * 2  # the fixture's two rules, empty and all_person, each stored once per run
 
 
 @pytest.fixture
@@ -69,7 +70,7 @@ def test_a_run_opens_with_a_start_record_closes_with_a_complete_one_and_types_ev
     results = tmp_path / "results.jsonl"
     result = run(config, ScriptedAgent(answers), tmp_path / "work", PROVENANCE, results)
     stored = records(results)
-    assert [r["record"] for r in stored] == ["start"] + ["answer"] * len(result.rows) + ["complete"]
+    assert [r["record"] for r in stored] == ["start"] + STORES + ["answer"] * len(result.rows) + ["complete"]
     assert len({r["run_id"] for r in stored}) == 1 and stored[0]["run_id"] == result.run_id
     assert stored[0]["rules"] == list(config.rules) and stored[0]["runs"] == config.runs
 
@@ -80,7 +81,7 @@ def test_a_stopped_run_is_resumed_under_its_run_id_and_makes_only_the_missing_ca
         run(config, Costly(stop_after=2), tmp_path / "work", PROVENANCE, results)
     first = records(results)
     run_id = first[0]["run_id"]
-    assert [r["record"] for r in first] == ["start", "answer", "answer"]
+    assert [r["record"] for r in first] == ["start"] + STORES + ["answer", "answer"]
     agent = Costly()
     run(config, agent, tmp_path / "work", PROVENANCE, results, run_id=run_id)
     stored = records(results)
@@ -109,7 +110,7 @@ def test_the_run_stops_before_a_call_that_could_take_its_spend_past_the_cap(conf
     # Each answer costs $0.20, so with a $0.50 cap a third answer could pass it.
     with pytest.raises(RunStopped, match="cap"):
         run(config, Costly(input_tokens=100_000), tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES, cap=0.5))
-    assert [r["record"] for r in records(results)] == ["start", "answer", "answer"]
+    assert [r["record"] for r in records(results)] == ["start"] + STORES + ["answer", "answer"]
 
 
 def test_a_resumed_run_counts_what_was_spent_before(config, tmp_path):
@@ -130,8 +131,8 @@ def test_a_call_paid_for_but_stopped_before_its_answer_is_stored_is_recorded_as_
         run(config, PaidThenInterrupted(), tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES))
     first = records(results)
     run_id = first[0]["run_id"]
-    assert [r["record"] for r in first] == ["start", "spent"]
-    assert (first[1]["operation"], first[1]["input_tokens"], first[1]["run_id"]) == ("answer", 100_000, run_id)
+    assert [r["record"] for r in first] == ["start"] + STORES + ["spent"]
+    assert (first[-1]["operation"], first[-1]["input_tokens"], first[-1]["run_id"]) == ("answer", 100_000, run_id)
     assert Spend.from_records(first, PRICES).total == pytest.approx(0.2)
     assert any(f"--run-id {run_id}" in note for note in caught.value.__notes__)
     agent = Costly()
@@ -147,7 +148,8 @@ def test_an_answer_stopped_while_it_is_scored_is_recorded_as_spent(config, tmp_p
     results = tmp_path / "results.jsonl"
     with pytest.raises(KeyboardInterrupt):
         run(config, Costly(input_tokens=100_000), tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES))
-    assert [(r["record"], r.get("input_tokens")) for r in records(results)] == [("start", None), ("spent", 100_000)]
+    assert [(r["record"], r.get("input_tokens")) for r in records(results)] == (
+        [("start", None)] + [("store", None)] * 2 + [("spent", 100_000)])
 
 
 def test_a_complete_run_or_one_with_another_prompt_version_or_other_rules_is_not_resumed(config, tmp_path):
@@ -447,7 +449,8 @@ def test_an_interrupt_the_sqlite3_module_swallowed_still_stops_the_run(config, t
     results = tmp_path / "results.jsonl"
     with pytest.raises(KeyboardInterrupt, match="SIGTERM"):
         run(config, SwallowedWhileAnswering(), tmp_path / "work", PROVENANCE, results, spend=Spend(PRICES))
-    assert [(r["record"], r.get("input_tokens")) for r in records(results)] == [("start", None), ("spent", 100_000)]
+    assert [(r["record"], r.get("input_tokens")) for r in records(results)] == (
+        [("start", None)] + [("store", None)] * 2 + [("spent", 100_000)])
 
 
 def test_a_swallowed_interrupt_stops_the_answer_at_its_next_tool_call(config, tmp_path, monkeypatch):

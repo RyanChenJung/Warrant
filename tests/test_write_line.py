@@ -125,13 +125,13 @@ def test_the_person_store_holds_the_reference_claim_and_requests_never_name_the_
     agent = ScriptedAgent(knows_the_claim)
     result = run(config, agent, tmp_path / "work")
 
-    (claim,) = result.stores["all_person"].claims
+    (claim,) = result.stores["all_person"]["workorders"].claims
     assert claim.statement == config.defects[0].reference_claim
     assert claim.slot == OPEN_ORDERS_SLOT
     assert claim.source == Source.PERSON
     assert claim.warrant == WarrantKind.NONE
     assert claim.toulmin.backing == "the person"
-    assert result.stores["empty"].claims == ()
+    assert result.stores["empty"]["workorders"].claims == ()
 
     by_question = {}
     for request in agent.requests:
@@ -195,8 +195,8 @@ def test_a_misconfigured_model_stops_the_run_without_storing_a_row(config, tmp_p
     with pytest.raises(anthropic.AuthenticationError):
         run(config, Misconfigured(), tmp_path / "work", PROVENANCE, results)
 
-    # The run's start record is stored; no answer is.
-    assert [json.loads(line)["record"] for line in results.read_text().splitlines()] == ["start"]
+    # The run's start record and its two stores are stored; no answer is.
+    assert [json.loads(line)["record"] for line in results.read_text().splitlines()] == ["start", "store", "store"]
 
 
 def test_every_stored_result_carries_the_provenance_of_its_run(config, tmp_path):
