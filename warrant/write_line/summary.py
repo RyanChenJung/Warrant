@@ -75,6 +75,17 @@ def _test(found) -> dict:
     }
 
 
+JUDGEMENT_OUTPUT = ("variant", "defect", "sample", "index", "complete", "error", "labels", "valid", "answers", "resent",
+                    "splits", "without_a_call")
+
+
+def _by_record(records: Iterable[Mapping]) -> dict[str, list[Mapping]]:
+    found = defaultdict(list)
+    for r in records:
+        found[r.get("record")].append(r)
+    return found
+
+
 class Selected:
     """The records of the run the summary uses."""
 
@@ -83,13 +94,21 @@ class Selected:
         self.run_id = next((r for r in started if r in complete), None)
         if self.run_id is None:
             raise ValueError("no complete run of this configuration in the results")
-        self.repeated = [{"run_id": r, "complete": r in complete,
-                          "records": sum(x.get("run_id") == r for x in records)} for r in started if r != self.run_id]
+        self.other_runs = {}
+        for r in started:
+            if r != self.run_id:
+                mine = [x for x in records if x.get("run_id") == r and x.get("config_hash") == config_hash]
+                self.other_runs[r] = _by_record(mine)
+        # Each other run with all its outputs: the judge's (labels, valid calls, answers, re-sent) and the
+        # responses (global.judge.runs); never used in any figure.
+        self.repeated = [{"run_id": r, "complete": r in complete, "records": sum(x.get("run_id") == r for x in records),
+                          "judgements": [{k: j.get(k) for k in JUDGEMENT_OUTPUT} for j in of["judgement"]],
+                          "answers": [{k: a.get(k) for k in ("question_id", "rule", "run", "response_class")}
+                                      for a in of["answer"]]}
+                         for r, of in self.other_runs.items()]
         mine = [r for r in records if r.get("run_id") == self.run_id and r.get("config_hash") == config_hash]
         self.records = mine
-        self.of = defaultdict(list)
-        for r in mine:
-            self.of[r.get("record")].append(r)
+        self.of = _by_record(mine)
         self.answers = self.of["answer"]
         self.stores = {}
         for r in self.of["store"]:
@@ -377,8 +396,14 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, 
         "judgements": {v: _calls(judgements(v), prices) for v in VARIANTS
                        if _rule("confidence", v) not in config.rules and judgements(v)},
     }
-    spend_in = sum(t["input_tokens"] for t in tokens.values())
-    spend_out = sum(t["output_tokens"] for t in tokens.values())
+
+    def spend(by_operation: Mapping) -> dict:
+        tokens_in = sum(t["input_tokens"] for t in by_operation.values())
+        tokens_out = sum(t["output_tokens"] for t in by_operation.values())
+        return {"input_tokens": tokens_in, "output_tokens": tokens_out, "dollars": prices.cost(tokens_in, tokens_out)}
+
+    others = [{"run_id": r, "spend": spend(_tokens(of))} for r, of in selected.other_runs.items()]
+    everything = spend({r["run_id"]: r["spend"] for r in others} | {selected.run_id: spend(tokens)})
     return {
         "label": DESCRIPTIVE,
         "note": NOT_ADDITIVE,
@@ -386,17 +411,21 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, 
         "answering": answering,
         "evaluation": evaluation,
         # What the run paid, each call once; the judge's validation file is not in it.
-        "total_spend": {"input_tokens": spend_in, "output_tokens": spend_out,
-                        "dollars": prices.cost(spend_in, spend_out)},
+        "total_spend": spend(tokens),
+        # The runs set aside, and every run in the file, which is what the $100 cap counts.
+        "repeated_runs_spend": others,
+        "file_spend": everything,
         # The person is simulated by the written reference claims: asks only, no money or time.
         "person_asks": {rule: sum(_store(selected, rule)["person_asks"].values()) for rule in config.rules},
     }
 
 
-def _tokens(selected: Selected) -> dict:
-    by = {"answer": selected.answers, "write_claims": selected.of["sample"],
-          "judge": [r for r in selected.of["judgement"] if not r.get("without_a_call")]}
-    for r in selected.of["spent"]:
+def _tokens(of: Mapping[str, Sequence[Mapping]]) -> dict:
+    """One run's tokens per operation, each call once: the answer, write-claims and judge records, and the
+    spent records of calls paid for and stopped."""
+    by = {"answer": of["answer"], "write_claims": of["sample"],
+          "judge": [r for r in of["judgement"] if not r.get("without_a_call")]}
+    for r in of["spent"]:
         by[r["operation"]] = [*by.get(r["operation"], []), r]
     return {op: {"input_tokens": sum(r["input_tokens"] for r in rs), "output_tokens": sum(r["output_tokens"] for r in rs)}
             for op, rs in by.items()}
@@ -432,7 +461,7 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
         if methods and (problems := validation_problems(validation, json.loads(methods.pop()), selected.model)):
             raise ValueError("; ".join(problems))
         validated = [json.loads(line) for line in Path(validation).read_text().splitlines()]
-    tokens = _tokens(selected)
+    tokens = _tokens(selected.of)
     settings = _settings(config.global_part)
     seed = config.global_part["seeds"]["bootstrap"]
     k = settlement_ask_count(predictions)

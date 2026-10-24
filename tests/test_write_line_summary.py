@@ -416,6 +416,27 @@ def test_the_summary_reads_the_first_complete_run_and_reports_the_others_as_repe
         summarise_(aside)
 
 
+def test_repeated_runs_are_reported_with_all_their_outputs_and_their_spend_beside_the_selected_runs():
+    aside = [r for r in build(run_id="aside") if r["record"] != "complete"]
+    again = build({key: [W, W, W] for key in ANSWERS}, run_id="again")
+    found = summarise_(aside + build() + again)
+    repeated = {r["run_id"]: r for r in found["repeated_runs"]}
+    # Every answer and judgement the run wrote: the judge's outputs (labels, valid calls, answers, re-sent).
+    assert len(repeated["aside"]["answers"]) == 3 * len(RULES) * 6
+    assert {"question_id", "rule", "run", "response_class"} <= repeated["aside"]["answers"][0].keys()
+    judged = [r for r in aside if r["record"] == "judgement"]
+    assert len(repeated["aside"]["judgements"]) == len(judged)
+    assert {"defect", "sample", "index", "complete", "labels", "valid", "answers", "resent"} <= repeated["aside"]["judgements"][0].keys()
+    assert [a["response_class"] for a in repeated["again"]["answers"] if a["question_id"] == "v1" and a["rule"] == "empty"] == [W, W, W]
+    cost = found["descriptive"]["cost"]
+    one = cost["total_spend"]
+    assert one == summarise_()["descriptive"]["cost"]["total_spend"]  # still the selected run's alone
+    assert {r["run_id"]: r["spend"] for r in cost["repeated_runs_spend"]} == {"aside": one, "again": one}
+    # The $100 cap counts every run in the file.
+    assert cost["file_spend"]["input_tokens"] == 3 * one["input_tokens"]
+    assert cost["file_spend"]["dollars"] == pytest.approx(3 * one["dollars"])
+
+
 def test_a_claims_judgement_is_its_first_complete_one():
     records = build()
     first = next(i for i, r in enumerate(records) if r["record"] == "judgement" and r["defect"] == "site-swap")
