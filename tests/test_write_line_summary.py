@@ -493,7 +493,8 @@ def test_a_judgement_cut_short_and_judged_again_is_reported_with_the_resent_coun
     judged = summarise_(records)["descriptive"]["judge"]["confident"]
     assert judged["resent"] == 3
     assert judged["cut_short"] == [{"defect": "total-is-sum", "sample": 1, "index": 0, "error": "throttled",
-                                    "resent": 2, "paid_answers": 2, "judged_again": True}]
+                                    "resent": 2, "paid_answers": 2, "judged_again": True,
+                                    "valid": [labels("total-is-sum", "holds")], "answers": ["{}", "{}"]}]
     # The cut-short record is no judgement: the pairs and instability are those of the complete ones.
     assert judged["pairs"] == summarise_()["descriptive"]["judge"]["confident"]["pairs"]
     assert summarise_()["descriptive"]["judge"]["confident"]["cut_short"] == []

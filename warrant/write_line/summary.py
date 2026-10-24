@@ -352,7 +352,7 @@ def _judge(selected: Selected, config: Config, variant: str) -> dict:
     mine = [j for j in selected.of["judgement"] if j.get("variant", "confident") == variant]
     complete = {(j["defect"], j["sample"], j["index"]) for j in mine if j.get("complete")}
     cut_short = [{"defect": j["defect"], "sample": j["sample"], "index": j["index"], "error": j.get("error", ""),
-                  "resent": j.get("resent", 0), "paid_answers": len(j.get("answers", ())),
+                  "resent": j.get("resent", 0), "paid_answers": len(j.get("answers", ())), "valid": j.get("valid", []), "answers": j.get("answers", []),
                   "judged_again": (j["defect"], j["sample"], j["index"]) in complete}
                  for j in mine if not j.get("complete")]
     return {"pairs": pairs, "unstable": unstable, "share": unstable / pairs if pairs else None,
