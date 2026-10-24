@@ -19,6 +19,7 @@ import json
 import shutil
 import sqlite3
 from dataclasses import replace
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -713,3 +714,23 @@ def test_the_summary_reads_the_records_the_run_writes(tmp_path):
     assert cost["answering"]["empty"]["calls"] == 3
     assert cost["method"]["confidence"]["calls"] > cost["method"]["settlement"]["calls"] == 2
     assert cost["method"]["settlement"]["battery_s"] > 0
+
+
+def test_the_judges_repeat_instability_counts_unstable_pairs_and_true_reading_splits_over_calls_only():
+    records = build()
+
+    def edit(variant, defect, sample, **fields):
+        for i, r in enumerate(records):
+            if (r["record"], r.get("variant"), r.get("defect"), r.get("sample")) == ("judgement", variant, defect, sample):
+                records[i] = {**r, **fields}
+
+    holds = labels("total-is-sum", "holds")
+    edit("confident", "total-is-sum", 1, valid=[holds, holds, {**holds, "other": "fails"}])  # one unstable reading
+    edit("confident", "site-swap", 1, valid=[labels("site-swap", "fails")] * 2)  # two valid calls: both readings
+    edit("confident", "tasks-short-cut", 1, splits=[TRUE["tasks-short-cut"]])  # a split on the true reading
+    # A judgement made without a call is no repeat measurement, whatever it holds.
+    edit("confident", "total-is-sum", 2, valid=[], splits=[TRUE["total-is-sum"]])
+    judge = summarise_(records)["descriptive"]["judge"]
+    assert judge["confident"] == {"pairs": 6, "unstable": 3, "share": 0.5, "true_reading_splits": 1, "resent": 0, "cut_short": []}
+    # The abstain variant's one claim is stable.
+    assert judge["abstain"]["pairs"] == 2 and judge["abstain"]["unstable"] == 0 and judge["abstain"]["share"] == 0.0
