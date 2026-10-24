@@ -133,6 +133,8 @@ class Selected:
         for r in self.of["judgement"]:
             if r.get("complete"):
                 self.judgements.setdefault((r.get("variant", "confident"), r["defect"], r["sample"], r["index"]), r)
+        # Every record with tokens, whatever its run or configuration: what the $100 cap counts.
+        self.paid = [r for r in records if "input_tokens" in r]
         self.model = next((r["model"] for r in mine if r.get("model")), None)
 
 
@@ -404,6 +406,7 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, 
                  for rule in config.rules}
     # A variant's judgements are method cost of its confidence rule; without that rule the judge runs
     # only for the analysis, so they are evaluation cost (#53, 2026-10-23), as is the validation file.
+    paid_validation = [r for r in validation or () if "input_tokens" in r]
     evaluation = {
         "judge_validation": None if validation is None else _calls([r for r in validation if "input_tokens" in r], prices),
         "judgements": {v: _calls(judgements(v), prices) for v in VARIANTS
@@ -416,7 +419,9 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, 
         return {"input_tokens": tokens_in, "output_tokens": tokens_out, "dollars": prices.cost(tokens_in, tokens_out)}
 
     others = [{"run_id": r, "spend": spend(_tokens(of))} for r, of in selected.other_runs.items()]
-    everything = spend({r["run_id"]: r["spend"] for r in others} | {selected.run_id: spend(tokens)})
+    # The cap counts every paid call in the file, of any configuration, and the judge's validation.
+    everything = spend({"file": {"input_tokens": sum(r["input_tokens"] for r in selected.paid + paid_validation),
+                                 "output_tokens": sum(r["output_tokens"] for r in selected.paid + paid_validation)}})
     return {
         "label": DESCRIPTIVE,
         "note": NOT_ADDITIVE,
@@ -425,7 +430,7 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, 
         "evaluation": evaluation,
         # What the run paid, each call once; the judge's validation file is not in it.
         "total_spend": spend(tokens),
-        # The runs set aside, and every run in the file, which is what the $100 cap counts.
+        # The runs set aside, and every paid call in the file, which is what the $100 cap counts.
         "repeated_runs_spend": others,
         "file_spend": everything,
         # The person is simulated by the written reference claims: asks only, no money or time.

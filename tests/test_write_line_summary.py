@@ -441,6 +441,19 @@ def test_repeated_runs_are_reported_with_all_their_outputs_and_their_spend_besid
     assert cost["file_spend"]["dollars"] == pytest.approx(3 * one["dollars"])
 
 
+def test_file_spend_counts_every_paid_call_in_the_file_and_the_judge_validation(validated):
+    aside = [r for r in build(run_id="aside") if r["record"] != "complete"]
+    other = [{**r, "config_hash": "d" * 64} for r in build(run_id="other")]  # another configuration's run
+    one = summarise_()["descriptive"]["cost"]["total_spend"]
+    cost = summarise_(aside + other + build(), validation=validated)["descriptive"]["cost"]
+    assert cost["total_spend"] == one
+    # Three runs of the same size, and the validation's 700 and 70 tokens.
+    assert cost["file_spend"]["input_tokens"] == 3 * one["input_tokens"] + 700
+    assert cost["file_spend"]["output_tokens"] == 3 * one["output_tokens"] + 70
+    assert cost["file_spend"]["dollars"] == pytest.approx((3 * one["input_tokens"] + 700) * 2 / 1e6 + (3 * one["output_tokens"] + 70) * 10 / 1e6)
+    assert [r["run_id"] for r in cost["repeated_runs_spend"]] == ["aside"]
+
+
 def test_a_repeated_run_is_reported_with_every_record_it_wrote_without_the_provenance_fields():
     # The set-aside run drew its own claim set: its judgements' labels point at claims only its sample records show.
     aside = [r for r in build(run_id="aside") if r["record"] != "complete"]
