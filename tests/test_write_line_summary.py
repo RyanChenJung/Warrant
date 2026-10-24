@@ -454,6 +454,18 @@ def test_file_spend_counts_every_paid_call_in_the_file_and_the_judge_validation(
     assert [r["run_id"] for r in cost["repeated_runs_spend"]] == ["aside"]
 
 
+def test_each_repeated_run_has_its_own_spend():
+    # The set-aside run stopped after its first pass of answers: two passes of 48 answers short of a full run.
+    full = build(run_id="again")
+    stopped = [r for r in build(run_id="aside") if r["record"] != "complete" and r.get("run", 0) == 0]
+    cost = summarise_(stopped + build() + full)["descriptive"]["cost"]
+    one, spend = cost["total_spend"], {r["run_id"]: r["spend"] for r in cost["repeated_runs_spend"]}
+    assert spend["again"] == one
+    assert spend["aside"]["input_tokens"] == one["input_tokens"] - 2 * 48 * 100
+    assert spend["aside"]["output_tokens"] == one["output_tokens"] - 2 * 48 * 10
+    assert spend["aside"]["dollars"] == pytest.approx(spend["aside"]["input_tokens"] * 2 / 1e6 + spend["aside"]["output_tokens"] * 10 / 1e6)
+
+
 def test_a_repeated_run_is_reported_with_every_record_it_wrote_without_the_provenance_fields():
     # The set-aside run drew its own claim set: its judgements' labels point at claims only its sample records show.
     aside = [r for r in build(run_id="aside") if r["record"] != "complete"]
