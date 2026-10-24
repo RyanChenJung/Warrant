@@ -306,6 +306,20 @@ def test_accuracy_and_wrong_answers_per_compared_rule_are_over_q_star_with_all_p
     assert rules["settlement"]["person_asks"] == probes["rules"]["settlement"]["person_asks"] == 2
 
 
+def test_every_configured_rule_reports_accuracy_wrong_answers_and_rates_over_all_defect_probes(result):
+    block = result["descriptive"]["rules"]
+    assert block["label"] == "all defect probes, descriptive" and list(block["rules"]) == list(RULES)
+    rules = block["rules"]
+    # 5 probes in 3 runs; the empty store is wrong on v1, v2 and f1 in all three runs.
+    assert rules["empty"] == {"answers": 15, "accuracy": pytest.approx(6 / 15), "wrong_answers": 9,
+                              "failure_rate": 0.0, "clarification_rate": 0.0, "person_asks": 0}
+    assert rules["all_agent"]["wrong_answers"] == 5 and rules["all_agent"]["person_asks"] == 0
+    # all_person: v1's third run is a clarification request, left out of the accuracy.
+    assert rules["all_person"] == {"answers": 15, "accuracy": 1.0, "wrong_answers": 0, "failure_rate": 0.0,
+                                   "clarification_rate": pytest.approx(1 / 15), "person_asks": 4}
+    assert rules["all_agent_abstain"]["answers"] == 15
+
+
 def test_the_confirmatory_comparison_is_also_reported_per_slot_of_q_star(result):
     assert result["descriptive"]["per_slot"]["slots"] == {
         "site-swap": {"questions": 2, "sum": "2", "mean": 1.0},

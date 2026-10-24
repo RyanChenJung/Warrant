@@ -460,6 +460,12 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
             "per_slot": {"label": DESCRIPTIVE, "slots": primary["per_slot"]},
             "sensitivity": {"label": DESCRIPTIVE, **primary["sensitivity"]},
             "variants": descriptive_variants,
+            # Every configured rule over every defect probe, not only the two compared ones.
+            "rules": {"label": ALL_PROBES,
+                      "rules": {rule: _per_rule([a for a in selected.answers
+                                                 if a["rule"] == rule and a["question_id"] in _probes(config)],
+                                                _store(selected, rule))
+                                for rule in config.rules}},
             "flip_rate": flip_rate(selected.answers),
             "slots": {v: _slots(selected, config, predictions, v) for v in variants},
             "judge": {v: _judge(selected, config, v) for v in variants},
