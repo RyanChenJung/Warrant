@@ -843,3 +843,16 @@ def test_the_battery_time_is_the_first_start_records():
     resumed = {"record": "start", "battery_s": {"plant": 1.0, "depot": 1.0}, "resumed": True}
     settlement = summarise_(build(extra=[resumed]))["descriptive"]["cost"]["method"]["settlement"]
     assert settlement["battery_s"] == 10.0 and settlement["seconds_total"] == 19.0
+
+
+def test_a_confidence_store_whose_person_asks_differ_from_k_is_refused():
+    three = store("confidence", {**CONFIDENCE, "tasks-short-cut": "person"}, RANKING)
+    with pytest.raises(ValueError, match="person asks"):
+        summarise_(build(stores=replaced("confidence", three)))
+
+
+def test_a_slot_one_store_fills_and_the_other_leaves_empty_is_in_q_star():
+    emptied = store("settlement", {**SETTLEMENT, "tasks-short-cut": None})  # the confidence store has an agent claim there
+    found = summarise_(build(stores=replaced("settlement", emptied)))["confirmatory"]
+    assert found["slots"] == ["site-swap", "tasks-short-cut", "total-is-sum"]
+    assert found["questions"] == ["c1", "f1", "v1", "v2"]
