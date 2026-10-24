@@ -749,3 +749,18 @@ def test_the_three_sensitivity_codings_pin_their_per_question_differences():
     assert sensitivity["clarifications_as_wrong"]["differences"] == {"f1": "1", "v1": "2/3", "v2": "1"}
     # Every defect probe under the freeze's own coding: the other slots' probes have d_q = 0.
     assert sensitivity["all_defect_probes"]["differences"] == {"c1": "0", "c2": "0", "f1": "1", "v1": "1", "v2": "1"}
+
+
+def test_failure_and_clarification_rates_and_over_refusals_are_reported_per_compared_rule():
+    answers = {**ANSWERS, ("f1", "confidence"): ["failed", "over_refusal", W], ("v1", "confidence"): [Q, W, W]}
+    found = summarise_(build(answers))
+    on_q_star = found["confirmatory"]["rules"]["confidence"]
+    # Nine answers on Q*: one failure, one clarification request, and seven wrong answers (the
+    # over-refusal included); the seven scored answers are all wrong.
+    assert on_q_star == {"answers": 9, "accuracy": 0.0, "wrong_answers": 7, "failure_rate": pytest.approx(1 / 9),
+                         "clarification_rate": pytest.approx(1 / 9), "person_asks": 2}
+    everywhere = found["confirmatory"]["all_defect_probes"]["rules"]["confidence"]
+    assert everywhere == {"answers": 15, "accuracy": pytest.approx(6 / 13), "wrong_answers": 7,
+                          "failure_rate": pytest.approx(1 / 15), "clarification_rate": pytest.approx(1 / 15), "person_asks": 2}
+    assert found["descriptive"]["rules"]["rules"]["confidence"] == everywhere
+    assert found["confirmatory"]["rules"]["settlement"]["failure_rate"] == 0.0
