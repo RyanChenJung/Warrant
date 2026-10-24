@@ -1,6 +1,6 @@
 """The write line's summary (#53), recomputed from stored results with no model call.
 
-    uv run python -m warrant.write_line.summary --config <run config> --results <results.jsonl> --judge-validation <judge_validation.jsonl> [--out <summary.json, default results/thin/summary.json>]
+    uv run python -m warrant.write_line.summary --config <run config> --results <results.jsonl> --judge-validation <judge_validation.jsonl> [--without <question id>]... [--out <summary.json, default results/thin/summary.json>]
 
 It reads the run's records in the format of #53's comments: one complete run, the first whose
 `complete` record is in the file for this configuration (`run_ids`); within it, each claim's first
@@ -26,6 +26,7 @@ import json
 import statistics
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -414,10 +415,14 @@ def _settings(global_part: Mapping) -> dict:
 
 
 def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, *, config_hash: str,
-              validation: Path | None = None) -> dict:
+              validation: Path | None = None, without: Sequence[str] = ()) -> dict:
     """The summary of the first complete run of the configuration `config_hash` names in `records`, with
     the committed `predictions`; `validation` is the judge's validation file, which must clear the
-    run's judge method and model and is the evaluation cost."""
+    run's judge method and model and is the evaluation cost. A question found unscorable during the run
+    stays in the confirmatory analysis (ADR 0011); `without` names the questions to leave out of a second
+    analysis, given as `descriptive.without`."""
+    if unknown := [q for q in without if q not in {x.id for x in config.questions}]:
+        raise ValueError(f"no such question to leave out: {', '.join(unknown)}")
     selected = Selected(records, config_hash)
     methods = {json.dumps(r.get("method"), sort_keys=True) for r in selected.of["judgement"]}
     if len(methods) > 1:
@@ -448,7 +453,7 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
             if v != "confident":
                 found["comparison"] = comparisons[v]
         descriptive_variants[v] = found
-    return {
+    found = {
         "run_id": selected.run_id,
         "config_hash": config_hash,
         "model": selected.model,
@@ -466,13 +471,19 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
                                                  if a["rule"] == rule and a["question_id"] in _probes(config)],
                                                 _store(selected, rule))
                                 for rule in config.rules}},
-            "flip_rate": flip_rate(selected.answers),
+            "flip_rate": flip_rate([a for a in selected.answers if a["question_id"] in {q.id for q in config.questions}]),
             "slots": {v: _slots(selected, config, predictions, v) for v in variants},
             "judge": {v: _judge(selected, config, v) for v in variants},
             "cost": _cost(selected, config, validated, tokens),
             "tokens": tokens,
         },
     }
+    if without:
+        reduced = summarise(replace(config, questions=tuple(q for q in config.questions if q.id not in without)),
+                            records, predictions, config_hash=config_hash, validation=validation)
+        found["descriptive"]["without"] = {**reduced, "questions": list(without),
+                                           "confirmatory": {**reduced["confirmatory"], "label": DESCRIPTIVE}}
+    return found
 
 
 def _report(summary: Mapping) -> str:
@@ -511,6 +522,9 @@ def main(argv=None) -> int:
                         help="the committed predictions (default: those naming the configuration's injection record)")
     parser.add_argument("--judge-validation", required=True, type=Path,
                         help="the judge's validation file: it must clear the run's judge method (rubric SHA-256 included), model and prompt version")
+    parser.add_argument("--without", action="append", default=[], metavar="QUESTION_ID",
+                        help="a question found unscorable during the run; it stays in the confirmatory analysis, "
+                             "and the analysis without it is given as descriptive (repeatable)")
     parser.add_argument("--out", type=Path, default=Path("results/thin/summary.json"),
                         help="where to write the summary as JSON (default: results/thin/summary.json, beside the run's results)")
     args = parser.parse_args(argv)
@@ -522,7 +536,7 @@ def main(argv=None) -> int:
             raise ValueError("no committed predictions for this configuration; pass --predictions")
         records = [json.loads(line) for line in args.results.read_text().splitlines()]
         summary = summarise(config, records, predictions, config_hash=config_hash(args.config),
-                            validation=args.judge_validation)
+                            validation=args.judge_validation, without=args.without)
     except ValueError as error:
         print(f"refused: {error}")
         return 1

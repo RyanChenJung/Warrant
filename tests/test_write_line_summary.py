@@ -533,6 +533,47 @@ def test_the_flip_rate_is_reported(result):
     assert result["descriptive"]["flip_rate"] == pytest.approx(1 / 6)
 
 
+def test_the_analysis_without_a_question_found_unscorable_is_descriptive_and_beside_the_full_one(result):
+    found = summarise_(without=("v1",))
+    # The question stays in the confirmatory analysis (ADR 0011).
+    assert found["confirmatory"] == result["confirmatory"] and found["confirmatory"]["label"] == "confirmatory"
+    without = found["descriptive"]["without"]
+    assert without["questions"] == ["v1"]
+    assert without["confirmatory"]["label"] == "descriptive"
+    assert without["confirmatory"]["questions"] == ["f1", "v2"] and without["confirmatory"]["test"]["p_exact"] == "1/4"
+    # v1 was the only question that flips.
+    assert without["descriptive"]["flip_rate"] == 0.0
+    assert "without" not in without["descriptive"]
+    assert "without" not in result["descriptive"]
+
+
+def test_a_question_to_leave_out_must_be_in_the_configuration():
+    with pytest.raises(ValueError, match="ghost"):
+        summarise_(without=("ghost",))
+
+
+def test_the_flip_rate_counts_the_configurations_questions_only(result):
+    stray = [{"record": "answer", "question_id": "ghost", "rule": rule, "run": run, "response_class": cls,
+              "input_tokens": 0, "output_tokens": 0, "duration_s": 0.0, "failure": ""}
+             for rule in RULES for run, cls in enumerate([C, W, C])]
+    records = build()
+    records[-1:-1] = [{**records[0], **r, "record": "answer"} for r in stray]
+    assert summarise_(records)["descriptive"]["flip_rate"] == result["descriptive"]["flip_rate"]
+
+
+def test_the_command_takes_questions_to_leave_out_more_than_once(tmp_path, monkeypatch, validated):
+    monkeypatch.setattr(summary_module, "config_hash", lambda path: HASH)
+    results, predictions, out = tmp_path / "results.jsonl", tmp_path / "predictions.json", tmp_path / "summary.json"
+    results.write_text("".join(json.dumps(r) + "\n" for r in build()))
+    predictions.write_text(json.dumps(PREDICTIONS))
+    assert main(["--config", str(FIXTURES / "write_line_summary.yaml"), "--results", str(results), "--predictions",
+                 str(predictions), "--judge-validation", str(validated), "--out", str(out),
+                 "--without", "v1", "--without", "v2"]) == 0
+    assert json.loads(out.read_text())["descriptive"]["without"]["questions"] == ["v1", "v2"]
+    assert main(["--config", str(FIXTURES / "write_line_summary.yaml"), "--results", str(results), "--predictions",
+                 str(predictions), "--judge-validation", str(validated), "--out", str(out), "--without", "ghost"]) == 1
+
+
 # The command (AC 6) ------------------------------------------------------------------------------------
 
 
