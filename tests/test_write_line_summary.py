@@ -458,6 +458,25 @@ def test_spent_records_add_cost_but_are_never_responses(result):
     assert answering["settlement"]["input_tokens"] == answering["confidence"]["input_tokens"] + 100
 
 
+def test_a_judgement_cut_short_and_judged_again_is_reported_with_the_resent_count():
+    cut = judgement("confident", "total-is-sum", 1, 0, complete=False, error="throttled", resent=2,
+                    answers=["{}", "{}"], valid=[labels("total-is-sum", "holds")])
+    done = judgement("confident", "site-swap", 1, 1, "fails", resent=1)
+    records = build()
+    first = next(i for i, r in enumerate(records) if r["record"] == "judgement")
+    # The cut-short record is the earlier one for its claim; the complete one is judged again.
+    records[first:first] = [{**records[0], **cut, "record": "judgement"}]
+    records = [{**records[0], **done, "record": "judgement"} if (r["record"], r.get("defect"), r.get("sample")) == ("judgement", "site-swap", 1) else r
+               for r in records]
+    judged = summarise_(records)["descriptive"]["judge"]["confident"]
+    assert judged["resent"] == 3
+    assert judged["cut_short"] == [{"defect": "total-is-sum", "sample": 1, "index": 0, "error": "throttled",
+                                    "resent": 2, "paid_answers": 2, "judged_again": True}]
+    # The cut-short record is no judgement: the pairs and instability are those of the complete ones.
+    assert judged["pairs"] == summarise_()["descriptive"]["judge"]["confident"]["pairs"]
+    assert summarise_()["descriptive"]["judge"]["confident"]["cut_short"] == []
+
+
 def test_judgements_made_with_another_method_than_the_validated_one_are_refused(tmp_path, monkeypatch):
     records = build()
     next(r for r in records if r["record"] == "judgement")["method"] = {"operation": "judge", "rubric_sha256": "x"}

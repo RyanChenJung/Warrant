@@ -345,8 +345,14 @@ def _judge(selected: Selected, config: Config, variant: str) -> dict:
         for reading in j["labels"]:
             pairs += 1
             unstable += len(j["valid"]) < 3 or len({call.get(reading) for call in j["valid"]}) > 1
+    mine = [j for j in selected.of["judgement"] if j.get("variant", "confident") == variant]
+    complete = {(j["defect"], j["sample"], j["index"]) for j in mine if j.get("complete")}
+    cut_short = [{"defect": j["defect"], "sample": j["sample"], "index": j["index"], "error": j.get("error", ""),
+                  "resent": j.get("resent", 0), "paid_answers": len(j.get("answers", ())),
+                  "judged_again": (j["defect"], j["sample"], j["index"]) in complete}
+                 for j in mine if not j.get("complete")]
     return {"pairs": pairs, "unstable": unstable, "share": unstable / pairs if pairs else None,
-            "true_reading_splits": true_splits}
+            "true_reading_splits": true_splits, "resent": sum(j.get("resent", 0) for j in mine), "cut_short": cut_short}
 
 
 def _calls(records: Iterable[Mapping], prices) -> dict:
