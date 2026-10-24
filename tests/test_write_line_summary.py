@@ -819,3 +819,27 @@ def test_the_bootstrap_seed_resamples_and_level_are_read_from_the_freeze():
     differences = [Fraction(a - e, 3) for a, e in zip(agent, empty)]
     assert kind["agent"]["interval"] == list(bootstrap_interval(differences, seed=7, resamples=500, level=0.9))
     assert kind["agent"]["interval"] != list(bootstrap_interval(differences, seed=20261013))
+
+
+def test_a_write_claims_spent_record_is_charged_to_the_rules_that_need_it():
+    def spent(variant, sample):
+        return {"record": "spent", "operation": "write_claims", "variant": variant, "database": "plant", "sample": sample,
+                "input_tokens": 1000, "output_tokens": 100, "duration_s": 2.0, "error": "interrupted"}
+
+    before = summarise_()["descriptive"]["cost"]["method"]
+    after = summarise_(build(extra=[spent("confident", 5)]))["descriptive"]["cost"]["method"]
+    # A later sample is the confidence rule's alone, and only in its own variant.
+    assert after["confidence"]["calls"] == before["confidence"]["calls"] + 1
+    assert after["confidence"]["input_tokens"] == before["confidence"]["input_tokens"] + 1000
+    for rule in ("all_agent", "settlement", "all_agent_abstain", "confidence_abstain"):
+        assert after[rule] == before[rule]
+    # Sample 1 is needed by all three confident rules.
+    after = summarise_(build(extra=[spent("confident", 1)]))["descriptive"]["cost"]["method"]
+    assert all(after[rule]["calls"] == before[rule]["calls"] + 1 for rule in ("all_agent", "settlement", "confidence"))
+    assert after["confidence_abstain"] == before["confidence_abstain"]
+
+
+def test_the_battery_time_is_the_first_start_records():
+    resumed = {"record": "start", "battery_s": {"plant": 1.0, "depot": 1.0}, "resumed": True}
+    settlement = summarise_(build(extra=[resumed]))["descriptive"]["cost"]["method"]["settlement"]
+    assert settlement["battery_s"] == 10.0 and settlement["seconds_total"] == 19.0
