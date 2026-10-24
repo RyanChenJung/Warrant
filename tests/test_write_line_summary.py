@@ -494,7 +494,7 @@ def test_the_runs_total_spend_sits_beside_the_per_rule_costs_and_is_not_their_su
     assert "total spend" in summary_module._report(result)
 
 
-def test_the_summary_is_written_to_results_thin_by_default(tmp_path, monkeypatch, capsys):
+def test_the_summary_is_written_to_results_thin_by_default(tmp_path, monkeypatch, capsys, validated):
     monkeypatch.chdir(tmp_path)
     results = tmp_path / "results.jsonl"
     results.write_text("\n".join(json.dumps(r) for r in build()) + "\n")
@@ -502,7 +502,7 @@ def test_the_summary_is_written_to_results_thin_by_default(tmp_path, monkeypatch
     predictions.write_text(json.dumps(PREDICTIONS))
     monkeypatch.setattr(summary_module, "config_hash", lambda path: HASH)
     assert main(["--config", str(FIXTURES / "write_line_summary.yaml"), "--results", str(results),
-                 "--predictions", str(predictions)]) == 0
+                 "--predictions", str(predictions), "--judge-validation", str(validated)]) == 0
     assert list((tmp_path / "results" / "thin").glob("*.json"))
 
 
@@ -522,7 +522,22 @@ def test_the_flip_rate_is_reported(result):
 # The command (AC 6) ------------------------------------------------------------------------------------
 
 
-def test_the_summary_makes_no_model_call(tmp_path, monkeypatch, capsys):
+@pytest.fixture
+def validated(tmp_path, monkeypatch):
+    """A judge validation file that clears every check, so a command test gets past it."""
+    monkeypatch.setattr(summary_module, "validation_problems", lambda path, method, model: [])
+    path = tmp_path / "judge_validation.jsonl"
+    path.write_text(json.dumps({"input_tokens": 700, "output_tokens": 70}) + "\n")
+    return path
+
+
+def test_the_judge_validation_file_is_required_by_the_command(tmp_path, capsys):
+    with pytest.raises(SystemExit) as stopped:
+        main(["--config", str(FIXTURES / "write_line_summary.yaml"), "--results", str(tmp_path / "r.jsonl")])
+    assert stopped.value.code == 2 and "--judge-validation" in capsys.readouterr().err
+
+
+def test_the_summary_makes_no_model_call(tmp_path, monkeypatch, capsys, validated):
     def refuse(*args, **kwargs):
         raise AssertionError("the summary tried to build a model client")
 
@@ -534,7 +549,7 @@ def test_the_summary_makes_no_model_call(tmp_path, monkeypatch, capsys):
     results.write_text("".join(json.dumps({**r, "config_hash": config_hash(config)}) + "\n" for r in build()))
     predictions.write_text(json.dumps(PREDICTIONS))
     assert main(["--config", str(config), "--results", str(results), "--predictions", str(predictions),
-                 "--out", str(out)]) == 0
+                 "--judge-validation", str(validated), "--out", str(out)]) == 0
     written = json.loads(out.read_text())
     assert written["confirmatory"]["test"]["p_exact"] == "1/8"
     assert "confirmatory" in capsys.readouterr().out

@@ -1,6 +1,6 @@
 """The write line's summary (#53), recomputed from stored results with no model call.
 
-    uv run python -m warrant.write_line.summary --config <run config> --results <results.jsonl> [--out <summary.json, default results/thin/summary.json>]
+    uv run python -m warrant.write_line.summary --config <run config> --results <results.jsonl> --judge-validation <judge_validation.jsonl> [--out <summary.json, default results/thin/summary.json>]
 
 It reads the run's records in the format of #53's comments: one complete run, the first whose
 `complete` record is in the file for this configuration (`run_ids`); within it, each claim's first
@@ -503,7 +503,8 @@ def main(argv=None) -> int:
     parser.add_argument("--results", required=True, type=Path, help="the run's results file")
     parser.add_argument("--predictions", type=Path,
                         help="the committed predictions (default: those naming the configuration's injection record)")
-    parser.add_argument("--judge-validation", type=Path, help="the judge's validation file")
+    parser.add_argument("--judge-validation", required=True, type=Path,
+                        help="the judge's validation file: it must clear the run's judge method (rubric SHA-256 included), model and prompt version")
     parser.add_argument("--out", type=Path, default=Path("results/thin/summary.json"),
                         help="where to write the summary as JSON (default: results/thin/summary.json, beside the run's results)")
     args = parser.parse_args(argv)
