@@ -42,6 +42,9 @@ MODEL = "anthropic.claude-sonnet-5"  # its list price is $2 and $10 per million 
 RUN = "main"
 METHOD = {"operation": "judge", "rubric_sha256": "r" * 64}
 
+PROVENANCE = ("config_hash", "repo_commit", "model", "prompt_version", "timestamp", "run_id", "record")
+PROVENANCE_FIELDS = set(PROVENANCE)
+
 PREDICTIONS = {
     "claims": {
         "tasks-short-cut": {"outcome": "agent_alone"},
@@ -427,7 +430,7 @@ def test_repeated_runs_are_reported_with_all_their_outputs_and_their_spend_besid
     assert {"question_id", "rule", "run", "response_class"} <= repeated["aside"]["answers"][0].keys()
     judged = [r for r in aside if r["record"] == "judgement"]
     assert len(repeated["aside"]["judgements"]) == len(judged)
-    assert {"defect", "sample", "index", "complete", "labels", "valid", "answers", "resent"} <= repeated["aside"]["judgements"][0].keys()
+    assert {"defect", "sample", "index", "complete", "labels", "valid"} <= repeated["aside"]["judgements"][0].keys()
     assert [a["response_class"] for a in repeated["again"]["answers"] if a["question_id"] == "v1" and a["rule"] == "empty"] == [W, W, W]
     cost = found["descriptive"]["cost"]
     one = cost["total_spend"]
@@ -436,6 +439,24 @@ def test_repeated_runs_are_reported_with_all_their_outputs_and_their_spend_besid
     # The $100 cap counts every run in the file.
     assert cost["file_spend"]["input_tokens"] == 3 * one["input_tokens"]
     assert cost["file_spend"]["dollars"] == pytest.approx(3 * one["dollars"])
+
+
+def test_a_repeated_run_is_reported_with_every_record_it_wrote_without_the_provenance_fields():
+    # The set-aside run drew its own claim set: its judgements' labels point at claims only its sample records show.
+    aside = [r for r in build(run_id="aside") if r["record"] != "complete"]
+    for r in aside:
+        if r["record"] == "sample":
+            r["claims"] = [{**c, "statement": f"The set-aside run's claim on {c['slot']['subject']}."} for c in r["claims"]]
+    spent = next(r for r in aside if r["record"] == "spent")
+    found = summarise_(aside + build())
+    run = found["repeated_runs"][0]
+    assert {k: len(run[k]) for k in ("samples", "judgements", "stores", "spent", "answers")} == {
+        k: sum(r["record"] == record for r in aside)
+        for k, record in (("samples", "sample"), ("judgements", "judgement"), ("stores", "store"), ("spent", "spent"), ("answers", "answer"))}
+    assert {"The set-aside run's claim on workorders.total_cost."} <= {c["statement"] for s in run["samples"] for c in s["claims"]}
+    assert run["spent"] == [{k: v for k, v in spent.items() if k not in PROVENANCE}]
+    assert all(not PROVENANCE_FIELDS & r.keys() for k in ("samples", "judgements", "stores", "spent", "answers") for r in run[k])
+    assert run["stores"][3]["slots"]["total-is-sum"] == {"source": "agent", "warrant": "none", "toulmin": {}}
 
 
 def test_a_claims_judgement_is_its_first_complete_one():

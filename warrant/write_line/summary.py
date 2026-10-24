@@ -75,8 +75,13 @@ def _test(found) -> dict:
     }
 
 
-JUDGEMENT_OUTPUT = ("variant", "defect", "sample", "index", "complete", "error", "labels", "valid", "answers", "resent",
-                    "splits", "without_a_call")
+PROVENANCE = ("config_hash", "repo_commit", "model", "prompt_version", "timestamp", "run_id", "record")
+OUTPUTS = {"samples": "sample", "judgements": "judgement", "stores": "store", "spent": "spent", "answers": "answer"}
+
+
+def _outputs(records: Iterable[Mapping]) -> list[dict]:
+    """The records without the provenance fields every record carries."""
+    return [{k: v for k, v in r.items() if k not in PROVENANCE} for r in records]
 
 
 def _by_record(records: Iterable[Mapping]) -> dict[str, list[Mapping]]:
@@ -99,12 +104,11 @@ class Selected:
             if r != self.run_id:
                 mine = [x for x in records if x.get("run_id") == r and x.get("config_hash") == config_hash]
                 self.other_runs[r] = _by_record(mine)
-        # Each other run with all its outputs: the judge's (labels, valid calls, answers, re-sent) and the
-        # responses (global.judge.runs); never used in any figure.
+        # Each other run with every record it wrote, in full (global.judge.runs): its claim sets, which a
+        # new run draws afresh, the judge's outputs, its stores, spent records and responses. Never used
+        # in any figure.
         self.repeated = [{"run_id": r, "complete": r in complete, "records": sum(x.get("run_id") == r for x in records),
-                          "judgements": [{k: j.get(k) for k in JUDGEMENT_OUTPUT} for j in of["judgement"]],
-                          "answers": [{k: a.get(k) for k in ("question_id", "rule", "run", "response_class")}
-                                      for a in of["answer"]]}
+                          **{key: _outputs(of[record]) for key, record in OUTPUTS.items()}}
                          for r, of in self.other_runs.items()]
         mine = [r for r in records if r.get("run_id") == self.run_id and r.get("config_hash") == config_hash]
         self.records = mine
