@@ -203,6 +203,37 @@ def test_each_kinds_outcome_follows_the_frozen_cutoff_on_the_point_estimates(res
     assert contribution(result, "coverage")["outcome"] == "no_measurable_contribution"
 
 
+def probes_with(tables, rules=RULES):
+    """Records of `build()` with the answers of the questions named in `tables` replaced: `tables` maps a
+    question id to {rule: classes of runs 0 to 2}, every other rule being all correct."""
+    kept = [r for r in build() if r.get("question_id") not in tables]
+    stamp = {k: v for k, v in kept[0].items() if k in ("config_hash", "repo_commit", "model", "prompt_version", "timestamp", "run_id")}
+    added = [{"record": "answer", "question_id": q, "rule": rule, "run": run, "response_class": rows.get(rule, [C, C, C])[run],
+              "input_tokens": 100, "output_tokens": 10, "duration_s": 3.0, "failure": "", **stamp}
+             for q, rows in tables.items() for rule in rules for run in range(3)]
+    complete = next(i for i, r in enumerate(kept) if r["record"] == "complete")
+    return kept[:complete] + added + kept[complete:]
+
+
+def test_the_outcome_cutoff_is_applied_to_exact_means_not_floats():
+    # Eight value-meaning probes (the dry run's seeing-recode pattern): correct runs of three under
+    # all_agent and empty are (1,3), (2,0), (2,0), (2,0), (3,0), (0,3), (2,1), (2,1), all_person all
+    # correct. A = 2/8 = 1/4 exactly and P = 5/12, so the outcome is both; the float mean of the
+    # differences is 0.24999999999999997 and would give person_only.
+    pairs = [(1, 3), (2, 0), (2, 0), (2, 0), (3, 0), (0, 3), (2, 1), (2, 1)]
+    ids = [f"s{n}" for n in range(1, 9)]
+
+    def row(correct):
+        return [C] * correct + [W] * (3 - correct)
+
+    tables = {q: {"all_agent": row(a), "empty": row(e)} for q, (a, e) in zip(ids, pairs)}
+    config = replace(CONFIG, questions=(*(Question(q, "plant", f"{q}?", "SELECT 1", "site-swap") for q in ids),
+                                        *(x for x in CONFIG.questions if x.id not in ("v1", "v2"))))
+    kind = contribution(summarise(config, probes_with(tables), PREDICTIONS, config_hash=HASH), "value_meaning")
+    assert kind["agent"]["mean"] == 0.25 and kind["person"]["mean"] == pytest.approx(5 / 12)
+    assert kind["outcome"] == "both" and kind["agrees"] is False  # the committed prediction is person_only
+
+
 def test_agreement_with_the_predicted_outcome_is_reported_per_claim_kind(result):
     kinds = result["descriptive"]["variants"]["confident"]["contributions"]
     assert {kind: (k["predicted"], k["agrees"]) for kind, k in kinds.items()} == {

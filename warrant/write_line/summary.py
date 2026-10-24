@@ -196,7 +196,19 @@ def _comparison(selected: Selected, config: Config, variant: str, k: int, seed: 
     }
 
 
-def _outcome(a: float | None, p: float | None, cutoff: float) -> str | None:
+def _exact_accuracy(classes: Iterable[str]) -> Fraction | None:
+    """`accuracy` as an exact fraction, so the outcome rule compares exact means with the cutoff."""
+    counted = [c for c in classes if c not in UNSCORED]
+    if not counted:
+        return None
+    return Fraction(sum(c in (ResponseClass.CORRECT_ANSWER, ResponseClass.CORRECT_REFUSAL) for c in counted), len(counted))
+
+
+def _float(value: Fraction | None) -> float | None:
+    return None if value is None else float(value)  # Fraction(0) is falsy, so no `value and`
+
+
+def _outcome(a: Fraction | None, p: Fraction | None, cutoff: Fraction) -> str | None:
     """The frozen outcome rule on the point estimates; None when a contribution is not measured."""
     if a is None or p is None:
         return None
@@ -210,21 +222,23 @@ def _contributions(selected: Selected, config: Config, predictions: Mapping, var
     """Per claim kind: A = everything from the agent - empty, P = everything from a person - everything
     from the agent, over the kind's probes, the outcome by the cutoff, and agreement with the
     predicted outcome (H1)."""
-    agent, cutoff = _rule("all_agent", variant), settings["cutoff"]
+    agent, cutoff = _rule("all_agent", variant), Fraction(str(settings["cutoff"]))
     kinds = {d.id: d.slot.claim_kind.value for d in config.defects}
     found = {}
     for kind in dict.fromkeys(kinds[q.defect] for q in config.questions if q.defect is not None):
         probes = {q.id for q in config.questions if q.defect is not None and kinds[q.defect] == kind}
         answers = [a for a in selected.answers if a["question_id"] in probes]
         a, p = (paired_difference(answers, first, second, seed=seed, resamples=settings["resamples"],
-                                  level=settings["level"])
+                                  level=settings["level"], measure=_exact_accuracy)
                 for first, second in ((agent, "empty"), ("all_person", agent)))
         outcome = _outcome(a.mean, p.mean, cutoff)
         predicted = predictions["kinds"].get(kind)
         found[kind] = {
             "label": DESCRIPTIVE,
-            "agent": {"mean": a.mean, "interval": a.interval and list(a.interval), "differences": a.differences},
-            "person": {"mean": p.mean, "interval": p.interval and list(p.interval), "differences": p.differences},
+            "agent": {"mean": _float(a.mean), "interval": a.interval and list(a.interval),
+                      "differences": {q: float(d) for q, d in a.differences.items()}},
+            "person": {"mean": _float(p.mean), "interval": p.interval and list(p.interval),
+                       "differences": {q: float(d) for q, d in p.differences.items()}},
             "outcome": outcome,
             "near_cutoff": any(i is not None and i[0] <= cutoff <= i[1] for i in (a.interval, p.interval)),
             "predicted": predicted,
