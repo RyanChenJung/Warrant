@@ -1,0 +1,367 @@
+# The write line's full thin run (#54): every question of #52 on the committed freeze, with the
+# business-term list for claim writing. The pilot's eight coverage probes (#49) are copied verbatim
+# from configs/write_line_pilot.yaml, which stays as it is since its SHA-256 is in every pilot record;
+# a test keeps them equal. To them #52 adds a correct-refusal coverage probe, six column-formula and
+# eight value-meaning probes, and ten control questions on content no defect touches. Each probe with
+# a gold answer names the readings it separates (#34, round 2); a refusal probe records the terms
+# that name its missing piece. The decisions are on #52 (2026-10-21).
+#
+# The model block is the pilot's, the settings the freeze requires before the first model call on
+# its defects or claims, except max_tokens, which ADR 0013 raises to 64,000 before the run's first
+# call. The rules are the eight of ADR 0012, run three times (#54).
+#
+# Table and column names, codes and the questions' gold answers in this file come from
+# LiveSQLBench-Base-Lite (CC BY-SA 4.0, see LICENSE-DATA). Paths are relative to this file.
+freeze: ../freeze/write_line.yaml
+injection: ../injections/9cfd501f2182-write_line.json
+rules: [empty, all_person, all_agent, settlement, confidence, all_agent_abstain, settlement_abstain, confidence_abstain]
+runs: 3
+model:
+  provider: bedrock
+  model: anthropic.claude-sonnet-5
+  region: us-east-1
+  max_tokens: 64000
+  effort: high
+  attempts: 2
+questions:
+  # Probes the agent's own claim can answer: the orders the table lacks are still in the child tables.
+  - id: orders-placed
+    database: crypto
+    defect: orders-cut
+    text: How many orders have been placed on the exchange?
+    gold_sql: >-
+      SELECT COUNT(*) FROM (SELECT recordvault FROM orders UNION SELECT ordersmark FROM orderexecutions
+      UNION SELECT orderslink FROM fees UNION SELECT ordervault FROM riskandmargin)
+    separates:
+      nothing-cut: SELECT COUNT(*) FROM orders
+      other-system: SELECT COUNT(*) FROM orders
+      mistyped: SELECT COUNT(*) FROM orders
+  - id: fees-charged
+    database: crypto
+    defect: orders-cut
+    text: What is the total amount of trading fees charged on all orders?
+    gold_sql: SELECT SUM(feetotal) FROM fees
+    separates:
+      nothing-cut: SELECT SUM(f.feetotal) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+      other-system: SELECT SUM(f.feetotal) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+  - id: filled-notional
+    database: crypto
+    defect: orders-cut
+    text: What is the total notional value of all order fills?
+    gold_sql: SELECT SUM(fillsum) FROM orderexecutions
+    separates:
+      nothing-cut: SELECT SUM(e.fillsum) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+      other-system: SELECT SUM(e.fillsum) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+  - id: fee-per-order
+    database: crypto
+    defect: orders-cut
+    text: What is the average trading fee per order?
+    gold_sql: >-
+      SELECT SUM(feetotal) / (SELECT COUNT(*) FROM (SELECT recordvault FROM orders UNION SELECT ordersmark
+      FROM orderexecutions UNION SELECT orderslink FROM fees UNION SELECT ordervault FROM riskandmargin))
+      FROM fees
+    separates:
+      nothing-cut: >-
+        SELECT SUM(f.feetotal) / (SELECT COUNT(*) FROM orders) FROM fees f JOIN orders o
+        ON o.recordvault = f.orderslink
+      other-system: >-
+        SELECT SUM(f.feetotal) / (SELECT COUNT(*) FROM orders) FROM fees f JOIN orders o
+        ON o.recordvault = f.orderslink
+      mistyped: SELECT SUM(feetotal) / (SELECT COUNT(*) FROM orders) FROM fees
+  # Probes only the person's claim can answer: the orders the table lacks are the cancelled ones.
+  - id: orders-cancelled
+    database: crypto
+    defect: orders-cut
+    text: How many orders were cancelled?
+    gold_sql: >-
+      SELECT COUNT(*) FROM (SELECT ordersmark AS ref FROM orderexecutions UNION SELECT orderslink FROM fees
+      UNION SELECT ordervault FROM riskandmargin) WHERE ref NOT IN (SELECT recordvault FROM orders)
+    separates:
+      nothing-cut: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+      filled-cut: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+      archived: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+      other-system: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+      mistyped: SELECT COUNT(*) FROM orders WHERE orderflow = 'Cancelled'
+  - id: cancelled-share
+    database: crypto
+    defect: orders-cut
+    text: What share of all orders were cancelled, as a fraction between 0 and 1?
+    gold_sql: >-
+      SELECT 1.0 * (SELECT COUNT(*) FROM (SELECT ordersmark AS ref FROM orderexecutions UNION SELECT
+      orderslink FROM fees UNION SELECT ordervault FROM riskandmargin) WHERE ref NOT IN (SELECT recordvault
+      FROM orders)) / (SELECT COUNT(*) FROM (SELECT recordvault FROM orders UNION SELECT ordersmark FROM
+      orderexecutions UNION SELECT orderslink FROM fees UNION SELECT ordervault FROM riskandmargin))
+    separates:
+      nothing-cut: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+      filled-cut: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+      archived: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+      other-system: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+      mistyped: SELECT 1.0 * SUM(orderflow = 'Cancelled') / COUNT(*) FROM orders
+  - id: fees-on-cancelled
+    database: crypto
+    defect: orders-cut
+    text: What is the total amount of trading fees charged on cancelled orders?
+    gold_sql: SELECT SUM(feetotal) FROM fees WHERE orderslink NOT IN (SELECT recordvault FROM orders)
+    separates:
+      nothing-cut: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+      filled-cut: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+      archived: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+      other-system: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+      mistyped: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.orderflow = 'Cancelled'
+  - id: filled-notional-on-cancelled
+    database: crypto
+    defect: orders-cut
+    text: What is the total notional value of fills on cancelled orders?
+    gold_sql: SELECT SUM(fillsum) FROM orderexecutions WHERE ordersmark NOT IN (SELECT recordvault FROM orders)
+    separates:
+      nothing-cut: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
+      filled-cut: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
+      archived: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
+      other-system: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
+      mistyped: >-
+        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
+        WHERE o.orderflow = 'Cancelled'
+  # Coverage, a correct refusal: the order type (orders.ordertune) exists only in orders, so it went
+  # with the cut rows. The child tables have no declared link to it; their row numbers do align with
+  # the surviving orders and users, but no column of any crypto table, joined by row number or by
+  # order reference, predicts the order type (Ryan on PR #122). The terms name the missing piece, the
+  # order type, and none occurs in the question, so a refusal that only repeats the question fails.
+  - id: cancelled-limit-orders
+    database: crypto
+    defect: orders-cut
+    text: How many of the cancelled orders were limit orders?
+    missing_terms: [order type, ordertune, type of order, type, ordertype]
+  # Column formula: each probe turns on which balances walletsum includes. None joins accountbalances
+  # to orders, and the per-user probes avoid the eight accounts whose margsum is under 1 percent of
+  # walletsum. Keys are padded to 36 characters, so a key literal is compared with TRIM. An agent that
+  # sums the balance columns instead of reading walletsum can reach the gold answer, since under the
+  # true identity the sums equal walletsum; #54's per-question review splits answers by whether their
+  # SQL reads walletsum, as the pilot's README does for fee-per-order.
+  - id: total-held
+    database: crypto
+    defect: wallet-sum
+    text: What is the total amount users hold across their wallet and margin balances?
+    gold_sql: SELECT SUM(walletsum) FROM accountbalances
+    separates:
+      without-margin: SELECT SUM(walletsum + margsum) FROM accountbalances
+      with-unrealised-pnl: SELECT SUM(walletsum + margsum) FROM accountbalances
+  - id: margin-majority
+    database: crypto
+    defect: wallet-sum
+    text: How many accounts have more than half of their holdings in margin?
+    gold_sql: SELECT COUNT(*) FROM accountbalances WHERE margsum > 0.5 * walletsum
+    separates:
+      without-margin: SELECT COUNT(*) FROM accountbalances WHERE margsum > 0.5 * (walletsum + margsum)
+      with-unrealised-pnl: SELECT COUNT(*) FROM accountbalances WHERE margsum > 0.5 * (walletsum + margsum)
+      without-frozen: SELECT COUNT(*) FROM accountbalances WHERE margsum > 0.5 * (walletsum + frozensum)
+  - id: frozen-majority
+    database: crypto
+    defect: wallet-sum
+    text: How many accounts have more than half of their holdings frozen?
+    gold_sql: SELECT COUNT(*) FROM accountbalances WHERE frozensum > 0.5 * walletsum
+    separates:
+      without-frozen: SELECT COUNT(*) FROM accountbalances WHERE frozensum > 0.5 * (walletsum + frozensum)
+      without-margin: SELECT COUNT(*) FROM accountbalances WHERE frozensum > 0.5 * (walletsum + margsum)
+      with-unrealised-pnl: SELECT COUNT(*) FROM accountbalances WHERE frozensum > 0.5 * (walletsum + margsum)
+  - id: available-majority
+    database: crypto
+    defect: wallet-sum
+    text: How many accounts have more than half of their holdings available?
+    gold_sql: SELECT COUNT(*) FROM accountbalances WHERE availsum > 0.5 * walletsum
+    separates:
+      without-margin: SELECT COUNT(*) FROM accountbalances WHERE availsum > 0.5 * (walletsum + margsum)
+      with-unrealised-pnl: SELECT COUNT(*) FROM accountbalances WHERE availsum > 0.5 * (walletsum + margsum)
+      without-frozen: SELECT COUNT(*) FROM accountbalances WHERE availsum > 0.5 * (walletsum + frozensum)
+  - id: user-wallet-excluding-margin
+    database: crypto
+    defect: wallet-sum
+    text: For user U810391, what is the wallet balance not counting margin?
+    gold_sql: SELECT walletsum - margsum FROM accountbalances WHERE TRIM(usertag) = 'U810391'
+    separates:
+      without-margin: SELECT walletsum FROM accountbalances WHERE TRIM(usertag) = 'U810391'
+      with-unrealised-pnl: SELECT walletsum FROM accountbalances WHERE TRIM(usertag) = 'U810391'
+  # The unrealised profit and loss is 0.34 percent of the total wallet balance, so only a per-user
+  # probe separates the four-term reading; U575806's is 10 percent of its wallet balance.
+  - id: user-wallet-excluding-unrealised
+    database: crypto
+    defect: wallet-sum
+    text: For user U575806, what is the wallet balance excluding unrealised profit and loss?
+    gold_sql: SELECT walletsum FROM accountbalances WHERE TRIM(usertag) = 'U575806'
+    separates:
+      four-terms: SELECT walletsum - unrealline FROM accountbalances WHERE TRIM(usertag) = 'U575806'
+      with-unrealised-pnl: SELECT walletsum - unrealline FROM accountbalances WHERE TRIM(usertag) = 'U575806'
+  # Value meaning: counts per grade, the only answers that separate the two readings beyond the
+  # tolerance (#52). They are counts rather than lists because observstation is padded and set
+  # answers compare key values exactly. The probes are correlated, a limitation of the confirmatory
+  # test recorded on #41.
+  - id: best-seeing-observatories
+    database: alien
+    defect: seeing-recode
+    text: How many observatories have the best seeing?
+    gold_sql: SELECT COUNT(*) FROM observatories WHERE seeingprofile = '1'
+    separates:
+      three-is-best: SELECT COUNT(*) FROM observatories WHERE seeingprofile = '3'
+  - id: best-seeing-clear-weather
+    database: alien
+    defect: seeing-recode
+    text: How many observatories have the best seeing and clear weather?
+    gold_sql: SELECT COUNT(*) FROM observatories WHERE seeingprofile = '1' AND weathprofile = 'Clear'
+    separates:
+      three-is-best: SELECT COUNT(*) FROM observatories WHERE seeingprofile = '3' AND weathprofile = 'Clear'
+  - id: best-seeing-telescopes
+    database: alien
+    defect: seeing-recode
+    text: How many telescopes are at observatories with the best seeing?
+    gold_sql: >-
+      SELECT COUNT(*) FROM telescopes t JOIN observatories o ON o.observstation = t.observstation
+      WHERE o.seeingprofile = '1'
+    separates:
+      three-is-best: >-
+        SELECT COUNT(*) FROM telescopes t JOIN observatories o ON o.observstation = t.observstation
+        WHERE o.seeingprofile = '3'
+  - id: best-seeing-signals
+    database: alien
+    defect: seeing-recode
+    text: How many signals were detected by telescopes at observatories with the best seeing?
+    gold_sql: >-
+      SELECT COUNT(*) FROM signals s JOIN telescopes t ON t.telescregistry = s.telescref
+      JOIN observatories o ON o.observstation = t.observstation WHERE o.seeingprofile = '1'
+    separates:
+      three-is-best: >-
+        SELECT COUNT(*) FROM signals s JOIN telescopes t ON t.telescregistry = s.telescref
+        JOIN observatories o ON o.observstation = t.observstation WHERE o.seeingprofile = '3'
+  - id: best-seeing-technosignatures
+    database: alien
+    defect: seeing-recode
+    text: >-
+      How many signals detected at observatories with the best seeing have a technosignature
+      probability above 0.5?
+    gold_sql: >-
+      SELECT COUNT(*) FROM signalprobabilities p JOIN signals s ON s.signalregistry = p.signalref
+      JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+      WHERE o.seeingprofile = '1' AND p.techsigprob > 0.5
+    separates:
+      three-is-best: >-
+        SELECT COUNT(*) FROM signalprobabilities p JOIN signals s ON s.signalregistry = p.signalref
+        JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+        WHERE o.seeingprofile = '3' AND p.techsigprob > 0.5
+  - id: best-seeing-dwarf-sources
+    database: alien
+    defect: seeing-recode
+    text: >-
+      How many signals detected at observatories with the best seeing come from sources of the Dwarf
+      subtype?
+    gold_sql: >-
+      SELECT COUNT(*) FROM sourceproperties p JOIN signals s ON s.signalregistry = p.signalref
+      JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+      WHERE o.seeingprofile = '1' AND p.objtype = 'Dwarf'
+    separates:
+      three-is-best: >-
+        SELECT COUNT(*) FROM sourceproperties p JOIN signals s ON s.signalregistry = p.signalref
+        JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+        WHERE o.seeingprofile = '3' AND p.objtype = 'Dwarf'
+  - id: best-seeing-completed-decodings
+    database: alien
+    defect: seeing-recode
+    text: How many signals detected at observatories with the best seeing have a completed decoding?
+    gold_sql: >-
+      SELECT COUNT(*) FROM signaldecoding d JOIN signals s ON s.signalregistry = d.signalref
+      JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+      WHERE o.seeingprofile = '1' AND d.decodestat = 'Completed'
+    separates:
+      three-is-best: >-
+        SELECT COUNT(*) FROM signaldecoding d JOIN signals s ON s.signalregistry = d.signalref
+        JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+        WHERE o.seeingprofile = '3' AND d.decodestat = 'Completed'
+  - id: best-seeing-natural-signals
+    database: alien
+    defect: seeing-recode
+    text: How many signals detected at observatories with the best seeing are classified as natural?
+    gold_sql: >-
+      SELECT COUNT(*) FROM signalclassification c JOIN signals s ON s.signalregistry = c.signalref
+      JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+      WHERE o.seeingprofile = '1' AND c.sigclasstype = 'Natural'
+    separates:
+      three-is-best: >-
+        SELECT COUNT(*) FROM signalclassification c JOIN signals s ON s.signalregistry = c.signalref
+        JOIN telescopes t ON t.telescregistry = s.telescref JOIN observatories o ON o.observstation = t.observstation
+        WHERE o.seeingprofile = '3' AND c.sigclasstype = 'Natural'
+  # Controls: tables no defect touches, nor the orders' child tables or users; the run checks that
+  # each gold answer is the same on the clean and the injected copy.
+  - id: positive-funding-rate
+    database: crypto
+    text: How many market statistics records have a positive funding rate?
+    gold_sql: SELECT COUNT(*) FROM marketstats WHERE fundrate > 0
+  - id: daily-turnover
+    database: crypto
+    text: What is the total daily turnover across all market statistics records?
+    gold_sql: SELECT SUM(tnoverday) FROM marketstats
+  - id: api-errors
+    database: crypto
+    text: How many API errors were recorded in total?
+    gold_sql: SELECT SUM(apierrtotal) FROM systemmonitoring
+  - id: api-error-rate
+    database: crypto
+    text: What is the API error rate, as total API errors divided by total API requests?
+    gold_sql: SELECT 1.0 * SUM(apierrtotal) / SUM(apireqtotal) FROM systemmonitoring
+  - id: websocket-disconnected
+    database: crypto
+    text: How many system monitoring records show the websocket disconnected?
+    gold_sql: SELECT COUNT(*) FROM systemmonitoring WHERE wsstate = 'Disconnected'
+  - id: snr-above-10
+    database: alien
+    text: How many signals have a signal-to-noise ratio above 10?
+    gold_sql: SELECT COUNT(*) FROM signals WHERE snrratio > 10
+  - id: average-signal-strength
+    database: alien
+    text: What is the average signal strength in dB?
+    gold_sql: SELECT AVG(sigstrdb) FROM signals
+  - id: operational-telescopes
+    database: alien
+    text: How many telescopes are operational?
+    gold_sql: SELECT COUNT(*) FROM telescopes WHERE equipstatus = 'Operational'
+  - id: high-technosignature-probability
+    database: alien
+    text: How many signals have a technosignature probability above 0.9?
+    gold_sql: SELECT COUNT(*) FROM signalprobabilities WHERE techsigprob > 0.9
+  - id: broadband-signals
+    database: alien
+    text: How many signals are Broadband?
+    gold_sql: SELECT COUNT(*) FROM signals WHERE signalclass = 'Broadband'
+# The business-term list for claim writing (freeze: global.claim_writing.business_terms and
+# grounding): per database, the named quantities the probe questions use, without definitions, and no
+# population or code term of any defect, so no cancelled order, no order count, no seeing or grade
+# term. Nothing in it points at a slot (#50, 2026-10-21) except the frozen grounding of "wallet
+# balance". The key is agreed with #50, which reads it.
+business_terms:
+  crypto:
+    terms:
+      - wallet balance
+      - margin balance
+      - holdings
+      - unrealised profit and loss
+      - trading fees
+      - notional value of fills
+    grounding:
+      wallet balance: accountbalances.walletsum
+  alien:
+    terms:
+      - technosignature probability

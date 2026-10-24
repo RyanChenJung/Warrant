@@ -4,7 +4,9 @@ freeze's numeric tolerance, and every probe names the readings it separates, eac
 answers it under that reading (#34, round 2). The freeze here is the whole-freeze fixture of the
 predicted outcomes, on copies of the work-order fixture."""
 
+import dataclasses
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -259,3 +261,66 @@ def test_the_run_stops_before_any_agent_call_when_the_recomputed_predictions_dif
     with pytest.raises(ValueError, match="differ from the committed"):
         run(config, agent, tmp_path / "work", committed_predictions=changed)
     assert agent.requests == []
+
+
+CONFIGS = Path(__file__).parents[1] / "configs"
+
+
+def test_the_thin_run_carries_the_pilots_eight_coverage_probes_unchanged():
+    """#49: the pilot's questions enter the full thin run (#54) unchanged. The pilot side is anchored to
+    the configuration its records were run with, so the two files cannot be edited together."""
+    record = (CONFIGS.parent / "results" / "pilot" / "2026-10-20-e33ac97.jsonl").read_text().splitlines()[0]
+    assert sha256(CONFIGS / "write_line_pilot.yaml") == json.loads(record)["config_hash"]
+    pilot = load_config(CONFIGS / "write_line_pilot.yaml")
+    thin = load_config(CONFIGS / "write_line_thin.yaml")
+    assert [q for q in thin.questions if q.defect == "orders-cut" and q.gold_sql is not None] == list(pilot.questions)
+
+
+def test_the_thin_run_has_the_question_sets_of_52_on_the_pilots_freeze_and_model_settings():
+    pilot = load_config(CONFIGS / "write_line_pilot.yaml")
+    thin = load_config(CONFIGS / "write_line_thin.yaml")
+    sets = {}
+    for q in thin.questions:
+        sets.setdefault(q.defect, []).append(q)
+    assert {defect: len(questions) for defect, questions in sets.items()} == {
+        "orders-cut": 9,
+        "wallet-sum": 6,
+        "seeing-recode": 8,
+        None: 10,
+    }
+    assert all(q.separates for q in thin.questions if q.defect is not None and q.gold_sql is not None)
+    (refusal,) = [q for q in thin.questions if q.gold_sql is None]
+    assert refusal.defect == "orders-cut" and refusal.missing_terms
+    # A term the question itself contains would let any refusal that repeats the question pass the
+    # refusal check, whether or not it names the missing piece.
+    assert not [t for t in refusal.missing_terms if re.search(rf"\b{re.escape(t.casefold())}", refusal.text.casefold())]
+    assert (thin.defects, thin.injection) == (pilot.defects, pilot.injection)
+    assert thin.model == dataclasses.replace(pilot.model, max_tokens=64000)  # ADR 0013
+
+
+def test_the_thin_runs_business_terms_ground_only_the_wallet_balance_and_name_no_defect_term():
+    """The freeze's claim_writing.business_terms and grounding, and #50's decision of 2026-10-21 that
+    nothing in the claim-writing input points at a slot."""
+    raw = yaml.safe_load((CONFIGS / "write_line_thin.yaml").read_text())
+    terms = raw["business_terms"]
+    assert set(terms) == {"crypto", "alien"}
+    assert terms["crypto"]["grounding"] == {"wallet balance": "accountbalances.walletsum"}
+    assert "wallet balance" in terms["crypto"]["terms"]
+    assert "grounding" not in terms["alien"]
+    named = [term.casefold() for database in terms.values() for term in database["terms"]]
+    assert not [term for term in named if any(word in term for word in ("cancel", "seeing", "grade", "order"))]
+
+
+def test_every_business_term_occurs_in_a_probe_question_of_its_database():
+    """The freeze lists only the named quantities the probe questions use."""
+    config = load_config(CONFIGS / "write_line_thin.yaml")
+    raw = yaml.safe_load((CONFIGS / "write_line_thin.yaml").read_text())
+    unused = [
+        (database, term)
+        for database, entry in raw["business_terms"].items()
+        for term in entry["terms"]
+        if not any(
+            term.casefold() in q.text.casefold() for q in config.questions if q.database == database and q.defect is not None
+        )
+    ]
+    assert unused == []
