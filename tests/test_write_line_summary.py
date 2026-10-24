@@ -775,6 +775,7 @@ def test_the_judges_repeat_instability_counts_unstable_pairs_and_true_reading_sp
     edit("confident", "total-is-sum", 1, valid=[holds, holds, {**holds, "other": "fails"}])  # one unstable reading
     edit("confident", "site-swap", 1, valid=[labels("site-swap", "fails")] * 2)  # two valid calls: both readings
     edit("confident", "tasks-short-cut", 1, splits=[TRUE["tasks-short-cut"]])  # a split on the true reading
+    edit("confident", "total-is-sum", 1, splits=["other"])  # a split on a false reading is not counted
     # A judgement made without a call is no repeat measurement, whatever it holds.
     edit("confident", "total-is-sum", 2, valid=[], splits=[TRUE["total-is-sum"]])
     judge = summarise_(records)["descriptive"]["judge"]
