@@ -786,6 +786,16 @@ def test_the_three_sensitivity_codings_pin_their_per_question_differences():
     assert sensitivity["all_defect_probes"]["differences"] == {"c1": "0", "c2": "0", "f1": "1", "v1": "1", "v2": "1"}
 
 
+def test_a_class_a_coding_leaves_out_falls_opposite_a_correct_answer_and_the_pair_is_dropped():
+    F = "failed"
+    # The confidence side now fails once and asks once, with an over-refusal among its answers.
+    answers = {**ANSWERS, ("f1", "confidence"): [F, "over_refusal", W], ("v1", "confidence"): [Q, W, W]}
+    sensitivity = summarise_(build(answers))["descriptive"]["sensitivity"]
+    # Counted as wrong the failure is a third error against a correct answer; left out, its pair is dropped.
+    assert sensitivity["failures_as_wrong"]["differences"] == {"f1": "1", "v1": "1", "v2": "1"}
+    assert sensitivity["clarifications_as_wrong"]["differences"] == {"f1": "1", "v1": "1", "v2": "1"}
+
+
 def test_failure_and_clarification_rates_and_over_refusals_are_reported_per_compared_rule():
     answers = {**ANSWERS, ("f1", "confidence"): ["failed", "over_refusal", W], ("v1", "confidence"): [Q, W, W]}
     found = summarise_(build(answers))
