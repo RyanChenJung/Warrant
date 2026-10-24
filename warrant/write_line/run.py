@@ -297,7 +297,7 @@ def _write_claims(record: dict) -> bool:
 PROVENANCE_FIELDS = ("config_hash", "repo_commit", "model", "prompt_version", "timestamp")
 
 
-def _runs(records: list[dict], config_hash: str) -> tuple[list[str], set[str], set[str]]:
+def run_ids(records: list[dict], config_hash: str) -> tuple[list[str], set[str], set[str]]:
     """This configuration's run ids in the order they were started, the complete ones, and the ones set
     aside: started before the configuration's first complete run. The summary uses the first complete
     run in the file, so completing a run set aside would change which run it uses."""
@@ -323,7 +323,7 @@ def _earlier_records(results: Path | None, provenance: Provenance | None, run_id
         raise ValueError(f"run {run_id} is complete; there is nothing to resume")
     if any(r.get("config_hash") != provenance.config_hash for r in mine):
         raise ValueError(f"run {run_id} was made with another configuration; a run is resumed with its own")
-    if run_id in _runs(stored, provenance.config_hash)[2]:
+    if run_id in run_ids(stored, provenance.config_hash)[2]:
         raise ValueError(f"run {run_id} was set aside: a run of its configuration completed after it started, "
                          "and the summary uses the first complete run")
     if any(r.get("prompt_version") != provenance.prompt_version for r in mine if _answer_prompt(r)):
@@ -809,7 +809,7 @@ def main(argv=None) -> int:
         parser.error(f"{args.config} names no model block")
     provenance = provenance_for(args.config, config.model)
     stored = _read(args.results)
-    started, complete, set_aside = _runs(stored, provenance.config_hash)
+    started, complete, set_aside = run_ids(stored, provenance.config_hash)
     if args.run_id is None and not args.new_run and started:
         # Another run is paid for again in full, so it is started only on purpose.
         incomplete = [run_id for run_id in started if run_id not in complete and run_id not in set_aside]
