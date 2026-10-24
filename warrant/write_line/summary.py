@@ -357,11 +357,13 @@ def _judge(selected: Selected, config: Config, variant: str) -> dict:
 
 def _calls(records: Iterable[Mapping], prices) -> dict:
     records = [r for r in records if not r.get("without_a_call")]
-    seconds = [float(r.get("duration_s", 0.0)) for r in records]
+    # A record with no duration_s (the judge validation's) leaves the time unknown, not zero.
+    seconds = [r.get("duration_s") for r in records]
+    known = None not in seconds
     tokens_in, tokens_out = sum(r["input_tokens"] for r in records), sum(r["output_tokens"] for r in records)
     return {"calls": len(records), "input_tokens": tokens_in, "output_tokens": tokens_out,
-            "dollars": prices.cost(tokens_in, tokens_out), "seconds_total": sum(seconds),
-            "seconds_median": statistics.median(seconds) if seconds else None}
+            "dollars": prices.cost(tokens_in, tokens_out), "seconds_total": float(sum(seconds)) if known else None,
+            "seconds_median": statistics.median(seconds) if seconds and known else None}
 
 
 def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, tokens: Mapping) -> dict:
@@ -379,7 +381,7 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, 
         return [r for r in selected.of["judgement"] if r.get("variant", "confident") == variant]
 
     start = selected.of["start"][0] if selected.of["start"] else {}
-    battery = float(sum((start.get("battery_s") or {}).values()))
+    battery = float(sum(start["battery_s"].values())) if start.get("battery_s") else None
     method = {}
     for rule in config.rules:
         variant, base = RULES[rule], rule.removesuffix("_abstain")
@@ -390,8 +392,9 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, 
         else:
             method[rule] = _calls(samples(variant, True), prices)
             if base == "settlement":
+                total = method[rule]["seconds_total"]
                 method[rule] = {**method[rule], "battery_s": battery,
-                                "seconds_total": method[rule]["seconds_total"] + battery}
+                                "seconds_total": None if None in (total, battery) else total + battery}
     answering = {rule: _calls([r for r in selected.answers if r["rule"] == rule]
                               + [r for r in spent if r.get("operation") == "answer" and r.get("rule") == rule], prices)
                  for rule in config.rules}

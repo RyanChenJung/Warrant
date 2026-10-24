@@ -540,6 +540,18 @@ def test_the_judge_validation_file_is_evaluation_cost_charged_to_no_rule(monkeyp
     assert cost["method"]["confidence"]["calls"] == 24
 
 
+def test_a_time_that_was_not_recorded_is_unknown_not_zero(validated):
+    # validate_judge.py records no duration_s, so the validation's time is null.
+    judge = summarise_(validation=validated)["descriptive"]["cost"]["evaluation"]["judge_validation"]
+    assert judge["input_tokens"] == 700 and judge["seconds_total"] is None and judge["seconds_median"] is None
+    # A start record without the battery's times leaves the settlement rule's time unknown too.
+    records = build()
+    del records[0]["battery_s"]
+    settlement = summarise_(records)["descriptive"]["cost"]["method"]["settlement"]
+    assert settlement["battery_s"] is None and settlement["seconds_total"] is None
+    assert settlement["calls"] == 3 and settlement["dollars"] == pytest.approx(0.009)
+
+
 def test_the_runs_total_spend_sits_beside_the_per_rule_costs_and_is_not_their_sum(result):
     cost = result["descriptive"]["cost"]
     tokens = result["descriptive"]["tokens"]
