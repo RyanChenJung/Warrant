@@ -238,6 +238,15 @@ def test_the_outcome_cutoff_is_applied_to_exact_means_not_floats():
     assert kind["outcome"] == "both" and kind["agrees"] is False  # the committed prediction is person_only
 
 
+def test_a_correct_refusal_counts_as_accurate_in_a_contribution():
+    CR = "correct_refusal"
+    # Coverage probes: empty and all_agent are wrong throughout, all_person refuses correctly: A = 0, P = 1.
+    answers = {**ANSWERS, **{(q, rule): [W, W, W] for q in ("c1", "c2") for rule in ("empty", "all_agent")},
+               **{(q, "all_person"): [CR, CR, CR] for q in ("c1", "c2")}}
+    kind = contribution(summarise_(build(answers)), "coverage")
+    assert (kind["agent"]["mean"], kind["person"]["mean"]) == (0.0, 1.0) and kind["outcome"] == "person_only"
+
+
 def test_agreement_with_the_predicted_outcome_is_reported_per_claim_kind(result):
     kinds = result["descriptive"]["variants"]["confident"]["contributions"]
     assert {kind: (k["predicted"], k["agrees"]) for kind, k in kinds.items()} == {
