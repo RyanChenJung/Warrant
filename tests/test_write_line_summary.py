@@ -734,3 +734,18 @@ def test_the_judges_repeat_instability_counts_unstable_pairs_and_true_reading_sp
     assert judge["confident"] == {"pairs": 6, "unstable": 3, "share": 0.5, "true_reading_splits": 1, "resent": 0, "cut_short": []}
     # The abstain variant's one claim is stable.
     assert judge["abstain"]["pairs"] == 2 and judge["abstain"]["unstable"] == 0 and judge["abstain"]["share"] == 0.0
+
+
+def test_the_three_sensitivity_codings_pin_their_per_question_differences():
+    F = "failed"
+    # f1 under settlement fails once and v1 under settlement asks once; confidence is wrong on both throughout.
+    answers = {**ANSWERS, ("f1", "settlement"): [F, C, C], ("v1", "settlement"): [Q, C, C]}
+    found = summarise_(build(answers))
+    assert found["confirmatory"]["test"]["differences"] == {"f1": "1", "v1": "1", "v2": "1"}
+    sensitivity = found["descriptive"]["sensitivity"]
+    # Failures as wrong: f1's failed pair counts, as an error under settlement: (0 + 1 + 1) / 3.
+    assert sensitivity["failures_as_wrong"]["differences"] == {"f1": "2/3", "v1": "1", "v2": "1"}
+    # Clarifications as wrong: v1's clarification request counts the same way, f1's failed pair is dropped.
+    assert sensitivity["clarifications_as_wrong"]["differences"] == {"f1": "1", "v1": "2/3", "v2": "1"}
+    # Every defect probe under the freeze's own coding: the other slots' probes have d_q = 0.
+    assert sensitivity["all_defect_probes"]["differences"] == {"c1": "0", "c2": "0", "f1": "1", "v1": "1", "v2": "1"}
