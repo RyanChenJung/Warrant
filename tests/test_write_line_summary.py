@@ -342,6 +342,9 @@ def test_rules_whose_stores_coincide_report_the_frozen_wording_and_no_test():
     # Q* is empty, so its per-rule figures count nothing; the all-probes ones are still given.
     assert confirmatory["rules"]["confidence"]["answers"] == 0 and confirmatory["rules"]["confidence"]["accuracy"] is None
     assert confirmatory["all_defect_probes"]["rules"]["confidence"]["answers"] == 15
+    # No test runs at all, not even over all defect probes.
+    result = summarise_(build(stores=replaced("confidence", store("confidence", SETTLEMENT, RANKING))))
+    assert result["descriptive"]["sensitivity"] == {"label": "descriptive"}
 
 
 def test_a_store_whose_person_asks_differ_from_k_is_refused():

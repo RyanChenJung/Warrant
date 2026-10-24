@@ -176,7 +176,7 @@ def _comparison(selected: Selected, config: Config, variant: str, k: int, seed: 
 
     if not slots:
         return {**found, "result": COINCIDE, "ranking": confidence.get("ranking"), "scores": confidence.get("scores"),
-                "per_slot": {}, "sensitivity": {"all_defect_probes": test(sorted(probes))}}
+                "per_slot": {}, "sensitivity": {}}  # the freeze: no test runs when the rules coincide
     overall = write_line_test(selected.answers, questions, seed=seed, runs=settings["runs"], alpha=settings["alpha"],
                               resamples=settings["resamples"], level=settings["level"], **rules)
     per_slot = defaultdict(list)
