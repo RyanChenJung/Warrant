@@ -6,21 +6,21 @@
 # a gold answer names the readings it separates (#34, round 2); a refusal probe records the terms
 # that name its missing piece. The decisions are on #52 (2026-10-21).
 #
-# The model block is the pilot's: the settings the freeze requires before the first model call on its
-# defects or claims. Only the rules are limited, to the two compose() supports today; #54 sets all
-# five rules and runs: 3 once #50 and #51 add the others.
+# The model block is the pilot's, the settings the freeze requires before the first model call on
+# its defects or claims, except max_tokens, which ADR 0013 raises to 64,000 before the run's first
+# call. The rules are the eight of ADR 0012, run three times (#54).
 #
 # Table and column names, codes and the questions' gold answers in this file come from
 # LiveSQLBench-Base-Lite (CC BY-SA 4.0, see LICENSE-DATA). Paths are relative to this file.
 freeze: ../freeze/write_line.yaml
 injection: ../injections/9cfd501f2182-write_line.json
-rules: [empty, all_person]
-runs: 1
+rules: [empty, all_person, all_agent, settlement, confidence, all_agent_abstain, settlement_abstain, confidence_abstain]
+runs: 3
 model:
   provider: bedrock
   model: anthropic.claude-sonnet-5
   region: us-east-1
-  max_tokens: 16000
+  max_tokens: 64000
   effort: high
   attempts: 2
 questions:
@@ -148,7 +148,7 @@ questions:
     database: crypto
     defect: orders-cut
     text: How many of the cancelled orders were limit orders?
-    missing_terms: [order type, ordertune, type of order]
+    missing_terms: [order type, ordertune, type of order, type, ordertype]
   # Column formula: each probe turns on which balances walletsum includes. None joins accountbalances
   # to orders, and the per-user probes avoid the eight accounts whose margsum is under 1 percent of
   # walletsum. Keys are padded to 36 characters, so a key literal is compared with TRIM. An agent that
@@ -181,14 +181,15 @@ questions:
       without-frozen: SELECT COUNT(*) FROM accountbalances WHERE frozensum > 0.5 * (walletsum + frozensum)
       without-margin: SELECT COUNT(*) FROM accountbalances WHERE frozensum > 0.5 * (walletsum + margsum)
       with-unrealised-pnl: SELECT COUNT(*) FROM accountbalances WHERE frozensum > 0.5 * (walletsum + margsum)
-  - id: wallet-excluding-margin
+  - id: available-majority
     database: crypto
     defect: wallet-sum
-    text: What is the total wallet balance, not counting margin?
-    gold_sql: SELECT SUM(walletsum - margsum) FROM accountbalances
+    text: How many accounts have more than half of their holdings available?
+    gold_sql: SELECT COUNT(*) FROM accountbalances WHERE availsum > 0.5 * walletsum
     separates:
-      without-margin: SELECT SUM(walletsum) FROM accountbalances
-      with-unrealised-pnl: SELECT SUM(walletsum) FROM accountbalances
+      without-margin: SELECT COUNT(*) FROM accountbalances WHERE availsum > 0.5 * (walletsum + margsum)
+      with-unrealised-pnl: SELECT COUNT(*) FROM accountbalances WHERE availsum > 0.5 * (walletsum + margsum)
+      without-frozen: SELECT COUNT(*) FROM accountbalances WHERE availsum > 0.5 * (walletsum + frozensum)
   - id: user-wallet-excluding-margin
     database: crypto
     defect: wallet-sum

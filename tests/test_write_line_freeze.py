@@ -4,6 +4,7 @@ freeze's numeric tolerance, and every probe names the readings it separates, eac
 answers it under that reading (#34, round 2). The freeze here is the whole-freeze fixture of the
 predicted outcomes, on copies of the work-order fixture."""
 
+import dataclasses
 import json
 import re
 import shutil
@@ -293,7 +294,8 @@ def test_the_thin_run_has_the_question_sets_of_52_on_the_pilots_freeze_and_model
     # A term the question itself contains would let any refusal that repeats the question pass the
     # refusal check, whether or not it names the missing piece.
     assert not [t for t in refusal.missing_terms if re.search(rf"\b{re.escape(t.casefold())}", refusal.text.casefold())]
-    assert (thin.defects, thin.injection, thin.model) == (pilot.defects, pilot.injection, pilot.model)
+    assert (thin.defects, thin.injection) == (pilot.defects, pilot.injection)
+    assert thin.model == dataclasses.replace(pilot.model, max_tokens=64000)  # ADR 0013
 
 
 def test_the_thin_runs_business_terms_ground_only_the_wallet_balance_and_name_no_defect_term():
