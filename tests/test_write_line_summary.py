@@ -764,3 +764,58 @@ def test_failure_and_clarification_rates_and_over_refusals_are_reported_per_comp
                           "failure_rate": pytest.approx(1 / 15), "clarification_rate": pytest.approx(1 / 15), "person_asks": 2}
     assert found["descriptive"]["rules"]["rules"]["confidence"] == everywhere
     assert found["confirmatory"]["rules"]["settlement"]["failure_rate"] == 0.0
+
+
+def eight_probes(tables):
+    """The config with eight value-meaning probes, s1 to s8, and records whose answers to them are
+    `tables`: {question: {rule: classes}}, every other rule being all correct."""
+    questions = (*(Question(q, "plant", f"{q}?", "SELECT 1", "site-swap") for q in tables),
+                 *(x for x in CONFIG.questions if x.id not in ("v1", "v2")))
+    return replace(CONFIG, questions=questions), probes_with(tables)
+
+
+def correct_of_three(n):
+    return [C] * n + [W] * (3 - n)
+
+
+def test_the_outcome_rule_has_a_both_branch_and_keeps_contributions_at_the_cutoff():
+    # A = 6/24 and P = (12 - 6)/24, both exactly the cutoff: both, which a strict comparison would miss.
+    agent, person = [1, 1, 1, 1, 1, 1, 0, 0], [2, 2, 2, 2, 1, 1, 1, 1]
+    tables = {f"s{n}": {"empty": correct_of_three(0), "all_agent": correct_of_three(a), "all_person": correct_of_three(p)}
+              for n, (a, p) in enumerate(zip(agent, person), 1)}
+    config, records = eight_probes(tables)
+    kind = contribution(summarise(config, records, PREDICTIONS, config_hash=HASH), "value_meaning")
+    assert (kind["agent"]["mean"], kind["person"]["mean"]) == (0.25, 0.25) and kind["outcome"] == "both"
+    # A = 0 and P = 6/24: person only, at the cutoff.
+    tables = {q: {"empty": row["empty"], "all_agent": row["empty"], "all_person": correct_of_three(p)}
+              for (q, row), p in zip(tables.items(), [1, 1, 1, 1, 1, 1, 0, 0])}
+    config, records = eight_probes(tables)
+    kind = contribution(summarise(config, records, PREDICTIONS, config_hash=HASH), "value_meaning")
+    assert (kind["agent"]["mean"], kind["person"]["mean"]) == (0.0, 0.25) and kind["outcome"] == "person_only"
+
+
+def test_near_the_cutoff_looks_at_the_persons_interval_as_well_as_the_agents(result):
+    # Under abstain A = 0 on both probes (an interval of one point), and P = (1 + 0) / 2, whose interval
+    # contains 0.25.
+    answers = {**ANSWERS, ("v1", "all_agent_abstain"): [W, W, W], ("v2", "all_agent_abstain"): [W, W, W],
+               ("v2", "all_person"): [W, W, W]}
+    kind = contribution(summarise_(build(answers)), "value_meaning", "abstain")
+    assert kind["agent"]["interval"] == [0.0, 0.0] and kind["person"]["interval"][0] < 0.25 < kind["person"]["interval"][1]
+    assert kind["near_cutoff"] is True and kind["outcome"] == "person_only"
+    # Neither interval reaches the cutoff for a kind whose contributions are 1 and 0 exactly.
+    assert contribution(result, "column_formula")["near_cutoff"] is False
+
+
+def test_the_bootstrap_seed_resamples_and_level_are_read_from_the_freeze():
+    from warrant.scoring.stats import bootstrap_interval
+
+    agent, empty = [1, 2, 2, 2, 3, 0, 2, 2], [3, 0, 0, 0, 0, 3, 1, 1]
+    tables = {f"s{n}": {"all_agent": correct_of_three(a), "empty": correct_of_three(e)} for n, (a, e) in enumerate(zip(agent, empty), 1)}
+    frozen = json.loads(json.dumps(CONFIG.global_part))
+    frozen["seeds"]["bootstrap"] = 7
+    frozen["outcome_rule"]["bootstrap"].update(resamples=500, level=0.9)
+    config, records = eight_probes(tables)
+    kind = contribution(summarise(replace(config, global_part=frozen), records, PREDICTIONS, config_hash=HASH), "value_meaning")
+    differences = [Fraction(a - e, 3) for a, e in zip(agent, empty)]
+    assert kind["agent"]["interval"] == list(bootstrap_interval(differences, seed=7, resamples=500, level=0.9))
+    assert kind["agent"]["interval"] != list(bootstrap_interval(differences, seed=20261013))
