@@ -856,3 +856,17 @@ def test_a_slot_one_store_fills_and_the_other_leaves_empty_is_in_q_star():
     found = summarise_(build(stores=replaced("settlement", emptied)))["confirmatory"]
     assert found["slots"] == ["site-swap", "tasks-short-cut", "total-is-sum"]
     assert found["questions"] == ["c1", "f1", "v1", "v2"]
+
+
+def test_the_command_exits_non_zero_on_a_refusal_and_writes_no_summary(tmp_path, monkeypatch, capsys, validated):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(summary_module, "config_hash", lambda path: HASH)
+    results, predictions, out = tmp_path / "results.jsonl", tmp_path / "predictions.json", tmp_path / "summary.json"
+    # A run that never completed.
+    results.write_text("".join(json.dumps(r) + "\n" for r in build() if r["record"] != "complete"))
+    predictions.write_text(json.dumps(PREDICTIONS))
+    command = ["--config", str(FIXTURES / "write_line_summary.yaml"), "--results", str(results), "--predictions",
+               str(predictions), "--judge-validation", str(validated)]
+    assert main([*command, "--out", str(out)]) == 1
+    assert "refused" in capsys.readouterr().out and not out.exists()
+    assert main(command) == 1 and not (tmp_path / "results").exists()
