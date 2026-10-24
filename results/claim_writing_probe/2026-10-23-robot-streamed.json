@@ -1,0 +1,392 @@
+{
+ "operation": "write_claims_probe",
+ "timestamp": "2026-10-23T01:09:53+00:00",
+ "repo_commit": "baad963",
+ "database": "robot",
+ "release_revision": "0664a2f",
+ "model": "anthropic.claude-sonnet-5",
+ "region": "us-east-1",
+ "settings": {
+  "max_tokens": 64000,
+  "effort": "high",
+  "thinking": "the model's default (adaptive)",
+  "attempts": 2,
+  "streamed": true
+ },
+ "prompt_version": "1",
+ "business_terms": [],
+ "stop_reasons": [
+  "end_turn"
+ ],
+ "duration_s": 117.6,
+ "cost_at_list_price": 0.199,
+ "variant": "confident",
+ "claims": [
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "robot_record.recreg"
+   },
+   "statement": "One row represents a single robot record (the base entity for a robot instance).",
+   "confidence": 0.85
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "robot_details.botdetreg"
+   },
+   "statement": "One row represents the detail/profile snapshot for one robot, in a strict 1:1 relationship with robot_record.",
+   "confidence": 0.85
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "operation.operreg"
+   },
+   "statement": "One row represents a single operation instance for a robot, in a 1:1 relationship with robot_record and robot_details.",
+   "confidence": 0.8
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "actuation_data.actreg"
+   },
+   "statement": "One row represents a single actuation reading, which is in a strict 1:1 relationship with one operation and one robot record rather than one of many time-stamped readings per operation.",
+   "confidence": 0.8
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "maintenance_and_fault.upkeepactuation"
+   },
+   "statement": "One row represents the maintenance/fault assessment tied to one actuation (and hence one operation and one robot).",
+   "confidence": 0.8
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "performance_and_safety.effectivenessactuation"
+   },
+   "statement": "One row represents the performance/safety measurement tied to one actuation.",
+   "confidence": 0.8
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "system_controller.systemoverseeractuation"
+   },
+   "statement": "One row represents the controller metrics record tied to one actuation.",
+   "confidence": 0.8
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "joint_condition.jcdetref"
+   },
+   "statement": "Although no primary key is declared, jcdetref (and likewise jcondoperref, jcrecref) is unique per row, so one row represents the joint-condition snapshot tied to exactly one robot, one operation and one record; the 1:1 grain is enforced only by the data, not by a schema constraint.",
+   "confidence": 0.55
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "joint_performance.jperfdetref"
+   },
+   "statement": "Although no primary key is declared, jperfdetref is unique per row, so one row represents the joint-performance snapshot tied to exactly one robot, one operation and one record, with the 1:1 grain enforced only by the data.",
+   "confidence": 0.55
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "mechanical_status.mechdetref"
+   },
+   "statement": "Although no primary key is declared, mechdetref is unique per row, so one row represents the mechanical-status snapshot tied to exactly one robot, one operation and one record, with the 1:1 grain enforced only by the data.",
+   "confidence": 0.55
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "operation.progcyclecount"
+   },
+   "statement": "progcyclecount happens to be unique across all 1,000 rows; this is likely a coincidence of the data rather than evidence that program-cycle counts are designed to be unique identifiers, so it should not be relied on as a key.",
+   "confidence": 0.3
+  },
+  {
+   "slot": {
+    "claim_kind": "grain",
+    "subject": "maintenance_and_fault.upkeepcostest"
+   },
+   "statement": "upkeepcostest happens to be unique across all 1,000 rows; this is likely a coincidence of continuous-valued cost estimates rather than a meaningful key.",
+   "confidence": 0.3
+  },
+  {
+   "slot": {
+    "claim_kind": "coverage",
+    "subject": "robot_record"
+   },
+   "statement": "The dataset is structured so that every robot record has exactly one matching robot_details, operation, and actuation_data row (and downstream tables), i.e. it is a one-reading-per-robot snapshot extract rather than a time series of multiple operations or readings per robot.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "coverage",
+    "subject": "robot_details"
+   },
+   "statement": "Installation dates recorded for robots span 2022-05-27 to 2024-11-11 (31 distinct months); robots installed outside this window, if any exist in reality, are not present in this extract, and any time trend ending at 2024-11-11 reflects the extract cutoff, not necessarily a real-world decline.",
+   "confidence": 0.75
+  },
+  {
+   "slot": {
+    "claim_kind": "coverage",
+    "subject": "maintenance_and_fault"
+   },
+   "statement": "Every actuation has a matching maintenance_and_fault row, but a large share of them carry no fault code, issue category, issue level, or fault-type estimation, meaning most actuations in this extract show no detected fault or issue rather than missing records.",
+   "confidence": 0.5
+  },
+  {
+   "slot": {
+    "claim_kind": "term_boundary",
+    "subject": "maintenance_and_fault.faultcodeval"
+   },
+   "statement": "A 'fault' is identified by a non-empty faultcodeval; the ~48.7% of rows where it is empty are actuations with no fault recorded, not missing data to be imputed.",
+   "confidence": 0.45
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "maintenance_and_fault.faultcodeval"
+   },
+   "statement": "Empty/null values mean no fault code was raised for that actuation rather than an unrecorded measurement.",
+   "confidence": 0.45
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "maintenance_and_fault.issuecategoryval"
+   },
+   "statement": "Holds a categorical fault/issue category (Mechanical, Electrical, Communication, Software) with null meaning no issue category applies to that actuation (about 20% of rows).",
+   "confidence": 0.5
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "maintenance_and_fault.issuelevelval"
+   },
+   "statement": "Holds an ordinal-looking severity scale (Low, Medium, High, Critical) with null meaning no active issue/severity applies (about 18% of rows).",
+   "confidence": 0.5
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "maintenance_and_fault.faulttypeestimation"
+   },
+   "statement": "Holds a categorical estimated fault origin (Gearbox, Motor, Controller, Joint) with null meaning no fault type was estimated for that actuation (about 21.6% of rows).",
+   "confidence": 0.5
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.brk1statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing brake 1 condition, roughly evenly distributed, not a numeric severity.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.brk2statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing brake 2 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.brk3statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing brake 3 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.brk4statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing brake 4 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.brk5statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing brake 5 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.brk6statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing brake 6 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.enc1statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing encoder 1 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.enc2statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing encoder 2 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.enc3statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing encoder 3 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.enc4statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing encoder 4 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.enc5statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing encoder 5 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "mechanical_status.enc6statval"
+   },
+   "statement": "Holds a three-level categorical status (Normal, Warning, Error) describing encoder 6 condition.",
+   "confidence": 0.6
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "operation.apptypeval"
+   },
+   "statement": "Holds a fixed set of 5 robot application-type categories (Material Handling, Painting, Assembly, Palletizing, Welding); the 'word' vs 'phrase' format split flagged by automated checks is simply because some category names contain a space and is not a mix of different kinds of identifiers.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "robot_details.mfgnameval"
+   },
+   "statement": "Holds a fixed set of 5 robot manufacturer names (FANUC, Universal Robots, Yaskawa, KUKA, ABB); the 'word' vs 'phrase' split flagged by checks is only because 'Universal Robots' contains a space, not a true mix of identifier types.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "robot_details.ctrltypeval"
+   },
+   "statement": "Holds a categorical controller-type code of the form Controller_<family><number> (15 distinct values across families A, B, C), identifying the controller model/series, not a free-text description.",
+   "confidence": 0.55
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "actuation_data.tcpxval"
+   },
+   "statement": "Holds a continuous signed real-valued TCP x-position measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings, not evidence of two different kinds of values.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "actuation_data.tcpyval"
+   },
+   "statement": "Holds a continuous signed real-valued TCP y-position measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "actuation_data.tcp_rxval"
+   },
+   "statement": "Holds a continuous signed real-valued TCP rotation (x-axis orientation) measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "actuation_data.tcp_ryval"
+   },
+   "statement": "Holds a continuous signed real-valued TCP rotation (y-axis orientation) measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "actuation_data.tcp_rzval"
+   },
+   "statement": "Holds a continuous signed real-valued TCP rotation (z-axis orientation) measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "system_controller.controller_metrics"
+   },
+   "statement": "Stores a JSON-encoded object embedding multiple controller sub-metrics (e.g. a load_value field) as a single text value rather than one atomic measurement; grouping on the raw text therefore splits logically related readings into many near-duplicate categories because other embedded fields differ.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "joint_performance.joint_metrics"
+   },
+   "statement": "Stores a JSON-encoded object embedding multiple per-joint sub-metrics (e.g. joint1.angle) as a single text value rather than one atomic measurement, so each row's value is a composite record, not a simple scalar.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "value_meaning",
+    "subject": "performance_and_safety.safety_metrics"
+   },
+   "statement": "Stores a JSON-encoded object including an 'overloads' count (and likely other safety sub-metrics) as a single text value rather than one atomic measurement.",
+   "confidence": 0.65
+  },
+  {
+   "slot": {
+    "claim_kind": "coverage",
+    "subject": "operation"
+   },
+   "statement": "Operation application types and modes observed in this extract are limited to the 5 apptypeval categories found (Material Handling, Painting, Assembly, Palletizing, Welding); any other application type does not appear in this data.",
+   "confidence": 0.4
+  },
+  {
+   "slot": {
+    "claim_kind": "coverage",
+    "subject": "robot_details"
+   },
+   "statement": "Manufacturers represented in this extract are limited to the 5 found (FANUC, Universal Robots, Yaskawa, KUKA, ABB); other manufacturers are not covered by this data.",
+   "confidence": 0.4
+  }
+ ],
+ "outputs": [
+  "{\"claims\": [\n  {\"claim_kind\": \"grain\", \"subject\": \"robot_record.recreg\", \"statement\": \"One row represents a single robot record (the base entity for a robot instance).\", \"confidence\": 0.85, \"cites\": [\"recreg uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"robot_details.botdetreg\", \"statement\": \"One row represents the detail/profile snapshot for one robot, in a strict 1:1 relationship with robot_record.\", \"confidence\": 0.85, \"cites\": [\"botdetreg uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\", \"botdetreg joins to robot_record.recreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"operation.operreg\", \"statement\": \"One row represents a single operation instance for a robot, in a 1:1 relationship with robot_record and robot_details.\", \"confidence\": 0.8, \"cites\": [\"operreg uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\", \"operbotdetref joins to robot_details.botdetreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"actuation_data.actreg\", \"statement\": \"One row represents a single actuation reading, which is in a strict 1:1 relationship with one operation and one robot record rather than one of many time-stamped readings per operation.\", \"confidence\": 0.8, \"cites\": [\"actreg uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\", \"actoperref joins to operation.operreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\", \"actrecref joins to robot_record.recreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"maintenance_and_fault.upkeepactuation\", \"statement\": \"One row represents the maintenance/fault assessment tied to one actuation (and hence one operation and one robot).\", \"confidence\": 0.8, \"cites\": [\"upkeepactuation uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\", \"upkeepactuation joins to actuation_data.actreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"performance_and_safety.effectivenessactuation\", \"statement\": \"One row represents the performance/safety measurement tied to one actuation.\", \"confidence\": 0.8, \"cites\": [\"effectivenessactuation uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\", \"effectivenessactuation joins to actuation_data.actreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"system_controller.systemoverseeractuation\", \"statement\": \"One row represents the controller metrics record tied to one actuation.\", \"confidence\": 0.8, \"cites\": [\"systemoverseeractuation uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\", \"systemoverseeractuation joins to actuation_data.actreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"joint_condition.jcdetref\", \"statement\": \"Although no primary key is declared, jcdetref (and likewise jcondoperref, jcrecref) is unique per row, so one row represents the joint-condition snapshot tied to exactly one robot, one operation and one record; the 1:1 grain is enforced only by the data, not by a schema constraint.\", \"confidence\": 0.55, \"cites\": [\"jcdetref uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\", \"jcdetref joins to robot_details.botdetreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"joint_performance.jperfdetref\", \"statement\": \"Although no primary key is declared, jperfdetref is unique per row, so one row represents the joint-performance snapshot tied to exactly one robot, one operation and one record, with the 1:1 grain enforced only by the data.\", \"confidence\": 0.55, \"cites\": [\"jperfdetref uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\", \"jperfdetref joins to robot_details.botdetreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"mechanical_status.mechdetref\", \"statement\": \"Although no primary key is declared, mechdetref is unique per row, so one row represents the mechanical-status snapshot tied to exactly one robot, one operation and one record, with the 1:1 grain enforced only by the data.\", \"confidence\": 0.55, \"cites\": [\"mechdetref uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\", \"mechdetref joins to robot_details.botdetreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"operation.progcyclecount\", \"statement\": \"progcyclecount happens to be unique across all 1,000 rows; this is likely a coincidence of the data rather than evidence that program-cycle counts are designed to be unique identifiers, so it should not be relied on as a key.\", \"confidence\": 0.3, \"cites\": [\"progcyclecount uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\"]},\n  {\"claim_kind\": \"grain\", \"subject\": \"maintenance_and_fault.upkeepcostest\", \"statement\": \"upkeepcostest happens to be unique across all 1,000 rows; this is likely a coincidence of continuous-valued cost estimates rather than a meaningful key.\", \"confidence\": 0.3, \"cites\": [\"upkeepcostest uniquely identifies a row and so uniquely identifies a record: 1,000 distinct values across 1,000 rows.\"]},\n  {\"claim_kind\": \"coverage\", \"subject\": \"robot_record\", \"statement\": \"The dataset is structured so that every robot record has exactly one matching robot_details, operation, and actuation_data row (and downstream tables), i.e. it is a one-reading-per-robot snapshot extract rather than a time series of multiple operations or readings per robot.\", \"confidence\": 0.65, \"cites\": [\"botdetreg joins to robot_record.recreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\", \"operrecref joins to robot_record.recreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\", \"actrecref joins to robot_record.recreg for 100.0% of the 1,000 rows that populate it. The relationship is many-to-one, so a join will not fan out and sums stay correct.\"]},\n  {\"claim_kind\": \"coverage\", \"subject\": \"robot_details\", \"statement\": \"Installation dates recorded for robots span 2022-05-27 to 2024-11-11 (31 distinct months); robots installed outside this window, if any exist in reality, are not present in this extract, and any time trend ending at 2024-11-11 reflects the extract cutoff, not necessarily a real-world decline.\", \"confidence\": 0.75, \"cites\": [\"Data covers 2022-05-27 to 2024-11-11, spanning 31 distinct month(s). Anything outside that window is absent rather than zero, and a trend that ends at 2024-11-11 is an artefact of the extract, not a real decline.\"]},\n  {\"claim_kind\": \"coverage\", \"subject\": \"maintenance_and_fault\", \"statement\": \"Every actuation has a matching maintenance_and_fault row, but a large share of them carry no fault code, issue category, issue level, or fault-type estimation, meaning most actuations in this extract show no detected fault or issue rather than missing records.\", \"confidence\": 0.5, \"cites\": [\"Empty in 48.7% of the 1,000 rows in scope. Any average, rate, or join over this column silently excludes those rows.\", \"Empty in 21.6% of the 1,000 rows in scope. Any average, rate, or join over this column silently excludes those rows.\", \"Empty in 20.2% of the 1,000 rows in scope. Any average, rate, or join over this column silently excludes those rows.\"]},\n  {\"claim_kind\": \"term_boundary\", \"subject\": \"maintenance_and_fault.faultcodeval\", \"statement\": \"A 'fault' is identified by a non-empty faultcodeval; the ~48.7% of rows where it is empty are actuations with no fault recorded, not missing data to be imputed.\", \"confidence\": 0.45, \"cites\": [\"Empty in 48.7% of the 1,000 rows in scope. Any average, rate, or join over this column silently excludes those rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"maintenance_and_fault.faultcodeval\", \"statement\": \"Empty/null values mean no fault code was raised for that actuation rather than an unrecorded measurement.\", \"confidence\": 0.45, \"cites\": [\"Empty in 48.7% of the 1,000 rows in scope. Any average, rate, or join over this column silently excludes those rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"maintenance_and_fault.issuecategoryval\", \"statement\": \"Holds a categorical fault/issue category (Mechanical, Electrical, Communication, Software) with null meaning no issue category applies to that actuation (about 20% of rows).\", \"confidence\": 0.5, \"cites\": [\"Holds 5 distinct values: Mechanical (225), Electrical (202), None (202), Communication (195), Software (176).\", \"Empty in 20.2% of the 1,000 rows in scope. Any average, rate, or join over this column silently excludes those rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"maintenance_and_fault.issuelevelval\", \"statement\": \"Holds an ordinal-looking severity scale (Low, Medium, High, Critical) with null meaning no active issue/severity applies (about 18% of rows).\", \"confidence\": 0.5, \"cites\": [\"Holds 5 distinct values: Medium (219), Critical (204), High (202), Low (191), None (184).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"maintenance_and_fault.faulttypeestimation\", \"statement\": \"Holds a categorical estimated fault origin (Gearbox, Motor, Controller, Joint) with null meaning no fault type was estimated for that actuation (about 21.6% of rows).\", \"confidence\": 0.5, \"cites\": [\"Holds 5 distinct values: Gearbox (225), None (216), Motor (192), Controller (184), Joint (183).\", \"Empty in 21.6% of the 1,000 rows in scope. Any average, rate, or join over this column silently excludes those rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.brk1statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing brake 1 condition, roughly evenly distributed, not a numeric severity.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Warning (338), Error (336), Normal (326).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.brk2statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing brake 2 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Normal (353), Warning (342), Error (305).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.brk3statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing brake 3 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Error (364), Warning (325), Normal (311).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.brk4statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing brake 4 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Error (340), Warning (339), Normal (321).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.brk5statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing brake 5 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Normal (344), Warning (330), Error (326).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.brk6statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing brake 6 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Normal (343), Warning (342), Error (315).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.enc1statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing encoder 1 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Error (345), Warning (328), Normal (327).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.enc2statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing encoder 2 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Error (369), Warning (336), Normal (295).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.enc3statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing encoder 3 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Error (354), Warning (331), Normal (315).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.enc4statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing encoder 4 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Error (352), Warning (332), Normal (316).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.enc5statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing encoder 5 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Normal (342), Error (330), Warning (328).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"mechanical_status.enc6statval\", \"statement\": \"Holds a three-level categorical status (Normal, Warning, Error) describing encoder 6 condition.\", \"confidence\": 0.6, \"cites\": [\"Holds 3 distinct values: Warning (364), Error (333), Normal (303).\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"operation.apptypeval\", \"statement\": \"Holds a fixed set of 5 robot application-type categories (Material Handling, Painting, Assembly, Palletizing, Welding); the 'word' vs 'phrase' format split flagged by automated checks is simply because some category names contain a space and is not a mix of different kinds of identifiers.\", \"confidence\": 0.65, \"cites\": [\"Holds 5 distinct values: Material Handling (220), Painting (199), Assembly (196), Palletizing (194), Welding (191).\", \"Values fall into 2 distinct format classes. The dominant class is word (example Assembly, 780 rows); 220 rows use a different format, for example: Material Handling. The column therefore holds more than one kind of identifier, and filtering as if it held one will silently drop rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"robot_details.mfgnameval\", \"statement\": \"Holds a fixed set of 5 robot manufacturer names (FANUC, Universal Robots, Yaskawa, KUKA, ABB); the 'word' vs 'phrase' split flagged by checks is only because 'Universal Robots' contains a space, not a true mix of identifier types.\", \"confidence\": 0.65, \"cites\": [\"Holds 5 distinct values: FANUC (205), Universal Robots (202), Yaskawa (202), KUKA (197), ABB (194).\", \"Values fall into 2 distinct format classes. The dominant class is word (example ABB, 798 rows); 202 rows use a different format, for example: Universal Robots. The column therefore holds more than one kind of identifier, and filtering as if it held one will silently drop rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"robot_details.ctrltypeval\", \"statement\": \"Holds a categorical controller-type code of the form Controller_<family><number> (15 distinct values across families A, B, C), identifying the controller model/series, not a free-text description.\", \"confidence\": 0.55, \"cites\": [\"Holds 15 distinct values: Controller_C1 (79), Controller_A3 (78), Controller_A2 (75), Controller_C2 (74), Controller_C5 (72), Controller_A1 (70), Controller_C4 (70), Controller_B1 (68) ....\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"actuation_data.tcpxval\", \"statement\": \"Holds a continuous signed real-valued TCP x-position measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings, not evidence of two different kinds of values.\", \"confidence\": 0.65, \"cites\": [\"Values fall into 2 distinct format classes. The dominant class is alphanumeric (example -100.56, 510 rows); 490 rows use a different format, for example: 1000.48. The column therefore holds more than one kind of identifier, and filtering as if it held one will silently drop rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"actuation_data.tcpyval\", \"statement\": \"Holds a continuous signed real-valued TCP y-position measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings.\", \"confidence\": 0.65, \"cites\": [\"Values fall into 2 distinct format classes. The dominant class is alphanumeric (example -10.87, 502 rows); 498 rows use a different format, for example: 1.36. The column therefore holds more than one kind of identifier, and filtering as if it held one will silently drop rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"actuation_data.tcp_rxval\", \"statement\": \"Holds a continuous signed real-valued TCP rotation (x-axis orientation) measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings.\", \"confidence\": 0.65, \"cites\": [\"Values fall into 2 distinct format classes. The dominant class is alphanumeric (example -0.08, 519 rows); 481 rows use a different format, for example: 0.58. The column therefore holds more than one kind of identifier, and filtering as if it held one will silently drop rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"actuation_data.tcp_ryval\", \"statement\": \"Holds a continuous signed real-valued TCP rotation (y-axis orientation) measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings.\", \"confidence\": 0.65, \"cites\": [\"Values fall into 2 distinct format classes. The dominant class is numeric (example 0.06, 521 rows); 479 rows use a different format, for example: -0.84. The column therefore holds more than one kind of identifier, and filtering as if it held one will silently drop rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"actuation_data.tcp_rzval\", \"statement\": \"Holds a continuous signed real-valued TCP rotation (z-axis orientation) measurement; the numeric/alphanumeric split reported by automated checks is only an artifact of the minus sign on negative readings.\", \"confidence\": 0.65, \"cites\": [\"Values fall into 2 distinct format classes. The dominant class is numeric (example 0.13, 506 rows); 494 rows use a different format, for example: -0.24. The column therefore holds more than one kind of identifier, and filtering as if it held one will silently drop rows.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"system_controller.controller_metrics\", \"statement\": \"Stores a JSON-encoded object embedding multiple controller sub-metrics (e.g. a load_value field) as a single text value rather than one atomic measurement; grouping on the raw text therefore splits logically related readings into many near-duplicate categories because other embedded fields differ.\", \"confidence\": 0.65, \"cites\": [\"48 value families have more than one variant spelling: {\\\"load_value\\\": 78.95 (3 variants), {\\\"load_value\\\": 11.16 (2 variants), {\\\"load_value\\\": 11.21 (2 variants), {\\\"load_value\\\": 14.56 (2 variants), {\\\"load_value\\\": 15.86 (2 variants), {\\\"load_value\\\": 17.92 (2 variants), {\\\"load_value\\\": 19.98 (2 variants), {\\\"load_value\\\": 2.77 (2 variants) .... Grouping on the raw value splits each family into separate categories.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"joint_performance.joint_metrics\", \"statement\": \"Stores a JSON-encoded object embedding multiple per-joint sub-metrics (e.g. joint1.angle) as a single text value rather than one atomic measurement, so each row's value is a composite record, not a simple scalar.\", \"confidence\": 0.65, \"cites\": [\"16 value families have more than one variant spelling: {\\\"joint1\\\": {\\\"angle\\\": -175.17 (3 variants), {\\\"joint1\\\": {\\\"angle\\\": -143.59 (2 variants), {\\\"joint1\\\": {\\\"angle\\\": -160.89 (2 variants), {\\\"joint1\\\": {\\\"angle\\\": -19.40 (2 variants), {\\\"joint1\\\": {\\\"angle\\\": -30.03 (2 variants), {\\\"joint1\\\": {\\\"angle\\\": -81.13 (2 variants), {\\\"joint1\\\": {\\\"angle\\\": -98.57 (2 variants), {\\\"joint1\\\": {\\\"angle\\\": 119.25 (2 variants) .... Grouping on the raw value splits each family into separate categories.\"]},\n  {\"claim_kind\": \"value_meaning\", \"subject\": \"performance_and_safety.safety_metrics\", \"statement\": \"Stores a JSON-encoded object including an 'overloads' count (and likely other safety sub-metrics) as a single text value rather than one atomic measurement.\", \"confidence\": 0.65, \"cites\": [\"6 value families have more than one variant spelling: {\\\"overloads\\\": 5 (181 variants), {\\\"overloads\\\": 3 (167 variants), {\\\"overloads\\\": 2 (166 variants), {\\\"overloads\\\": null (166 variants), {\\\"overloads\\\": 4 (162 variants), {\\\"overloads\\\": 1 (154 variants). Grouping on the raw value splits each family into separate categories.\"]},\n  {\"claim_kind\": \"coverage\", \"subject\": \"operation\", \"statement\": \"Operation application types and modes observed in this extract are limited to the 5 apptypeval categories found (Material Handling, Painting, Assembly, Palletizing, Welding); any other application type does not appear in this data.\", \"confidence\": 0.4, \"cites\": [\"Holds 5 distinct values: Material Handling (220), Painting (199), Assembly (196), Palletizing (194), Welding (191).\"]},\n  {\"claim_kind\": \"coverage\", \"subject\": \"robot_details\", \"statement\": \"Manufacturers represented in this extract are limited to the 5 found (FANUC, Universal Robots, Yaskawa, KUKA, ABB); other manufacturers are not covered by this data.\", \"confidence\": 0.4, \"cites\": [\"Holds 5 distinct values: FANUC (205), Universal Robots (202), Yaskawa (202), KUKA (197), ABB (194).\"]}\n]}"
+ ],
+ "input_tokens": 27449,
+ "output_tokens": 14447,
+ "failure": ""
+}
