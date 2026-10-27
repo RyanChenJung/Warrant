@@ -192,20 +192,46 @@ def run_validation(
     return report
 
 
-def earlier_runs(results: Path) -> tuple[list[str], str | None]:
-    """The run ids of earlier validation runs in `results`, in order, and the first complete one."""
+def expected_by_claim(defects: tuple[Defect, ...]) -> dict[tuple[str, str], tuple[dict, str, dict[str, str]]]:
+    """Each validation claim of the freeze's `defects` by (defect, role): its slot, text and expected
+    labels, as its record stores them. The records do not keep the reading statements, so they are
+    not part of it."""
+    slots = {d.id: {"claim_kind": d.slot.claim_kind.value, "subject": d.slot.subject} for d in defects}
+    return {(c.defect, c.role): (slots[c.defect], c.claim, {reading: label.value for reading, label in c.expected.items()})
+            for c in validation_claims(defects)}
+
+
+def judged_by_claim(records: list[dict]) -> dict[tuple[str, str], tuple[dict, str, dict[str, str]]]:
+    """The claims a run's records judged, in the form of `expected_by_claim`."""
+    return {(r["defect"], r["role"]): (r["slot"], r["claim"], r["expected"])
+            for r in records if r.get("record") == "claim"}
+
+
+def earlier_runs(results: Path, defects: tuple[Defect, ...] | None = None) -> tuple[list[str], str | None]:
+    """The run ids of earlier validation runs in `results`, in order, and the first complete one.
+
+    With a freeze's `defects`, only the runs on its validation claims count (#147): the default file
+    is shared, so a second freeze's validation may follow the first's in it. A run that judged a claim
+    not among them was made on another freeze, and a complete run counts only if it judged exactly
+    them."""
     if not results.exists():
         return [], None
-    runs, complete = [], []
+    by_run: dict[str, list[dict]] = {}
     for line in results.read_text().splitlines():
         record = json.loads(line)
-        if record.get("operation") != OPERATION:
+        if record.get("operation") == OPERATION:
+            by_run.setdefault(record["run_id"], []).append(record)
+    wanted = None if defects is None else expected_by_claim(defects)
+    runs, first = [], None
+    for run_id, records in by_run.items():
+        judged = judged_by_claim(records)
+        if wanted is not None and any(wanted.get(key) != value for key, value in judged.items()):
             continue
-        if record["run_id"] not in runs:
-            runs.append(record["run_id"])
-        if record.get("record") == "complete":
-            complete.append(record["run_id"])
-    return runs, next((run for run in runs if run in complete), None)
+        runs.append(run_id)
+        complete = any(r.get("record") == "complete" for r in records)
+        if first is None and complete and (wanted is None or judged == wanted):
+            first = run_id
+    return runs, first
 
 
 def main(argv=None) -> int:
@@ -243,7 +269,7 @@ def main(argv=None) -> int:
     except ValueError as error:
         parser.error(f"{args.config}: {error}")  # a misconfiguration, before any claim is judged
 
-    runs, first_complete = earlier_runs(args.results)
+    runs, first_complete = earlier_runs(args.results, config.defects)
     if runs:
         print(f"This is a repeated run (earlier runs in {args.results}: {', '.join(runs)}); "
               + (f"the first complete run is {first_complete}, and it is the one used."

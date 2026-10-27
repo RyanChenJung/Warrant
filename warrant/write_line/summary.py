@@ -1,6 +1,6 @@
 """The write line's summary (#53), recomputed from stored results with no model call.
 
-    uv run python -m warrant.write_line.summary --config <run config> --results <results.jsonl> --judge-validation <judge_validation.jsonl> [--without <question id>]... [--out <summary.json, default results/thin/summary.json>]
+    uv run python -m warrant.write_line.summary --config <run config> --results <results.jsonl> --judge-validation <judge_validation.jsonl> [--without <question id>]... [--out <summary.json, default summary.json beside the results>] [--replace]
 
 It reads the run's records in the format of #53's comments: one complete run, the first whose
 `complete` record is in the file for this configuration (`run_ids`); within it, each claim's first
@@ -465,7 +465,7 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
               validation: Path | None = None, without: Sequence[str] = ()) -> dict:
     """The summary of the first complete run of the configuration `config_hash` names in `records`, with
     the committed `predictions`; `validation` is the judge's validation file, which must clear the
-    run's judge method and model and is the evaluation cost. A question found unscorable during the run
+    run's judge method and model on the configuration's freeze (#147) and is the evaluation cost. A question found unscorable during the run
     stays in the confirmatory analysis (ADR 0011); `without` names the questions to leave out of a second
     analysis, given as `descriptive.without`."""
     if unknown := [q for q in without if q not in {x.id for x in config.questions}]:
@@ -476,7 +476,8 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
         raise ValueError("the run's judgements were made with more than one judge method")
     validated = None
     if validation is not None:
-        if methods and (problems := validation_problems(validation, json.loads(methods.pop()), selected.model)):
+        if methods and (problems := validation_problems(validation, json.loads(methods.pop()), selected.model,
+                                                        config.defects)):
             raise ValueError("; ".join(problems))
         validated = [json.loads(line) for line in Path(validation).read_text().splitlines()]
     tokens = _tokens(selected.of)
@@ -561,6 +562,16 @@ def _report(summary: Mapping) -> str:
     return "\n".join(lines)
 
 
+def _held(text: str) -> str:
+    """What an existing output file holds, for the refusal: whose summary, or no summary."""
+    try:
+        found = json.loads(text)
+    except ValueError:
+        found = None
+    run = found.get("run_id") if isinstance(found, dict) else None
+    return f"the summary of run {run}" if run else "no summary"
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, type=Path, help="the run configuration")
@@ -568,12 +579,16 @@ def main(argv=None) -> int:
     parser.add_argument("--predictions", type=Path,
                         help="the committed predictions (default: those naming the configuration's injection record)")
     parser.add_argument("--judge-validation", required=True, type=Path,
-                        help="the judge's validation file: it must clear the run's judge method (rubric SHA-256 included), model and prompt version")
+                        help="the judge's validation file: it must clear the run's judge method (rubric SHA-256 included), model and prompt version "
+                             "on the configuration's freeze")
     parser.add_argument("--without", action="append", default=[], metavar="QUESTION_ID",
                         help="a question found unscorable during the run; it stays in the confirmatory analysis, "
                              "and the analysis without it is given as descriptive (repeatable)")
-    parser.add_argument("--out", type=Path, default=Path("results/thin/summary.json"),
-                        help="where to write the summary as JSON (default: results/thin/summary.json, beside the run's results)")
+    parser.add_argument("--out", type=Path,
+                        help="where to write the summary as JSON (default: summary.json beside the run's results)")
+    parser.add_argument("--replace", action="store_true",
+                        help="replace an existing --out file this summary would change; without it, only an identical "
+                             "summary is written over it")
     args = parser.parse_args(argv)
     config = load_config(args.config)
     try:
@@ -587,8 +602,26 @@ def main(argv=None) -> int:
     except ValueError as error:
         print(f"refused: {error}")
         return 1
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(summary, indent=2) + "\n")
+    # Beside the run's results, so a second freeze's summary does not land on the first's (#147); and an
+    # existing file is written over only by an identical summary, which reproduces it, unless --replace.
+    out = args.out or args.results.parent / "summary.json"
+    text = json.dumps(summary, indent=2) + "\n"
+    if out.exists() and not args.replace:
+        try:
+            existing = out.read_text()
+        except (OSError, UnicodeDecodeError) as error:
+            print(f"refused: {out} cannot be read ({type(error).__name__}); pass another --out")
+            return 1
+        if existing != text:
+            print(f"refused: {out} holds {_held(existing)}, which this summary of run {summary['run_id']} would "
+                  "change; pass --replace to replace it, or another --out")
+            return 1
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text)
+    except OSError as error:
+        print(f"refused: {out} cannot be written ({type(error).__name__}); pass another --out")
+        return 1
     print(_report(summary))
     return 0
 

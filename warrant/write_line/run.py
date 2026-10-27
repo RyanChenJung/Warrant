@@ -776,12 +776,13 @@ def committed_predictions_for(config: Config, directory: Path = REPO / "predicti
 
 def _claim_writing_problems(config: Config, judge_validation: Path) -> list[str]:
     """Why the run may not make its first claim-writing call (#54, `global.judge.validation`): the
-    judge's validation must be complete, with this run's judge method and model."""
+    judge's validation must be complete, with this run's judge method and model, on this run's
+    freeze (#147)."""
     try:
         method = JudgeMethod.from_freeze(config.global_part or {})
     except (KeyError, ValueError) as error:
         return [f"the configuration's judge method: {error!r}"]
-    return validation_problems(judge_validation, method.record(), config.model.model)
+    return validation_problems(judge_validation, method.record(), config.model.model, config.defects)
 
 
 def main(argv=None) -> int:

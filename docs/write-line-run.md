@@ -25,7 +25,7 @@ repeated except that call.
 3. **The credentials:** `aws sts get-caller-identity` names the lead's account. The run's own first
    call is the real check.
 4. **The judge's validation:** the run writes no claim until a complete validation, made with this
-   run's judge method and model, is in the file given with `--judge-validation`. The committed one is
+   run's judge method and model on this run's freeze, is in the file given with `--judge-validation`. The committed one is
    `results/judge_validation/2026-10-21-4af7c61.jsonl`. The $100 cap counts its spend too.
 5. **One results file for the whole run:** `results/thin/<date>-<short commit>.jsonl`, as
    `results/pilot/` holds the pilot's. Every invocation of the run uses this same file: the cap, the

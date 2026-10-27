@@ -539,7 +539,7 @@ def test_judgements_made_with_another_method_than_the_validated_one_are_refused(
     next(r for r in records if r["record"] == "judgement")["method"] = {"operation": "judge", "rubric_sha256": "x"}
     with pytest.raises(ValueError, match="method"):
         summarise_(records)
-    monkeypatch.setattr(summary_module, "validation_problems", lambda path, method, model: ["no judge validation"])
+    monkeypatch.setattr(summary_module, "validation_problems", lambda path, method, model, defects: ["no judge validation"])
     with pytest.raises(ValueError, match="no judge validation"):
         summarise_(validation=tmp_path / "judge_validation.jsonl")
 
@@ -587,8 +587,23 @@ def test_judgements_of_a_variant_without_its_confidence_rule_are_evaluation_cost
     assert cost["evaluation"]["judge_validation"] is None
 
 
+def test_the_validation_is_checked_against_the_summarised_runs_own_freeze(monkeypatch, tmp_path):
+    # #147: a second freeze's summary must not pass on the first freeze's validation.
+    given = {}
+
+    def record(path, method, model, defects):
+        given["defects"] = defects
+        return []
+
+    monkeypatch.setattr(summary_module, "validation_problems", record)
+    path = tmp_path / "judge_validation.jsonl"
+    path.write_text(json.dumps({"input_tokens": 700, "output_tokens": 70}) + "\n")
+    summarise_(validation=path)
+    assert given["defects"] == CONFIG.defects
+
+
 def test_the_judge_validation_file_is_evaluation_cost_charged_to_no_rule(monkeypatch, tmp_path):
-    monkeypatch.setattr(summary_module, "validation_problems", lambda path, method, model: [])
+    monkeypatch.setattr(summary_module, "validation_problems", lambda path, method, model, defects: [])
     path = tmp_path / "judge_validation.jsonl"
     path.write_text(json.dumps({"input_tokens": 700, "output_tokens": 70, "duration_s": 1.5}) + "\n"
                     + json.dumps({"record": "note"}) + "\n")
@@ -620,16 +635,68 @@ def test_the_runs_total_spend_sits_beside_the_per_rule_costs_and_is_not_their_su
     assert "total spend" in summary_module._report(result)
 
 
-def test_the_summary_is_written_to_results_thin_by_default(tmp_path, monkeypatch, capsys, validated):
-    monkeypatch.chdir(tmp_path)
-    results = tmp_path / "results.jsonl"
-    results.write_text("\n".join(json.dumps(r) for r in build()) + "\n")
+def _command(tmp_path, results, validated):
     predictions = tmp_path / "predictions.json"
     predictions.write_text(json.dumps(PREDICTIONS))
+    results.parent.mkdir(parents=True, exist_ok=True)
+    results.write_text("\n".join(json.dumps(r) for r in build()) + "\n")
+    return ["--config", str(FIXTURES / "write_line_summary.yaml"), "--results", str(results),
+            "--predictions", str(predictions), "--judge-validation", str(validated)]
+
+
+def test_the_summary_is_written_beside_the_runs_results_by_default(tmp_path, monkeypatch, capsys, validated):
+    # #147: a second freeze's results sit in their own folder, and its summary goes beside them, not
+    # over the first run's results/thin/summary.json.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(summary_module, "config_hash", lambda path: HASH)
-    assert main(["--config", str(FIXTURES / "write_line_summary.yaml"), "--results", str(results),
-                 "--predictions", str(predictions), "--judge-validation", str(validated)]) == 0
-    assert list((tmp_path / "results" / "thin").glob("*.json"))
+    assert main(_command(tmp_path, tmp_path / "results" / "second" / "results.jsonl", validated)) == 0
+    assert json.loads((tmp_path / "results" / "second" / "summary.json").read_text())["run_id"]
+    assert not (tmp_path / "results" / "thin").exists()
+
+
+def test_the_summary_of_the_same_run_is_written_again_so_a_committed_one_can_be_reproduced(
+        tmp_path, monkeypatch, capsys, validated):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(summary_module, "config_hash", lambda path: HASH)
+    command = _command(tmp_path, tmp_path / "results.jsonl", validated)
+    assert main(command) == 0
+    first = (tmp_path / "summary.json").read_text()
+    assert main(command) == 0 and (tmp_path / "summary.json").read_text() == first
+
+
+@pytest.mark.parametrize("held", ['{"run_id": "another-run"}\n', "not a summary\n", "[]\n", "{}\n"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_a_file_the_summary_would_change_is_not_replaced(tmp_path, monkeypatch, capsys, validated, held, explicit):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(summary_module, "config_hash", lambda path: HASH)
+    out = tmp_path / ("chosen.json" if explicit else "summary.json")
+    command = _command(tmp_path, tmp_path / "results.jsonl", validated) + (["--out", str(out)] if explicit else [])
+    out.write_text(held)
+    assert main(command) == 1
+    assert "refused" in capsys.readouterr().out and out.read_text() == held
+
+
+def test_a_changed_summary_of_the_same_run_replaces_the_file_only_when_asked(tmp_path, monkeypatch, capsys, validated):
+    # A summary of the same run with other content (another --without, or a code change) is not
+    # written over the committed one silently.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(summary_module, "config_hash", lambda path: HASH)
+    command = _command(tmp_path, tmp_path / "results.jsonl", validated)
+    assert main(command) == 0
+    out = tmp_path / "summary.json"
+    edited = json.dumps({**json.loads(out.read_text()), "edited": True})
+    out.write_text(edited)
+    assert main(command) == 1 and out.read_text() == edited
+    assert main([*command, "--replace"]) == 0 and "edited" not in json.loads(out.read_text())
+
+
+def test_an_out_that_cannot_be_read_is_refused(tmp_path, monkeypatch, capsys, validated):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(summary_module, "config_hash", lambda path: HASH)
+    (tmp_path / "folder").mkdir()
+    command = _command(tmp_path, tmp_path / "results.jsonl", validated)
+    assert main([*command, "--out", str(tmp_path / "folder")]) == 1
+    assert "refused" in capsys.readouterr().out
 
 
 def test_token_totals_are_reported_per_operation(result):
@@ -692,7 +759,7 @@ def test_the_command_takes_questions_to_leave_out_more_than_once(tmp_path, monke
 @pytest.fixture
 def validated(tmp_path, monkeypatch):
     """A judge validation file that clears every check, so a command test gets past it."""
-    monkeypatch.setattr(summary_module, "validation_problems", lambda path, method, model: [])
+    monkeypatch.setattr(summary_module, "validation_problems", lambda path, method, model, defects: [])
     path = tmp_path / "judge_validation.jsonl"
     path.write_text(json.dumps({"input_tokens": 700, "output_tokens": 70}) + "\n")
     return path
@@ -936,4 +1003,4 @@ def test_the_command_exits_non_zero_on_a_refusal_and_writes_no_summary(tmp_path,
                str(predictions), "--judge-validation", str(validated)]
     assert main([*command, "--out", str(out)]) == 1
     assert "refused" in capsys.readouterr().out and not out.exists()
-    assert main(command) == 1 and not (tmp_path / "results").exists()
+    assert main(command) == 1 and not out.exists()
