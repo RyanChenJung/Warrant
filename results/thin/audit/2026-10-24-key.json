@@ -1,0 +1,365 @@
+{
+  "run_id": "f0b8374e7ebd4db0bcf049a8f82f3362",
+  "items": {
+    "C01": {
+      "defect": "orders-cut",
+      "claim": "Orders table holds 733 orders from 733 distinct users (userlink is fully unique and matches users 100%), meaning no user placed more than one order in this dataset.",
+      "occurrences": [
+        [
+          1,
+          30
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C02": {
+      "defect": "orders-cut",
+      "claim": "userlink, createspot, clientmark and orderstamp are each unique across all 733 order rows, meaning in this data no user has more than one order and no two orders share a creation timestamp or client reference; this may be an artifact of the sample rather than an enforced business rule.",
+      "occurrences": [
+        [
+          2,
+          31
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C03": {
+      "defect": "orders-cut",
+      "claim": "The orders table holds only 733 orders and covers only 733 of the 1,000 users; 267 users have no order in this table, so absence of a user here does not mean they placed no orders, only that none are recorded. In addition, fees, orderexecutions and riskandmargin reference order ids that do not exist in this table for about 26.6% of their rows, indicating the orders table itself is missing roughly a quarter of the orders that generated fees, executions, or risk records elsewhere.",
+      "occurrences": [
+        [
+          3,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C04": {
+      "defect": "orders-cut",
+      "claim": "The orders table holds only 733 orders, while fees, orderexecutions, and riskandmargin each hold 1,000 rows and reference order ids via orderslink/ordersmark/ordervault; 26.6% of those references (266 rows, sharing the same missing id example 'OB101796') point to orders that do not exist in this table. The orders table therefore silently omits a meaningful share of the orders that fee, execution, and risk records refer to.",
+      "occurrences": [
+        [
+          4,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C05": {
+      "defect": "orders-cut",
+      "claim": "orders holds only 733 order records while fees, orderexecutions and riskandmargin each carry 1,000 rows referencing order ids, about 26.6% of which (the same 266 ids in each satellite table) do not exist in orders. The orders table therefore omits roughly a quarter of the orders that have fee, execution, or risk records elsewhere.",
+      "occurrences": [
+        [
+          5,
+          31
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C06": {
+      "defect": "orders-cut",
+      "claim": "The orders table holds only 733 orders, while fees, orderexecutions and riskandmargin each have 1,000 rows and reference order identifiers that only match orders.recordvault 73.4% of the time; roughly 267 order identifiers referenced by those tables are not present in orders, so fees/executions/risk records can exist for orders that cannot be found here.",
+      "occurrences": [
+        [
+          6,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C07": {
+      "defect": "orders-cut",
+      "claim": "orders holds only 733 records, while fees, orderexecutions and riskandmargin each hold 1,000 rows that reference an order id, of which only 73.4% match a row in orders. The orders table therefore does not cover roughly 26.6% of the order ids referenced elsewhere in the schema, so related fee, execution and risk rows for those ids cannot be joined to order details.",
+      "occurrences": [
+        [
+          7,
+          12
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C08": {
+      "defect": "orders-cut",
+      "claim": "This table holds only 733 orders, while fees, orderexecutions, and riskandmargin each have 1,000 rows and only match an existing order about 73.4% of the time (266 unmatched rows each, pointing to the same missing order IDs). The orders table therefore appears to be a partial extract that omits roughly 26.6% of the orders known to the rest of the database.",
+      "occurrences": [
+        [
+          8,
+          11
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C09": {
+      "defect": "orders-cut",
+      "claim": "The orders table covers only 733 of the roughly 1,000 orders that are referenced by fees, orderexecutions, and riskandmargin; about 266-267 order identifiers used elsewhere do not exist in orders, so those records cannot be joined to an order and silently drop out of an inner join.",
+      "occurrences": [
+        [
+          9,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C10": {
+      "defect": "orders-cut",
+      "claim": "Orders only holds 733 orders, and its userlink column is unique per row, so no user has more than one order recorded here; this is a subset of activity, not a full order history per user.",
+      "occurrences": [
+        [
+          10,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "filled-cut",
+        "B": "nothing-cut",
+        "C": "cancelled-cut",
+        "D": "archived",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C11": {
+      "defect": "wallet-sum",
+      "claim": "walletsum is a derived total equal to availsum + frozensum + margsum; it should not be summed alongside its three components.",
+      "occurrences": [
+        [
+          1,
+          3
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    },
+    "C12": {
+      "defect": "wallet-sum",
+      "claim": "walletsum is a derived total equal to availsum + frozensum + margsum; it is not an independent balance and summing it together with its components double-counts.",
+      "occurrences": [
+        [
+          2,
+          2
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    },
+    "C13": {
+      "defect": "wallet-sum",
+      "claim": "Wallet balance (walletsum) is a derived total equal to availsum + frozensum + margsum; summing walletsum together with any of its components double counts.",
+      "occurrences": [
+        [
+          3,
+          34
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    },
+    "C14": {
+      "defect": "wallet-sum",
+      "claim": "Wallet balance (walletsum) is a derived total equal to availsum + frozensum + margsum; summing walletsum together with any of its three components double counts.",
+      "occurrences": [
+        [
+          4,
+          12
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    },
+    "C15": {
+      "defect": "wallet-sum",
+      "claim": "Wallet balance (walletsum) is defined as availsum + frozensum + margsum; it is a derived total, so adding it to its components double counts.",
+      "occurrences": [
+        [
+          5,
+          3
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    },
+    "C16": {
+      "defect": "wallet-sum",
+      "claim": "walletsum (the wallet balance) is a derived total equal to availsum + frozensum + margsum; summing walletsum together with any of its components double counts.",
+      "occurrences": [
+        [
+          6,
+          30
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    },
+    "C17": {
+      "defect": "wallet-sum",
+      "claim": "walletsum (the 'wallet balance') is computed as availsum + frozensum + margsum; it is a derived total, not an independent balance.",
+      "occurrences": [
+        [
+          7,
+          18
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    },
+    "C18": {
+      "defect": "wallet-sum",
+      "claim": "walletsum (wallet balance) is a derived total equal to availsum + frozensum + margsum; it should not be summed alongside its components.",
+      "occurrences": [
+        [
+          8,
+          15
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    },
+    "C19": {
+      "defect": "wallet-sum",
+      "claim": "wallet balance (walletsum) is a derived total equal to availsum + frozensum + margsum; it is not an independent quantity, so summing walletsum alongside its components double counts.",
+      "occurrences": [
+        [
+          9,
+          36
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    },
+    "C20": {
+      "defect": "wallet-sum",
+      "claim": "The wallet balance (walletsum) is a derived total equal to availsum + frozensum + margsum; summing walletsum together with its components would double count.",
+      "occurrences": [
+        [
+          10,
+          36
+        ]
+      ],
+      "letters": {
+        "A": "with-margin",
+        "B": "four-terms",
+        "C": "without-frozen",
+        "D": "with-unrealised-pnl",
+        "E": "without-margin"
+      }
+    }
+  }
+}
