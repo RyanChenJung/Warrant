@@ -1,0 +1,757 @@
+{
+  "run_id": "f0b8374e7ebd4db0bcf049a8f82f3362",
+  "config_hash": "2bc1e9c6a0e2dceee8d6cd0a359a299df64e166116997553c0ae8a36ce18829d",
+  "model": "anthropic.claude-sonnet-5",
+  "repeated_runs": [],
+  "confirmatory": {
+    "label": "confirmatory",
+    "k": 2,
+    "rules": {
+      "settlement": {
+        "answers": 0,
+        "accuracy": null,
+        "wrong_answers": 0,
+        "failure_rate": null,
+        "clarification_rate": null,
+        "person_asks": 2
+      },
+      "confidence": {
+        "answers": 0,
+        "accuracy": null,
+        "wrong_answers": 0,
+        "failure_rate": null,
+        "clarification_rate": null,
+        "person_asks": 2
+      }
+    },
+    "all_defect_probes": {
+      "label": "all defect probes, descriptive",
+      "rules": {
+        "settlement": {
+          "answers": 69,
+          "accuracy": 0.8260869565217391,
+          "wrong_answers": 12,
+          "failure_rate": 0.0,
+          "clarification_rate": 0.0,
+          "person_asks": 2
+        },
+        "confidence": {
+          "answers": 69,
+          "accuracy": 0.8115942028985508,
+          "wrong_answers": 13,
+          "failure_rate": 0.0,
+          "clarification_rate": 0.0,
+          "person_asks": 2
+        }
+      }
+    },
+    "slots": [],
+    "questions": [],
+    "result": "rules coincide; H3 not tested at write time",
+    "test": null,
+    "ranking": [
+      "seeing-recode",
+      "orders-cut",
+      "wallet-sum"
+    ],
+    "scores": {
+      "wallet-sum": {
+        "agreement": 1.0,
+        "mean_confidence": 0.917
+      },
+      "orders-cut": {
+        "agreement": 0.1111111111111111,
+        "mean_confidence": 0.5
+      },
+      "seeing-recode": null
+    }
+  },
+  "descriptive": {
+    "label": "descriptive",
+    "per_slot": {
+      "label": "descriptive",
+      "slots": {}
+    },
+    "sensitivity": {
+      "label": "descriptive"
+    },
+    "variants": {
+      "confident": {
+        "label": "descriptive",
+        "contributions": {
+          "coverage": {
+            "label": "descriptive",
+            "agent": {
+              "mean": -0.1111111111111111,
+              "interval": [
+                -0.3333333333333333,
+                0.0
+              ],
+              "differences": {
+                "cancelled-limit-orders": 0.0,
+                "cancelled-share": 0.0,
+                "fee-per-order": -1.0,
+                "fees-charged": 0.0,
+                "fees-on-cancelled": 0.0,
+                "filled-notional": 0.0,
+                "filled-notional-on-cancelled": 0.0,
+                "orders-cancelled": 0.0,
+                "orders-placed": 0.0
+              }
+            },
+            "person": {
+              "mean": 0.7407407407407407,
+              "interval": [
+                0.4444444444444444,
+                1.0
+              ],
+              "differences": {
+                "cancelled-limit-orders": 1.0,
+                "cancelled-share": 0.6666666666666666,
+                "fee-per-order": 1.0,
+                "fees-charged": 0.0,
+                "fees-on-cancelled": 1.0,
+                "filled-notional": 0.0,
+                "filled-notional-on-cancelled": 1.0,
+                "orders-cancelled": 1.0,
+                "orders-placed": 1.0
+              }
+            },
+            "outcome": "person_only",
+            "near_cutoff": false,
+            "predicted": "both",
+            "agrees": false
+          },
+          "column_formula": {
+            "label": "descriptive",
+            "agent": {
+              "mean": 0.16666666666666666,
+              "interval": [
+                0.0,
+                0.5
+              ],
+              "differences": {
+                "available-majority": 0.0,
+                "frozen-majority": 0.0,
+                "margin-majority": 0.0,
+                "total-held": 0.0,
+                "user-wallet-excluding-margin": 0.0,
+                "user-wallet-excluding-unrealised": 1.0
+              }
+            },
+            "person": {
+              "mean": 0.05555555555555555,
+              "interval": [
+                -0.4444444444444444,
+                0.5
+              ],
+              "differences": {
+                "available-majority": 0.0,
+                "frozen-majority": 0.0,
+                "margin-majority": 0.0,
+                "total-held": 1.0,
+                "user-wallet-excluding-margin": 0.3333333333333333,
+                "user-wallet-excluding-unrealised": -1.0
+              }
+            },
+            "outcome": "no_measurable_contribution",
+            "near_cutoff": true,
+            "predicted": "agent_alone",
+            "agrees": false
+          },
+          "value_meaning": {
+            "label": "descriptive",
+            "agent": {
+              "mean": 0.0,
+              "interval": [
+                0.0,
+                0.0
+              ],
+              "differences": {
+                "best-seeing-clear-weather": 0.0,
+                "best-seeing-completed-decodings": 0.0,
+                "best-seeing-dwarf-sources": 0.0,
+                "best-seeing-natural-signals": 0.0,
+                "best-seeing-observatories": 0.0,
+                "best-seeing-signals": 0.0,
+                "best-seeing-technosignatures": 0.0,
+                "best-seeing-telescopes": 0.0
+              }
+            },
+            "person": {
+              "mean": 0.0,
+              "interval": [
+                0.0,
+                0.0
+              ],
+              "differences": {
+                "best-seeing-clear-weather": 0.0,
+                "best-seeing-completed-decodings": 0.0,
+                "best-seeing-dwarf-sources": 0.0,
+                "best-seeing-natural-signals": 0.0,
+                "best-seeing-observatories": 0.0,
+                "best-seeing-signals": 0.0,
+                "best-seeing-technosignatures": 0.0,
+                "best-seeing-telescopes": 0.0
+              }
+            },
+            "outcome": "no_measurable_contribution",
+            "near_cutoff": false,
+            "predicted": "person_only",
+            "agrees": false
+          }
+        },
+        "curve": {
+          "label": "descriptive",
+          "points": [
+            {
+              "k": 0,
+              "wrong_writes": 0,
+              "wrong_writes_with_splits": 0,
+              "incomplete": 1
+            },
+            {
+              "k": 1,
+              "wrong_writes": 0,
+              "wrong_writes_with_splits": 0,
+              "incomplete": 1
+            },
+            {
+              "k": 2,
+              "wrong_writes": 0,
+              "wrong_writes_with_splits": 0,
+              "incomplete": 0
+            },
+            {
+              "k": 3,
+              "wrong_writes": 0,
+              "wrong_writes_with_splits": 0,
+              "incomplete": 0
+            }
+          ],
+          "settlement": {
+            "asks": 2,
+            "wrong_writes": 0,
+            "wrong_writes_with_splits": 0,
+            "incomplete": 0
+          }
+        },
+        "rules_coincide": true
+      },
+      "abstain": {
+        "label": "descriptive",
+        "contributions": {
+          "coverage": {
+            "label": "descriptive",
+            "agent": {
+              "mean": 0.0,
+              "interval": [
+                0.0,
+                0.0
+              ],
+              "differences": {
+                "cancelled-limit-orders": 0.0,
+                "cancelled-share": 0.0,
+                "fee-per-order": 0.0,
+                "fees-charged": 0.0,
+                "fees-on-cancelled": 0.0,
+                "filled-notional": 0.0,
+                "filled-notional-on-cancelled": 0.0,
+                "orders-cancelled": 0.0,
+                "orders-placed": 0.0
+              }
+            },
+            "person": {
+              "mean": 0.6296296296296297,
+              "interval": [
+                0.3333333333333333,
+                0.8888888888888888
+              ],
+              "differences": {
+                "cancelled-limit-orders": 1.0,
+                "cancelled-share": 0.6666666666666666,
+                "fee-per-order": 0.0,
+                "fees-charged": 0.0,
+                "fees-on-cancelled": 1.0,
+                "filled-notional": 0.0,
+                "filled-notional-on-cancelled": 1.0,
+                "orders-cancelled": 1.0,
+                "orders-placed": 1.0
+              }
+            },
+            "outcome": "person_only",
+            "near_cutoff": false,
+            "predicted": "both",
+            "agrees": false
+          },
+          "column_formula": {
+            "label": "descriptive",
+            "agent": {
+              "mean": 0.2777777777777778,
+              "interval": [
+                -0.1111111111111111,
+                0.6666666666666666
+              ],
+              "differences": {
+                "available-majority": 0.0,
+                "frozen-majority": 0.0,
+                "margin-majority": 0.0,
+                "total-held": 1.0,
+                "user-wallet-excluding-margin": -0.3333333333333333,
+                "user-wallet-excluding-unrealised": 1.0
+              }
+            },
+            "person": {
+              "mean": -0.05555555555555555,
+              "interval": [
+                -0.5,
+                0.3333333333333333
+              ],
+              "differences": {
+                "available-majority": 0.0,
+                "frozen-majority": 0.0,
+                "margin-majority": 0.0,
+                "total-held": 0.0,
+                "user-wallet-excluding-margin": 0.6666666666666666,
+                "user-wallet-excluding-unrealised": -1.0
+              }
+            },
+            "outcome": "agent_alone",
+            "near_cutoff": true,
+            "predicted": "agent_alone",
+            "agrees": true
+          },
+          "value_meaning": {
+            "label": "descriptive",
+            "agent": {
+              "mean": 0.0,
+              "interval": [
+                0.0,
+                0.0
+              ],
+              "differences": {
+                "best-seeing-clear-weather": 0.0,
+                "best-seeing-completed-decodings": 0.0,
+                "best-seeing-dwarf-sources": 0.0,
+                "best-seeing-natural-signals": 0.0,
+                "best-seeing-observatories": 0.0,
+                "best-seeing-signals": 0.0,
+                "best-seeing-technosignatures": 0.0,
+                "best-seeing-telescopes": 0.0
+              }
+            },
+            "person": {
+              "mean": 0.0,
+              "interval": [
+                0.0,
+                0.0
+              ],
+              "differences": {
+                "best-seeing-clear-weather": 0.0,
+                "best-seeing-completed-decodings": 0.0,
+                "best-seeing-dwarf-sources": 0.0,
+                "best-seeing-natural-signals": 0.0,
+                "best-seeing-observatories": 0.0,
+                "best-seeing-signals": 0.0,
+                "best-seeing-technosignatures": 0.0,
+                "best-seeing-telescopes": 0.0
+              }
+            },
+            "outcome": "no_measurable_contribution",
+            "near_cutoff": false,
+            "predicted": "person_only",
+            "agrees": false
+          }
+        },
+        "curve": {
+          "label": "descriptive",
+          "points": [
+            {
+              "k": 0,
+              "wrong_writes": 0,
+              "wrong_writes_with_splits": 0,
+              "incomplete": 0
+            },
+            {
+              "k": 1,
+              "wrong_writes": 0,
+              "wrong_writes_with_splits": 0,
+              "incomplete": 0
+            },
+            {
+              "k": 2,
+              "wrong_writes": 0,
+              "wrong_writes_with_splits": 0,
+              "incomplete": 0
+            },
+            {
+              "k": 3,
+              "wrong_writes": 0,
+              "wrong_writes_with_splits": 0,
+              "incomplete": 0
+            }
+          ],
+          "settlement": {
+            "asks": 2,
+            "wrong_writes": 0,
+            "wrong_writes_with_splits": 0,
+            "incomplete": 0
+          }
+        },
+        "rules_coincide": true,
+        "comparison": {
+          "k": 2,
+          "rules": {
+            "settlement": {
+              "answers": 0,
+              "accuracy": null,
+              "wrong_answers": 0,
+              "failure_rate": null,
+              "clarification_rate": null,
+              "person_asks": 2
+            },
+            "confidence": {
+              "answers": 0,
+              "accuracy": null,
+              "wrong_answers": 0,
+              "failure_rate": null,
+              "clarification_rate": null,
+              "person_asks": 2
+            }
+          },
+          "all_defect_probes": {
+            "label": "all defect probes, descriptive",
+            "rules": {
+              "settlement": {
+                "answers": 69,
+                "accuracy": 0.9558823529411765,
+                "wrong_answers": 3,
+                "failure_rate": 0.014492753623188406,
+                "clarification_rate": 0.0,
+                "person_asks": 2
+              },
+              "confidence": {
+                "answers": 69,
+                "accuracy": 0.927536231884058,
+                "wrong_answers": 5,
+                "failure_rate": 0.0,
+                "clarification_rate": 0.0,
+                "person_asks": 2
+              }
+            }
+          },
+          "slots": [],
+          "questions": [],
+          "result": "rules coincide; H3 not tested at write time",
+          "test": null,
+          "ranking": [
+            "seeing-recode",
+            "orders-cut",
+            "wallet-sum"
+          ],
+          "scores": {
+            "wallet-sum": {
+              "agreement": 1.0,
+              "mean_confidence": 0.927
+            },
+            "orders-cut": {
+              "agreement": 0.4444444444444444,
+              "mean_confidence": 0.86
+            },
+            "seeing-recode": null
+          },
+          "per_slot": {},
+          "sensitivity": {}
+        }
+      }
+    },
+    "rules": {
+      "label": "all defect probes, descriptive",
+      "rules": {
+        "empty": {
+          "answers": 69,
+          "accuracy": 0.6567164179104478,
+          "wrong_answers": 23,
+          "failure_rate": 0.028985507246376812,
+          "clarification_rate": 0.0,
+          "person_asks": 0
+        },
+        "all_person": {
+          "answers": 69,
+          "accuracy": 0.9420289855072463,
+          "wrong_answers": 4,
+          "failure_rate": 0.0,
+          "clarification_rate": 0.0,
+          "person_asks": 3
+        },
+        "all_agent": {
+          "answers": 69,
+          "accuracy": 0.6307692307692307,
+          "wrong_answers": 24,
+          "failure_rate": 0.0,
+          "clarification_rate": 0.057971014492753624,
+          "person_asks": 0
+        },
+        "settlement": {
+          "answers": 69,
+          "accuracy": 0.8260869565217391,
+          "wrong_answers": 12,
+          "failure_rate": 0.0,
+          "clarification_rate": 0.0,
+          "person_asks": 2
+        },
+        "confidence": {
+          "answers": 69,
+          "accuracy": 0.8115942028985508,
+          "wrong_answers": 13,
+          "failure_rate": 0.0,
+          "clarification_rate": 0.0,
+          "person_asks": 2
+        },
+        "all_agent_abstain": {
+          "answers": 69,
+          "accuracy": 0.7101449275362319,
+          "wrong_answers": 20,
+          "failure_rate": 0.0,
+          "clarification_rate": 0.0,
+          "person_asks": 0
+        },
+        "settlement_abstain": {
+          "answers": 69,
+          "accuracy": 0.9558823529411765,
+          "wrong_answers": 3,
+          "failure_rate": 0.014492753623188406,
+          "clarification_rate": 0.0,
+          "person_asks": 2
+        },
+        "confidence_abstain": {
+          "answers": 69,
+          "accuracy": 0.927536231884058,
+          "wrong_answers": 5,
+          "failure_rate": 0.0,
+          "clarification_rate": 0.0,
+          "person_asks": 2
+        }
+      }
+    },
+    "flip_rate": 0.3125,
+    "slots": {
+      "confident": {
+        "wallet-sum": {
+          "samples_filling": 10,
+          "settled_left_empty": false
+        },
+        "orders-cut": {
+          "samples_filling": 10,
+          "settled_left_empty": false
+        },
+        "seeing-recode": {
+          "samples_filling": 0,
+          "settled_left_empty": false
+        }
+      },
+      "abstain": {
+        "wallet-sum": {
+          "samples_filling": 10,
+          "settled_left_empty": false
+        },
+        "orders-cut": {
+          "samples_filling": 10,
+          "settled_left_empty": false
+        },
+        "seeing-recode": {
+          "samples_filling": 0,
+          "settled_left_empty": false
+        }
+      }
+    },
+    "judge": {
+      "confident": {
+        "pairs": 120,
+        "unstable": 6,
+        "share": 0.05,
+        "true_reading_splits": 0,
+        "resent": 0,
+        "cut_short": []
+      },
+      "abstain": {
+        "pairs": 120,
+        "unstable": 8,
+        "share": 0.06666666666666667,
+        "true_reading_splits": 0,
+        "resent": 0,
+        "cut_short": []
+      }
+    },
+    "cost": {
+      "label": "descriptive",
+      "note": "each rule's method cost holds everything that rule needs, so a call two rules need (sample 1) is in both, and the method costs do not add up across rules",
+      "method": {
+        "empty": null,
+        "all_person": null,
+        "all_agent": {
+          "calls": 2,
+          "input_tokens": 57418,
+          "output_tokens": 48514,
+          "dollars": 0.599976,
+          "seconds_total": 401.70710170827806,
+          "seconds_median": 200.85355085413903
+        },
+        "settlement": {
+          "calls": 2,
+          "input_tokens": 57418,
+          "output_tokens": 48514,
+          "dollars": 0.599976,
+          "seconds_total": 407.0358044584282,
+          "seconds_median": 200.85355085413903,
+          "battery_s": 5.328702750150114
+        },
+        "confidence": {
+          "calls": 40,
+          "input_tokens": 624256,
+          "output_tokens": 506032,
+          "dollars": 6.308832,
+          "seconds_total": 4564.637032333761,
+          "seconds_median": 119.56304820859805
+        },
+        "all_agent_abstain": {
+          "calls": 2,
+          "input_tokens": 57388,
+          "output_tokens": 30112,
+          "dollars": 0.415896,
+          "seconds_total": 248.52705220831558,
+          "seconds_median": 124.26352610415779
+        },
+        "settlement_abstain": {
+          "calls": 2,
+          "input_tokens": 57388,
+          "output_tokens": 30112,
+          "dollars": 0.415896,
+          "seconds_total": 253.8557549584657,
+          "seconds_median": 124.26352610415779,
+          "battery_s": 5.328702750150114
+        },
+        "confidence_abstain": {
+          "calls": 40,
+          "input_tokens": 624130,
+          "output_tokens": 488178,
+          "dollars": 6.13004,
+          "seconds_total": 4469.540121794213,
+          "seconds_median": 118.793739187764
+        }
+      },
+      "answering": {
+        "empty": {
+          "calls": 99,
+          "input_tokens": 1439712,
+          "output_tokens": 57564,
+          "dollars": 3.455064,
+          "seconds_total": 776.1860049525276,
+          "seconds_median": 4.301962791010737
+        },
+        "all_person": {
+          "calls": 99,
+          "input_tokens": 1095837,
+          "output_tokens": 45660,
+          "dollars": 2.648274,
+          "seconds_total": 608.0135034122504,
+          "seconds_median": 4.300494416151196
+        },
+        "all_agent": {
+          "calls": 99,
+          "input_tokens": 2196948,
+          "output_tokens": 54395,
+          "dollars": 4.937846,
+          "seconds_total": 722.6836835406721,
+          "seconds_median": 6.139124666340649
+        },
+        "settlement": {
+          "calls": 99,
+          "input_tokens": 1892659,
+          "output_tokens": 49034,
+          "dollars": 4.275658,
+          "seconds_total": 637.0172403370962,
+          "seconds_median": 4.454056208953261
+        },
+        "confidence": {
+          "calls": 99,
+          "input_tokens": 2011435,
+          "output_tokens": 53871,
+          "dollars": 4.56158,
+          "seconds_total": 699.1038895356469,
+          "seconds_median": 4.416424749884754
+        },
+        "all_agent_abstain": {
+          "calls": 99,
+          "input_tokens": 1783663,
+          "output_tokens": 39866,
+          "dollars": 3.965986,
+          "seconds_total": 558.573873877991,
+          "seconds_median": 4.288108708336949
+        },
+        "settlement_abstain": {
+          "calls": 99,
+          "input_tokens": 1620384,
+          "output_tokens": 40745,
+          "dollars": 3.648218,
+          "seconds_total": 550.3514497098513,
+          "seconds_median": 3.433665208052844
+        },
+        "confidence_abstain": {
+          "calls": 99,
+          "input_tokens": 1527589,
+          "output_tokens": 38934,
+          "dollars": 3.444518,
+          "seconds_total": 523.3395859235898,
+          "seconds_median": 3.3975113332271576
+        }
+      },
+      "evaluation": {
+        "judge_validation": {
+          "calls": 6,
+          "input_tokens": 13368,
+          "output_tokens": 2928,
+          "dollars": 0.056016,
+          "seconds_total": null,
+          "seconds_median": null
+        },
+        "judgements": {}
+      },
+      "total_spend": {
+        "input_tokens": 14816613,
+        "output_tokens": 1374279,
+        "dollars": 43.376016
+      },
+      "repeated_runs_spend": [],
+      "file_spend": {
+        "input_tokens": 14829981,
+        "output_tokens": 1377207,
+        "dollars": 43.432032
+      },
+      "person_asks": {
+        "empty": 0,
+        "all_person": 3,
+        "all_agent": 0,
+        "settlement": 2,
+        "confidence": 2,
+        "all_agent_abstain": 0,
+        "settlement_abstain": 2,
+        "confidence_abstain": 2
+      }
+    },
+    "tokens": {
+      "answer": {
+        "input_tokens": 13568227,
+        "output_tokens": 380069
+      },
+      "write_claims": {
+        "input_tokens": 1148060,
+        "output_tokens": 740064
+      },
+      "judge": {
+        "input_tokens": 100326,
+        "output_tokens": 254146
+      }
+    }
+  }
+}
