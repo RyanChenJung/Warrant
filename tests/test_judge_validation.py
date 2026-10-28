@@ -3,6 +3,7 @@ reference claim and drift-reading statement of the committed freeze are compared
 flags, and mismatches are reported, not fixed. Each slot's readings reach the judge in one order,
 drawn once from the freeze's seed. No test reaches the model."""
 
+import dataclasses
 import json
 import random
 import re
@@ -21,7 +22,7 @@ from warrant.freeze.validate import clean_databases
 from warrant.store.results import Provenance
 from warrant.write_line.config import load_config
 from warrant.write_line.judging import reading_orders, reading_orders_for
-from warrant.write_line.validate_judge import main, run_validation, validate, validation_claims
+from warrant.write_line.validate_judge import earlier_runs, main, run_validation, validate, validation_claims
 
 REPO = Path(__file__).parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -342,3 +343,14 @@ def test_a_dry_run_prints_every_prompt_it_would_send_and_makes_no_model_call(fre
     assert out.count("Readings:") == 8  # four defects, a reference claim and a drift statement each
     assert "at most 6 calls each" in out
     assert not results.exists()
+
+
+def test_only_the_runs_on_a_freezes_own_claims_count_as_its_earlier_runs():
+    # #147: the default validation file is shared by both freezes, so the first freeze's run is not a
+    # "repeated run" of the second, and is not the one the second uses.
+    committed = REPO / "results" / "judge_validation" / "2026-10-21-4af7c61.jsonl"
+    (run_id,) = {json.loads(line)["run_id"] for line in committed.read_text().splitlines()}
+    second = tuple(dataclasses.replace(d, id=f"slot-{i}") for i, d in enumerate(DEFECTS))
+    assert earlier_runs(committed, DEFECTS) == ([run_id], run_id)
+    assert earlier_runs(committed, second) == ([], None)
+    assert earlier_runs(committed) == ([run_id], run_id)

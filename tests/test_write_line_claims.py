@@ -5,6 +5,7 @@ and each question gets its own database's store. No test calls a model.
 The fixture is `tests/fixtures/freeze_predictions.yaml` (see tests/test_write_line_stores.py).
 """
 
+import dataclasses
 import json
 import sqlite3
 from pathlib import Path
@@ -290,6 +291,16 @@ def test_claim_writing_waits_for_a_complete_judge_validation_of_the_runs_judge_m
     assert run_module._claim_writing_problems(pilot, validation) == []
     assert run_module._claim_writing_problems(pilot, tmp_path / "none.jsonl") == [
         f"no judge validation in {tmp_path / 'none.jsonl'}"]
+
+
+def test_claim_writing_waits_for_a_judge_validation_of_the_runs_own_freeze():
+    # A second freeze (#61, #147) on the first freeze's validation: the judge never saw its claims.
+    pilot = load_config(REPO / "configs" / "write_line_pilot.yaml")
+    validation = REPO / "results" / "judge_validation" / "2026-10-21-4af7c61.jsonl"
+    second = dataclasses.replace(pilot, defects=tuple(dataclasses.replace(d, id=f"slot-{i}")
+                                                      for i, d in enumerate(pilot.defects)))
+    (problem,) = run_module._claim_writing_problems(second, validation)
+    assert "another freeze" in problem and "slot-0" in problem
 
 
 def test_the_command_hands_the_run_the_claim_writer_it_built(write_line_config, tmp_path, monkeypatch):

@@ -2,6 +2,7 @@
 checks the freeze asks for before the first claim-writing call. Nothing here calls a model."""
 
 import copy
+import dataclasses
 import json
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 import yaml
 
 from warrant.agent.judge import JudgeMethod
+from warrant.defects.inject import load_defect
 from warrant.write_line.guards import (
     LIST_PRICES,
     Prices,
@@ -28,6 +30,8 @@ VALIDATION = REPO / "results" / "judge_validation" / "2026-10-21-4af7c61.jsonl"
 PREDICTIONS = REPO / "predictions" / "9cfd501f2182-write_line.json"
 FREEZE = REPO / "freeze" / "write_line.yaml"
 MODEL = "anthropic.claude-sonnet-5"
+# The committed validation was made on this freeze's defects.
+DEFECTS = tuple(load_defect(d) for d in yaml.safe_load(FREEZE.read_text())["defects"])
 
 
 @pytest.fixture
@@ -159,18 +163,86 @@ def test_provenance_that_differs_between_runs_is_not_compared():
 
 
 def test_the_committed_validation_clears_claim_writing(method):
-    assert validation_problems(VALIDATION, method, MODEL) == []
+    assert validation_problems(VALIDATION, method, MODEL, DEFECTS) == []
 
 
 def test_no_validation_file_or_no_complete_run_blocks_claim_writing(method, tmp_path):
-    assert validation_problems(tmp_path / "none.jsonl", method, MODEL)
+    assert validation_problems(tmp_path / "none.jsonl", method, MODEL, DEFECTS)
     partial = tmp_path / "partial.jsonl"
     lines = VALIDATION.read_text().splitlines()
     partial.write_text("\n".join(line for line in lines if json.loads(line)["record"] != "complete") + "\n")
-    assert any("no complete" in p for p in validation_problems(partial, method, MODEL))
+    assert any("no complete" in p for p in validation_problems(partial, method, MODEL, DEFECTS))
 
 
 def test_a_validation_with_another_judge_method_or_model_blocks_claim_writing(method):
     other_rubric = {**method, "rubric_sha256": "0" * 64}
-    assert any("method" in p for p in validation_problems(VALIDATION, other_rubric, MODEL))
-    assert any("model" in p for p in validation_problems(VALIDATION, method, "anthropic.claude-other"))
+    assert any("method" in p for p in validation_problems(VALIDATION, other_rubric, MODEL, DEFECTS))
+    assert any("model" in p for p in validation_problems(VALIDATION, method, "anthropic.claude-other", DEFECTS))
+
+
+def test_a_validation_made_on_another_freeze_blocks_claim_writing_and_names_both(method):
+    # A second freeze (#61, #147): its own slots, so the first freeze's validation judged none of them.
+    second = tuple(dataclasses.replace(d, id=f"slot-{i}") for i, d in enumerate(DEFECTS))
+    (problem,) = validation_problems(VALIDATION, method, MODEL, second)
+    assert "another freeze" in problem
+    for defect in DEFECTS + second:
+        assert defect.id in problem
+
+
+def test_a_validation_whose_claims_or_holds_flags_differ_from_the_runs_freeze_blocks_claim_writing(method):
+    # Same slot ids, but a reference claim reworded, or a reading's holds flag changed: the judge was
+    # not checked on this freeze's claims.
+    first, *rest = DEFECTS
+    reworded = (dataclasses.replace(first, reference_claim=first.reference_claim + " Reworded."), *rest)
+    assert any(first.id in p for p in validation_problems(VALIDATION, method, MODEL, reworded))
+    flipped = tuple({**r, "holds": not r["holds"]} if r.get("is_true") else r for r in first.readings)
+    reflagged = (dataclasses.replace(first, readings=flipped), *rest)
+    assert any(first.id in p for p in validation_problems(VALIDATION, method, MODEL, reflagged))
+
+
+def test_a_validation_on_another_slot_with_the_same_id_and_claims_blocks_claim_writing(method):
+    # The judge's prompt names the slot, so a validation of the same claim on another subject is not this one.
+    first, *rest = DEFECTS
+    moved = (dataclasses.replace(first, slot=dataclasses.replace(first.slot, subject="other.subject")), *rest)
+    (problem,) = validation_problems(VALIDATION, method, MODEL, moved)
+    assert f"another slot, claim or expected labels: {first.id}" in problem
+
+
+def test_a_validation_that_judged_fewer_slots_than_the_runs_freeze_blocks_claim_writing(method):
+    # A freeze with one slot more than the validation judged.
+    extra = dataclasses.replace(DEFECTS[0], id="added-slot")
+    assert any("added-slot" in p for p in validation_problems(VALIDATION, method, MODEL, DEFECTS + (extra,)))
+
+
+def _validation_of(defects, run_id):
+    """The committed validation run, as if made on `defects` with `run_id`: slots renamed to match."""
+    by_old = dict(zip((d.id for d in DEFECTS), (d.id for d in defects)))
+    lines = []
+    for line in VALIDATION.read_text().splitlines():
+        record = {**json.loads(line), "run_id": run_id}
+        if "defect" in record:
+            record["defect"] = by_old[record["defect"]]
+        lines.append(json.dumps(record))
+    return lines
+
+
+def test_a_shared_validation_file_clears_each_freeze_on_its_own_validation(method, tmp_path):
+    # #147: the default validation file is shared, so a second freeze's validation follows the first's
+    # in it. Each freeze is cleared by the first complete run on its own claims.
+    second = tuple(dataclasses.replace(d, id=f"slot-{i}") for i, d in enumerate(DEFECTS))
+    shared = tmp_path / "judge_validation.jsonl"
+    shared.write_text("\n".join(VALIDATION.read_text().splitlines() + _validation_of(second, "second-run")) + "\n")
+    assert validation_problems(shared, method, MODEL, DEFECTS) == []
+    assert validation_problems(shared, method, MODEL, second) == []
+
+
+def test_the_first_complete_run_on_the_freezes_own_claims_is_the_one_used(method, tmp_path):
+    # Two complete runs on the second freeze: the first is the one used, so its model is the one checked.
+    second = tuple(dataclasses.replace(d, id=f"slot-{i}") for i, d in enumerate(DEFECTS))
+    other_model = [json.dumps({**json.loads(line), "model": "anthropic.claude-other"})
+                   for line in _validation_of(second, "first-on-second")]
+    shared = tmp_path / "judge_validation.jsonl"
+    shared.write_text("\n".join(VALIDATION.read_text().splitlines() + other_model
+                                + _validation_of(second, "later-on-second")) + "\n")
+    assert any("model" in p for p in validation_problems(shared, method, MODEL, second))
+    assert validation_problems(shared, method, MODEL, DEFECTS) == []

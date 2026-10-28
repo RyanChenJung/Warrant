@@ -11,7 +11,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from warrant.write_line.validate_judge import OPERATION, earlier_runs
+from warrant.defects.inject import Defect
+from warrant.write_line.validate_judge import OPERATION, earlier_runs, expected_by_claim, judged_by_claim
 
 # Decided by the lead on #54 (2026-10-21): the whole run may spend at most this much, and the run
 # pauses after its first complete pass if that pass cost more than this many times its estimate.
@@ -157,19 +158,23 @@ def predictions_differ(computed: Mapping, committed: Mapping) -> list[str]:
     return problems
 
 
-def validation_problems(results: Path, method: Mapping, model: str) -> list[str]:
+def validation_problems(results: Path, method: Mapping, model: str, defects: tuple[Defect, ...]) -> list[str]:
     """Why the judge's validation in `results` does not clear the first claim-writing call
     (`global.judge.validation`): no file, no complete validation run, or a first complete run made
-    with another judge method or model than this run's. Mismatches in the validation itself do not
-    block: the freeze reports them and does not fix them."""
+    with another judge method or model than this run's. Only runs on the claims of `defects`, the
+    freeze the run's configuration names, count (#147): a second freeze is validated on its own
+    claims, and its first complete run on them is the one used. Mismatches in the validation itself
+    do not block: the freeze reports them and does not fix them."""
     results = Path(results)
     if not results.exists():
         return [f"no judge validation in {results}"]
-    _, first = earlier_runs(results)
+    _, first = earlier_runs(results, defects)
     if first is None:
-        return [f"no complete validation run in {results}"]
-    records = [json.loads(line) for line in results.read_text().splitlines()]
-    run = [r for r in records if r.get("operation") == OPERATION and r.get("run_id") == first]
+        _, other = earlier_runs(results)
+        if other is None:
+            return [f"no complete validation run in {results}"]
+        return [_another_freeze(results, judged_by_claim(_run(results, other)), expected_by_claim(defects))]
+    run = _run(results, first)
     problems = []
     models = {r.get("model") for r in run}
     if models != {model}:
@@ -178,3 +183,28 @@ def validation_problems(results: Path, method: Mapping, model: str) -> list[str]
     if not methods or any(m != dict(method) for m in methods):
         problems.append("the validated judge method (rubric, prompt version or calls) differs from this run's")
     return problems
+
+
+def _run(results: Path, run_id: str) -> list[dict]:
+    records = [json.loads(line) for line in results.read_text().splitlines()]
+    return [r for r in records if r.get("operation") == OPERATION and r.get("run_id") == run_id]
+
+
+def _another_freeze(results: Path, judged: Mapping, wanted: Mapping) -> str:
+    """Which claims the first complete validation run judged and which this run's freeze has, where
+    they differ."""
+    def named(keys):
+        return ", ".join(f"{defect} {role}" for defect, role in sorted(keys))
+
+    differences = []
+    if missing := wanted.keys() - judged.keys():
+        differences.append(f"not judged: {named(missing)}")
+    if stray := judged.keys() - wanted.keys():
+        differences.append(f"judged but not in this run's freeze: {named(stray)}")
+    if changed := [key for key in wanted.keys() & judged.keys() if wanted[key] != judged[key]]:
+        differences.append(f"judged with another slot, claim or expected labels: {named(changed)}")
+    ours, theirs = sorted({d for d, _ in wanted}), sorted({d for d, _ in judged})
+    slots = (f"; this run's freeze has {', '.join(ours)}, the first complete run judged {', '.join(theirs)}"
+             if ours != theirs else "")
+    return (f"the complete validation runs in {results} were made on another freeze's claims"
+            f"{slots} ({'; '.join(differences)})")
