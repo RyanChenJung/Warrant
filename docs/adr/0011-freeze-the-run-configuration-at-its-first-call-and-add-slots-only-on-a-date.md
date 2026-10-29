@@ -45,8 +45,10 @@ kind.
   committed and pushed before they are injected. They are designed after seeing the first run, so
   their confirmatory test is reported separately, not pooled with the first freeze's. The first
   freeze's matched asks and test stay as frozen over its three slots. The second freeze fixes,
-  before its own injection, its own k from its own committed predictions, its matched asks and how
-  its test is reported next to the first. It runs under its own configuration and run id.
+  before any model call on its defects, its own k from its own committed predictions, its matched
+  asks and how its test is reported next to the first. Its k cannot be fixed before its injection:
+  the predictions are computed on the injected copies (amended 2026-10-28, #61). It runs under its
+  own configuration and run id.
 
 ## Considered Options
 
@@ -73,14 +75,15 @@ kind.
 - #54 records on #26 the timestamp at which its first complete pass finished, since that timestamp
   decides #61.
 - **If the date holds,** the lead designs #61 (ready-for-human) and #52's owner writes its probes. Its
-  model calls, about $15, sit on their own budget line next to #54's $100 cap.
+  model calls sit under their own cap of $80, set in its run configuration, against an estimate of
+  about $40, next to #54's $100 cap (amended 2026-10-28, #61).
 - **If the date does not hold,** #61 becomes future work. The write-up then reports the first freeze
   alone, including "rules coincide; H3 not tested at write time" if that is the result.
 - **The role of November 16.** Since ADR 0010, that date triggers no fallback; this ADR gives it its
   only remaining role.
 - **Two confirmatory tests.** If the date holds, the first freeze's test stays the primary
   confirmatory test (ADR 0010), and the second freeze's test is reported separately. How the two
-  tests are read together, for example whether any adjustment applies, is fixed in the second freeze
-  before its injection.
+  tests are read together is the alpha rule recorded in ADR 0010, written before the second
+  freeze's injection (amended 2026-10-28, #61).
 - This extends ADR 0006 (feasibility triggers fixed in advance) and ADR 0007 (commit order) and
   amends neither.

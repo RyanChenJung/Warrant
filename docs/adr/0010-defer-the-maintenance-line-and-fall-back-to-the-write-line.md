@@ -36,7 +36,15 @@ against confidence-escalate) is not run in the thin version.
 - The drift readings in the freeze and the bridge predictions in `predictions/` stay as committed.
   The paper presents the bridge, and the claim that a claim's warrant also decides how it is
   maintained, as pre-registered predictions left for future work.
-- The write line's confirmatory test (the settlement rule against the confidence rule, ADR 0007)
-  is the study's only confirmatory test.
+- The write line has two confirmatory tests, each the settlement rule against the confidence rule
+  at matched asks (ADR 0007), one per freeze (amended 2026-10-28, #61).
+  - The first freeze's test is the primary one. Its rules coincided, so it is recorded as not run
+    (#54).
+  - The second freeze's test (ADR 0011) is reported next to it, not pooled.
+  - Its alpha is 0.05, by a rule written after the first run. Had the first freeze's test run, each
+    test would have been at 0.025. It did not, so the second is at 0.05. The family-wise error rate
+    is at most 5% either way.
+  - If the second freeze's rules coincide too, that is reported as it is, and no third freeze is
+    added.
 - The spec (#26) keeps its maintenance sections as the plan for a resumed or later study; the
   decision is recorded there.
