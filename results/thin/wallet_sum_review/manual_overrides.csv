@@ -1,0 +1,4 @@
+normalized_sql,category,reason
+"select sum(walletsum) as total_wallet, sum(margsum) as total_margin, sum(walletsum) + sum(margsum) as combined from accountbalances",reads_walletsum,every projection reads walletsum; no component-only route (the combined column is walletsum + margsum)
+"select sum(walletsum) as total_wallet, sum(margsum) as total_margin, sum(walletsum) + sum(margsum) as combined_total from accountbalances",reads_walletsum,every projection reads walletsum; no component-only route (the combined column is walletsum + margsum)
+"select sum(walletsum) as total_wallet, sum(margsum) as total_margin from accountbalances",reads_walletsum,every projection reads walletsum; no component-only route (the combined column is walletsum + margsum)

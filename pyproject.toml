@@ -12,7 +12,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = [
+    "pytest>=8.0",
+    "sqlglot>=30.26.0",
+]
 
 [tool.uv.build-backend]
 # Flat layout, as in Gloss: the package lives at ./warrant, not ./src/warrant.
