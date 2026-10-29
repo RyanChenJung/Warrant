@@ -288,6 +288,57 @@ def test_the_command_stops_at_the_cap_and_says_how_to_resume(write_line_config, 
     assert sum(r["record"] == "answer" for r in records(results)) == 1
 
 
+def test_a_configuration_without_a_cap_of_its_own_is_held_to_the_first_runs_100(write_line_config, tmp_path, monkeypatch):
+    # Each answer costs $30 at the list price, so a fourth would pass $100.
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly(input_tokens=15_000_000))
+    assert main(main_args(write_line_config, tmp_path)) == 3
+    assert sum(r["record"] == "answer" for r in records(tmp_path / "results.jsonl")) == 3
+
+
+def test_a_configuration_with_its_own_cap_is_held_to_it(write_line_config, tmp_path, monkeypatch, capsys):
+    # At $30 an answer, a third would pass an $80 cap.
+    capped = tmp_path / "capped.yaml"
+    capped.write_text(write_line_config.read_text() + "spending_cap: 80\n")
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly(input_tokens=15_000_000))
+    assert main(main_args(capped, tmp_path)) == 3
+    assert "$80.00 cap" in capsys.readouterr().out
+    assert sum(r["record"] == "answer" for r in records(tmp_path / "results.jsonl")) == 2
+
+
+@pytest.mark.parametrize("cap", ["0", "-5", "true", "'80'", ".inf"])
+def test_a_cap_that_is_not_a_positive_number_of_dollars_is_refused(write_line_config, tmp_path, cap):
+    path = tmp_path / "capped.yaml"
+    path.write_text(write_line_config.read_text() + f"spending_cap: {cap}\n")
+    with pytest.raises(ValueError, match="spending_cap"):
+        load_config(path)
+
+
+def test_an_estimate_file_that_is_not_there_is_refused_when_the_configuration_is_read(write_line_config, tmp_path):
+    # A path written from the repo root, not from the configuration, names no file.
+    path = tmp_path / "estimated.yaml"
+    path.write_text(write_line_config.read_text() + "estimate_from: results/thin/2026-10-24-66a86cb.jsonl\n")
+    with pytest.raises(ValueError, match="estimate_from"):
+        load_config(path)
+
+
+def test_an_estimate_file_without_answers_is_refused_before_any_call(write_line_config, tmp_path, monkeypatch, capsys):
+    (tmp_path / "validation.jsonl").write_text(
+        json.dumps({"record": "claim", "input_tokens": 1_000, "output_tokens": 100}) + "\n")
+    path = tmp_path / "estimated.yaml"
+    path.write_text(write_line_config.read_text() + "estimate_from: validation.jsonl\n")
+    agent = Costly()
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: agent)
+    with pytest.raises(SystemExit):
+        main(main_args(path, tmp_path))
+    assert "no answer record" in capsys.readouterr().err
+    assert agent.calls == 0 and not (tmp_path / "results.jsonl").exists()
+
+
+def test_the_first_runs_configuration_sets_neither_a_cap_nor_an_estimate_file_of_its_own():
+    config = load_config(REPO / "configs" / "write_line_thin.yaml")
+    assert config.spending_cap is None and config.estimate_from is None
+
+
 def test_a_new_run_beside_an_incomplete_run_of_its_configuration_is_refused(write_line_config, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly(input_tokens=30_000_000))
     results = tmp_path / "results.jsonl"
@@ -356,6 +407,21 @@ def test_the_command_pauses_after_the_first_pass_and_goes_on_when_resumed_with_t
     stored = records(results)
     assert stored[-1]["record"] == "complete" and {r["run_id"] for r in stored} == {run_id}
     assert sum(r["record"] == "answer" for r in stored) == 3 * first_pass
+
+
+def test_a_configuration_naming_another_results_file_takes_the_estimate_from_its_answers(
+    write_line_config, tmp_path, monkeypatch
+):
+    # Each answer costs $0.20, as in the test above, but so did the named file's, so the first pass
+    # is within twice its estimate. The file's path is relative to the configuration.
+    (tmp_path / "earlier.jsonl").write_text(
+        json.dumps({"record": "answer", "input_tokens": 100_000, "output_tokens": 0}) + "\n")
+    config_path = tmp_path / "three_runs.yaml"
+    config_path.write_text(write_line_config.read_text().replace("runs: 1", "runs: 3")
+                           + "estimate_from: earlier.jsonl\n")
+    monkeypatch.setattr(run_module, "ClaudeAgent", lambda model: Costly(input_tokens=100_000))
+    assert main(main_args(config_path, tmp_path)) == 0
+    assert records(tmp_path / "results.jsonl")[-1]["record"] == "complete"
 
 
 def test_the_command_hands_the_run_the_committed_predictions(write_line_config, tmp_path, monkeypatch):

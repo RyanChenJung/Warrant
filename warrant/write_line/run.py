@@ -62,6 +62,7 @@ from warrant.write_line.confidence import (
 )
 from warrant.write_line.config import Config, Question, load_config
 from warrant.write_line.guards import (
+    CAP,
     Spend,
     answer_estimate,
     first_pass_cost,
@@ -78,7 +79,8 @@ from warrant.write_line.stores import compose, store_record, variant_of
 from warrant.write_line.warrants import slot_warrants
 
 REPO = Path(__file__).resolve().parents[2]
-# The pilot's answers give the mean tokens per answer the first-pass estimate uses (#54).
+# The pilot's answers give the mean tokens per answer the first-pass estimate uses (#54), unless the
+# configuration names another results file (`estimate_from`, #150).
 PILOT_RESULTS = REPO / "results" / "pilot" / "2026-10-20-e33ac97.jsonl"
 
 
@@ -424,10 +426,10 @@ def run(
     Given a `spend`, which the caller builds from every record already paid for
     (`Spend.from_records`), it stops before a call that could take the spend past its cap. Given a
     `first_pass_estimate`, it pauses after run 0 when that pass's answers cost more than twice the
-    estimate, unless the lead approves it with `approve_first_pass` when resuming a run whose first
-    pass is stored, an approval the start record keeps for later resumes (#54). A stop raises
-    RunStopped and keeps every record; any other error raised once the run has started carries a
-    note naming the run id to resume. Given the `committed_predictions`, the recomputed predictions
+    estimate, unless it is approved with `approve_first_pass` when resuming a run whose first pass is
+    stored, an approval the start record keeps for later resumes (#54). A stop raises RunStopped and
+    keeps every record; any other error raised once the run has started carries a note naming the
+    run id to resume. Given the `committed_predictions`, the recomputed predictions
     must equal them slot by slot, or the run stops before any agent call, since the stores are
     composed from the predictions that fixed k.
     """
@@ -504,7 +506,7 @@ def run(
             append(results, provenance, record)
 
     done = {(r["question_id"], r["rule"], r["run"]) for r in earlier if r.get("record") == "answer"}
-    # The lead approves a first pass whose cost has been seen: one whose every answer is stored.
+    # Only a first pass whose cost has been seen is approved: one whose every answer is stored.
     if approve_first_pass and not all((q.id, rule, 0) in done for rule in config.rules for q in config.questions):
         raise ValueError("there is no first pass to approve yet: the approval resumes a run paused after its "
                          "complete first pass")
@@ -516,7 +518,8 @@ def run(
         if spend is not None and not spend.allows_another_call():
             raise RunStopped(
                 f"stopped before a call that could take the spend past the ${spend.cap:.2f} cap "
-                f"(${spend.total:.2f} spent so far); raising the cap is the lead's decision (#54)", run_id)
+                f"(${spend.total:.2f} spent so far); what happens next is the lead's decision (#54), and a cap "
+                "the configuration sets is frozen with it (ADR 0011)", run_id)
 
     def spent(usage: Usage, started: float, error: BaseException, **fields) -> None:
         """Record the tokens of a call paid for whose result is not stored, so the cap counts them."""
@@ -671,7 +674,8 @@ def run(
                 if over_estimate(actual, first_pass_estimate):
                     raise RunStopped(
                         f"the first pass cost ${actual:.2f}, more than twice its estimate of ${first_pass_estimate:.2f}; "
-                        "the run pauses for the lead and goes on when resumed with the first pass approved", run_id)
+                        "the run pauses so that its cost is looked at, and goes on when resumed with the first pass "
+                        "approved", run_id)
             for rule in config.rules:
                 for q in config.questions:
                     if (q.id, rule, run_index) in done:
@@ -825,13 +829,15 @@ def main(argv=None) -> int:
         judge_model = ClaudeJudge(config.model) if claim_writer is not None else None
         # The cap covers every call already paid for: every run in the results file, a repeated run
         # included, and the judge validation (#54).
-        spend = Spend.from_records(stored + _read(args.judge_validation), prices_for(config.model.model))
+        spend = Spend.from_records(stored + _read(args.judge_validation), prices_for(config.model.model),
+                                   CAP if config.spending_cap is None else config.spending_cap)
         committed = committed_predictions_for(config)
+        estimate_from = PILOT_RESULTS if config.estimate_from is None else config.estimate_from
+        mean_input, mean_output = mean_tokens(json.loads(line) for line in estimate_from.read_text().splitlines())
     except ValueError as error:
         parser.error(f"{args.config}: {error}")  # a misconfiguration, before any question is asked
     if claim_writer is not None and (problems := _claim_writing_problems(config, args.judge_validation)):
         parser.error("no claim is written before the judge's validation clears it: " + "; ".join(problems))
-    mean_input, mean_output = mean_tokens(json.loads(line) for line in PILOT_RESULTS.read_text().splitlines())
     estimate = answer_estimate(len(config.questions) * len(config.rules), mean_input, mean_output, spend.prices)
     # A signal already ignored, as nohup ignores SIGHUP, stays ignored.
     _signalled.clear()
@@ -855,7 +861,7 @@ def main(argv=None) -> int:
     except RunStopped as stop:
         print(f"run {stop.run_id} stopped: {stop}")
         print(f"  resume it with --run-id {stop.run_id}"
-              + (" --approve-first-pass once the lead approves the first pass" if "first pass" in str(stop) else ""))
+              + (" --approve-first-pass once the first pass's cost is accepted" if "first pass" in str(stop) else ""))
         return 3
     finally:
         for signum, handler in handlers.items():

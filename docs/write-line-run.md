@@ -126,3 +126,145 @@ uv run python -m warrant.write_line.audit sheet --config configs/write_line_thin
    data are derived from LiveSQLBench-Base-Lite, and the README's licence list covers `results/`.
 3. **Run the summary (#53)** on the results file, and commit it in `results/thin/`.
 4. **Compare the recorded spend** with the Bedrock bill.
+
+## The second run (#61, #153)
+
+The second freeze's run takes the steps above, with the differences below. Whoever runs it takes
+every step, on the lead's Bedrock account, and needs no approval: the lead decides only what
+happens at the cap.
+
+| | First run | Second run |
+|---|---|---|
+| Configuration | `configs/write_line_thin.yaml` | `configs/write_line_second.yaml` (#152) |
+| Results | `results/thin/<date>-<short commit>.jsonl` | `results/second/<date>-<short commit>.jsonl` |
+| Judge validation | `results/judge_validation/2026-10-21-4af7c61.jsonl` | its own file under `results/judge_validation/` |
+| Cap | $100, the default | $80: `spending_cap: 80` |
+| First-pass estimate | the pilot's answers, the default | the first run's 792 answers: `estimate_from: ../results/thin/2026-10-24-66a86cb.jsonl` |
+
+`estimate_from` is relative to the configuration, as every path in it is. The configuration is
+refused when it names no file, so `--check` catches a path written from the repo root.
+
+### Before the first call
+
+1. **The configuration is final.** #150 and #152 are merged, and the configuration on `main` sets
+   both keys of the table above. From a clean checkout:
+
+   ```bash
+   git switch main && git pull
+   grep -n "^rules:\|^runs:\|^spending_cap:\|^estimate_from:" configs/write_line_second.yaml
+   uv run pytest -q
+   uv run python -m warrant.write_line.run --config configs/write_line_second.yaml --check
+   ```
+
+   `--check` must report `0 problems`.
+2. **The credentials:** the lead's Bedrock credentials stay in a local AWS profile, never in the
+   repo, a comment or a results file. Set `AWS_PROFILE` to that profile for every command below;
+   `aws sts get-caller-identity` must name the lead's account.
+3. **Tell the lead on #153** before the first model call, which is the judge's validation. No
+   approval is needed.
+4. **The judge's validation, in its own file.** The run refuses a validation made on another
+   freeze (#147), so the first run's file does not clear it. `--dry-run` prints the prompts and calls
+   no model:
+
+   ```bash
+   uv run python -m warrant.write_line.validate_judge --config configs/write_line_second.yaml --dry-run
+   uv run python -m warrant.write_line.validate_judge --config configs/write_line_second.yaml \
+     --results results/judge_validation/<date>-<short commit>.jsonl
+   ```
+
+   - Mismatches are reported, not fixed. The $80 cap counts the validation's spend too.
+   - Commit the file in its own PR whose title names #153 only and whose body says `Part of #153`:
+     only the last PR closes #153. Add a section on it to `results/judge_validation/README.md`, as
+     the first validation has.
+   - Start the run only once that PR is merged, from an updated `main` (`git switch main && git
+     pull`). Every record carries the checked-out commit, so a branch's commit would be recorded.
+5. **Keep the process alive,** as in step 6 above.
+
+### Start
+
+```bash
+caffeinate -i uv run python -m warrant.write_line.run --config configs/write_line_second.yaml \
+  --results results/second/<date>-<short commit>.jsonl \
+  --judge-validation results/judge_validation/<file>.jsonl
+```
+
+From this call on, the configuration is not edited (ADR 0011). The run is estimated at about $40
+against the $80 cap (#61), and at about four hours. The first run took 3 hours 55 minutes:
+- about 2.5 minutes per claim-writing sample;
+- about a minute per judgement record;
+- about 6 seconds per answer.
+
+**The first-pass threshold.** The estimate covers the first pass's answers, the number of questions
+times the eight rules, at the first run's mean cost per answer, about $0.039. The run pauses if the
+first pass cost more than twice its estimate. At 30 questions, that is 240 answers, an estimate of
+about $9.37, and a pause above about $18.75. The pause prints both figures.
+
+The run prints its run id only when it stops or completes. While it runs, the id is in the results
+file's start record:
+
+```bash
+python3 -c "import json, sys; print(next(r['run_id'] for r in map(json.loads, open(sys.argv[1])) if r['record'] == 'start'))" results/second/<file>.jsonl
+```
+
+### When it stops
+
+As for the first run, except at these two stops:
+- **The first-pass pause:** post the first pass's cost on #153, then resume with
+  `--approve-first-pass` added. No approval is needed.
+- **The cap:** the next call could pass $80. Do not raise the cap; stop and tell the lead on #153.
+  The cap is part of the configuration, which is frozen (ADR 0011), so the lead decides what
+  happens next.
+
+### As soon as judging is done: the blind audit sheet (#155)
+
+Judging is done when the results file holds 8 `store` records. Then build the sheet:
+
+```bash
+mkdir -p results/second/audit
+uv run python -m warrant.write_line.audit sheet --config configs/write_line_second.yaml \
+  --results results/second/<file>.jsonl --sheet results/second/audit/<date>-sheet.csv \
+  --key <key.json, outside the repo> --run-id <run id>
+```
+
+- **Commit the sheet alone,** in its own PR whose title and body name no defect, table or reading,
+  and whose body says `Part of #153`. Commit it from a second worktree, so that the run's checkout
+  stays on `main` for any resume, since every record carries the checked-out commit:
+
+  ```bash
+  git worktree add -b 153-sheet ../warrant-sheet origin/main
+  mkdir -p ../warrant-sheet/results/second/audit
+  cp results/second/audit/<date>-sheet.csv ../warrant-sheet/results/second/audit/
+  ```
+
+- **Post a direct link to it on #155,** with the path for the filled copy:
+  `results/second/audit/<date>-sheet-filled.csv`.
+- **Keep the key outside the repo,** and share it with no one until the audit's labels are in.
+
+### After the run
+
+Everything else stays local until the auditor's labels are in, since the stores and scores hint at
+the judge's labels. Share the results file only with #154's owner, who runs the summary on it, and
+outside the repo and GitHub. Once the labels are in:
+1. **Compute the audit's agreement:**
+
+   ```bash
+   uv run python -m warrant.write_line.audit agreement --results results/second/<file>.jsonl \
+     --sheet results/second/audit/<date>-sheet-filled.csv --key <key.json> \
+     --auditor <auditor's GitHub login> --out results/second/audit/<date>-audit.jsonl
+   ```
+2. **In one PR, whose body says `Closes #153`, commit:**
+   - the results file with a README, as `results/thin/` has;
+   - the key, as `results/second/audit/<date>-key.json`;
+   - the audit records the agreement wrote;
+   - the run's summary (#154).
+3. **Post the dates on #61:**
+   - when the first complete pass finished, the latest run-0 answer of the run's first run id:
+
+     ```bash
+     python3 -c "import json, sys; rs = [json.loads(l) for l in open(sys.argv[1])]; first = next(r['run_id'] for r in rs if r['record'] == 'start'); print(max(r['timestamp'] for r in rs if r['record'] == 'answer' and r['run'] == 0 and r['run_id'] == first))" results/second/<file>.jsonl
+     ```
+   - when all three runs finished: the `complete` record's timestamp.
+
+   Post the dates only, with no design or results, on #26.
+4. **The spend is not compared with the Bedrock bill,** which the lead cannot read (#54). The
+   recorded spend, the tokens at Anthropic's list price, is reported as unconfirmed.
