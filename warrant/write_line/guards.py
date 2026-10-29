@@ -15,7 +15,8 @@ from warrant.defects.inject import Defect
 from warrant.write_line.validate_judge import OPERATION, earlier_runs, expected_by_claim, judged_by_claim
 
 # Decided by the lead on #54 (2026-10-21): the whole run may spend at most this much, and the run
-# pauses after its first complete pass if that pass cost more than this many times its estimate.
+# pauses after its first complete pass if that pass cost more than this many times its estimate. A
+# configuration may set its own cap (`spending_cap`, #150); this one is the first run's.
 CAP = 100.0
 FIRST_PASS_FACTOR = 2.0
 
@@ -83,15 +84,19 @@ class Spend:
 
 
 def mean_tokens(records: Iterable[Mapping]) -> tuple[float, float]:
-    """The mean input and output tokens per record, over the records that carry token usage."""
-    usage = [(r["input_tokens"], r["output_tokens"]) for r in records if "input_tokens" in r]
+    """The mean input and output tokens per answer, over the answer records that carry token usage,
+    failed ones included. A full run's claim-writing and judging records are left out (#150); records
+    with no type, such as the pilot's, are answers."""
+    usage = [(r["input_tokens"], r["output_tokens"]) for r in records
+             if r.get("record", "answer") == "answer" and "input_tokens" in r]
     if not usage:
-        raise ValueError("no record carries token usage")
+        raise ValueError("no answer record carries token usage")
     return sum(i for i, _ in usage) / len(usage), sum(o for _, o in usage) / len(usage)
 
 
 def answer_estimate(answers: int, mean_input: float, mean_output: float, prices: Prices) -> float:
-    """The estimated cost of `answers` answers at the given mean tokens per answer (the pilot's, #49)."""
+    """The estimated cost of `answers` answers at the given mean tokens per answer (from the results
+    file the configuration names, the pilot's by default, #150)."""
     return answers * prices.cost(mean_input, mean_output)
 
 
@@ -106,7 +111,7 @@ def first_pass_cost(records: Iterable[Mapping], prices: Prices) -> float:
 
 def over_estimate(actual: float, estimate: float, factor: float = FIRST_PASS_FACTOR) -> bool:
     """Whether the first pass's answers (`first_pass_cost`) cost more than `factor` times their
-    estimate (`answer_estimate`), which pauses the run for the lead."""
+    estimate (`answer_estimate`), which pauses the run so that its cost is looked at."""
     return actual > factor * estimate
 
 

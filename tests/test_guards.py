@@ -26,6 +26,7 @@ from warrant.write_line.guards import (
 
 REPO = Path(__file__).resolve().parents[1]
 PILOT = REPO / "results" / "pilot" / "2026-10-20-e33ac97.jsonl"
+FIRST_RUN = REPO / "results" / "thin" / "2026-10-24-66a86cb.jsonl"
 VALIDATION = REPO / "results" / "judge_validation" / "2026-10-21-4af7c61.jsonl"
 PREDICTIONS = REPO / "predictions" / "9cfd501f2182-write_line.json"
 FREEZE = REPO / "freeze" / "write_line.yaml"
@@ -87,6 +88,22 @@ def test_a_resumed_runs_spend_starts_from_every_stored_call():
 def test_the_pilots_mean_tokens_per_answer_come_from_its_records():
     mean_in, mean_out = mean_tokens(json.loads(line) for line in PILOT.read_text().splitlines())
     assert mean_in == pytest.approx(15_887.625) and mean_out == pytest.approx(870.3125)
+
+
+def test_the_mean_tokens_per_answer_leave_out_claim_writing_and_judging():
+    records = [
+        {"record": "start"},
+        {"record": "sample", "input_tokens": 1_000_000, "output_tokens": 100_000},
+        {"record": "judgement", "input_tokens": 1_000_000, "output_tokens": 100_000},
+        {"record": "answer", "input_tokens": 10_000, "output_tokens": 400},
+        {"record": "answer", "input_tokens": 20_000, "output_tokens": 600, "failure": "timed out"},
+    ]
+    assert mean_tokens(records) == pytest.approx((15_000, 500))
+
+
+def test_the_first_full_runs_mean_tokens_per_answer_come_from_its_792_answers():
+    mean_in, mean_out = mean_tokens(json.loads(line) for line in FIRST_RUN.read_text().splitlines())
+    assert mean_in == pytest.approx(13_568_227 / 792) and mean_out == pytest.approx(380_069 / 792)
 
 
 def test_the_first_pass_cost_is_run_0s_answers_only_failures_included():

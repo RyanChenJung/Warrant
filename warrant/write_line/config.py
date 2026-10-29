@@ -6,6 +6,7 @@ record of that freeze (`injection:`), which the run checks its databases against
 """
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -84,6 +85,10 @@ class Config:
     injection_sha256: str | None = None
     # Per database, the business terms the probe questions use, given to the claim writer (#50).
     business_terms: dict[str, BusinessTerms] = field(default_factory=dict)
+    # The run's spending cap in dollars, and the results file whose answers give the first-pass
+    # estimate its mean tokens per answer (#150). None keeps the first run's: $100 and the pilot.
+    spending_cap: float | None = None
+    estimate_from: Path | None = None
 
 
 def _known_defects(config: Config) -> Config:
@@ -101,6 +106,27 @@ def _known_defects(config: Config) -> Config:
     return config
 
 
+def _spending_cap(raw: dict) -> float | None:
+    """The configuration's cap in dollars (#150), a positive number; None when it sets none."""
+    cap = raw.get("spending_cap")
+    if cap is None:
+        return None
+    if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not 0 < cap < math.inf:
+        raise ValueError(f"spending_cap must be a positive number of dollars, not {cap!r}")
+    return float(cap)
+
+
+def _estimate_from(raw: dict, path: Path) -> Path | None:
+    """The results file the first-pass estimate reads (#150), relative to the configuration; refused
+    when it is not there, so that `--check` finds a wrong path before the run's first call."""
+    if raw.get("estimate_from") is None:
+        return None
+    found = (path.parent / raw["estimate_from"]).resolve()
+    if not found.is_file():
+        raise ValueError(f"estimate_from names no file: {found}")
+    return found
+
+
 def load_config(path: Path, release_config: Path = RELEASE_CONFIG) -> Config:
     """Read a configuration; paths are relative to the configuration file."""
     path = Path(path)
@@ -111,6 +137,8 @@ def load_config(path: Path, release_config: Path = RELEASE_CONFIG) -> Config:
         runs=int(raw["runs"]),
         model=load_model_config(raw["model"]) if raw.get("model") else None,
         business_terms={database: business_terms(terms) for database, terms in (raw.get("business_terms") or {}).items()},
+        spending_cap=_spending_cap(raw),
+        estimate_from=_estimate_from(raw, path),
     )
     if not raw.get("freeze"):
         if raw.get("injection"):
