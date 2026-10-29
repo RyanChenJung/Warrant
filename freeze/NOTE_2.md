@@ -1,6 +1,6 @@
 # Freeze note: the write line, second freeze (#149)
 
-Drafted on 2026-10-28, before any battery trial and before any model call on this freeze's defects or claims. Times are UTC.
+Drafted on 2026-10-28 before the one battery-only design trial and completed after it ("Design trials"), before any model call on this freeze's defects or claims. Times are UTC.
 
 ## What is frozen
 
@@ -20,9 +20,13 @@ The design was decided by the lead from 2026-10-25 to 10-28 and posted on #61 (i
 
 - **Three new slots only.** They are the column formula, coverage and value meaning slots.
   - They are injected on fresh clean copies.
-  - They have their own freeze, configuration, k, matched asks and run id.
+  - They have their own freeze, configuration, k, matched asks and run id. Only the freeze is made here.
+    The configuration comes with the questions (#152), k from the committed predictions (#151), and
+    the run id when the run is made (#153).
   - They are reported next to the first freeze, not pooled with it.
-- **Crypto only.** #54's disclosure 13 (aligned integer row keys in crypto) extends to this freeze.
+- **Crypto only.** #54's disclosure 13 (aligned integer row keys in crypto) extends to this freeze,
+  with one difference on the coverage slot: the aligned keys show which user rows are missing, so
+  they bear on why the rows are missing (see "The coverage defect" and disclosure 14).
 - **Disjointness applies within this freeze.**
   - The three defects touch disjoint tables and columns.
   - Tables the first freeze used may be reused on the fresh copies, and each reuse is disclosed below.
@@ -42,7 +46,16 @@ The design was decided by the lead from 2026-10-25 to 10-28 and posted on #61 (i
 On three slots, the two rules differ only if the slot the agent is most confident about is not the one the battery settles.
 
 - In the first run the agent was most confident on wallet-sum, the settled slot. Both rules kept it and asked a person about the other two.
-- That is likely again for any 100% formula the battery reports, since the agent copies the finding.
+- The ranking is by agreement first. Self-reported confidence only breaks ties. A claim that restates
+  a battery finding gets the same judge profile on every sample, so its agreement is high. That is
+  how wallet-sum, whose formula finding held on 100% of rows, came first.
+
+**Open risk: the formula slot may rank first again.** The 90.1% finding is as easy to restate as
+wallet-sum's 100% one. A claim that restates it gets the same profile on every sample: it holds on
+the true reading and on the `holds: true` readings, and fails on `as-released` and
+`sum-everywhere`. The reading set lowers agreement only for samples that name a cause or drop the
+exception. So the formula slot may again be the most confident slot, and the two rules may coincide
+again.
 
 **Lever B is infeasible.** Lever B would make coverage battery-settled (k = 1). It cannot be done without leaving out a reading the glossary itself names, and the reason is structural.
 
@@ -70,7 +83,8 @@ On three slots, the two rules differ only if the slot the agent is most confiden
   - migrated legacy rows.
 - Profit and loss is sometimes signed from the house side rather than the client side.
 - The formula's realism assumes that a queued task adds about 1 ms, since `queueline` is a count.
-- The formula slot's reading set was chosen knowing that it lowers that slot's agreement.
+- The formula slot's reading set was chosen knowing that it lowers that slot's agreement. It lowers
+  it only for samples that name a cause or drop the exception (see the open risk above).
 
 **Four conditions:**
 
@@ -118,7 +132,7 @@ This section defines the split before any model call. #154 computes it from the 
 
 **Inputs.**
 
-- One run's records, the first complete run, for one prompt variant and one slot `d`. These are the records the confidence ranking reads (`warrant/write_line/confidence.py`).
+- One run's records, for one prompt variant and one slot `d`. The run is the first complete run in the results file, the one the summary selects (`warrant/write_line/run.py`, `run_ids`). These are the records the confidence ranking reads (`warrant/write_line/confidence.py`).
 - Sample `s`'s claim on `d` is its first claim whose kind and subject equal the slot's (`slot_claim_index`).
 - Its judgement is the first complete judgement record for (variant, `d`, `s`, index).
 - For each reading `r`, three things are read from a claim's judgement:
@@ -158,8 +172,9 @@ This section defines the split before any model call. #154 computes it from the 
   - If the extra calls ran out with fewer than three valid calls, `V` holds the valid calls present, and a reading no two of them share is a split (judge-type).
   - Re-sent calls are counted and reported as the freeze already requires. They do not change a class.
 - **A judgement made without a call** (an identical claim string, within the variant).
-  - Its labels are copied, and its calls are those of the judgement it copies.
-  - A sample whose string equals sample 1's is class A.
+  - Its record has `without_a_call: true` and an empty `valid`. Its labels are copied.
+  - Its `V` and splits are taken from the judgement with a call in the same run, variant and slot whose `claim` string is the same.
+  - A sample whose string equals sample 1's reuses sample 1's judgement, so its labels are equal and it is class A.
 - **An incomplete judgement** is not used. The ranking refuses the run (`confidence.py`), so the split is not computed either.
 - **Variants.** The split is computed per variant. `confident` is primary.
 
@@ -189,8 +204,8 @@ This section defines the split before any model call. #154 computes it from the 
 
 **The realism case, stated before injection.** A trading client paces its calls to stay under the
 exchange's rate limit. It keeps a margin of 100 requests. Below that margin it waits before each
-call, ten milliseconds for each request by which the remaining requests fall short of 110: 110 ms
-with 100 left, 1,100 ms with none left. The wait is inside the recorded execution time and is not
+call, ten milliseconds for each request by which the remaining requests fall short of 110: 100 ms
+with 100 left (110 ms with 99 left, the smallest in the data), 1,100 ms with none left. The wait is inside the recorded execution time and is not
 stored on its own. So the execution time is the API latency plus the queue time on most snapshots,
 and carries an extra amount on the throttled ones. This is pacing with a safety margin, not a pure
 token bucket, which waits only once the allowance is used up. The same pattern occurs elsewhere:
@@ -209,8 +224,8 @@ column's scale: its mean goes from 494.41 to 1,069.19 and its maximum from 999 t
 injection the relation holds on 901 of 1,000 rows. On the other 99, the rows with `rateremain` at
 most 100 (none has exactly 100), the extra amount runs from 110 to 1,100. The holds share, 90.1%,
 is above the identity search's bar of 80%. Its tolerance of 0.005 is far below the smallest extra
-amount, so the search reports `apilatmark + queueline` with 99 rows left over. This comes from
-reading `rule.py`; no battery-only trial has checked it yet. `apilatmark` and `queueline` are
+amount, so the search reports `apilatmark + queueline` with 99 rows left over. The design trial
+confirms it ("Design trials"). `apilatmark` and `queueline` are
 integers, so the relation holds exactly on the other rows.
 
 **Why the reference claim does not name the throttled snapshots.** The battery's identity finding
@@ -234,10 +249,11 @@ the throttled snapshots has another gold answer under it. World-fixed rivals' go
 used, so that does not matter.
 
 **`retry-rows` holds.** Under it, 106 snapshots, those where at least one call in twenty failed,
-carry the latency again plus 200 ms. That is about one in ten, and the amount is in no column, so
-the reference claim holds. The battery tells it apart: the relation holds on 894 of 1,000 rows.
-`formulaC` drafted it as holds false under a reference claim that named the subgroup; the claim
-used here does not.
+carry the latency again plus 200 ms. The reference claim says only "on some snapshots" and an
+amount stored in no column, so it holds under this reading too. The battery tells it apart: the
+relation holds on 894 of 1,000 rows. The formula search (`freeze/NOTE_2_queries.md`, "The formula
+search") drafted it as holds false under a reference claim that named the subgroup; the claim used
+here does not.
 
 **The cause readings.** `cause-retries`, `cause-old-logger` and `cause-gateway` share the injected
 copy. They give another cause for the same extra amount on the same snapshots. Under the reading-set
@@ -247,7 +263,8 @@ readings. The validator allows several meaning-only readings beside world-fixed 
 one applies only without them (`warrant/freeze/validate.py:149-159`). So they are in the set rather
 than listed here. Their wording ("it is not a wait for the rate limit") aims to make the judge label
 an agent's guessed cause steadily. The judge's validation is the first test of that. This reading
-set was chosen knowing it lowers this slot's agreement.
+set was chosen knowing it lowers this slot's agreement, but only for samples that name a cause or
+drop the exception.
 
 **Candidates listed, not in the set:** a data-entry error (the extra amount is a recording
 inconsistency, not time). This is the battery's own third answer to its identity question, class
@@ -259,7 +276,8 @@ provenance, and under the reading-set rule it would be `holds: true`.
 `websocket-disconnected`) are replaced, since this freeze touches the table.
 
 **Read-only queries on the crypto clean copy** (`sqlite3`, `mode=ro`), run while writing this
-defect. The queries that chose the candidate are listed in `formulaC.json` (`sql_run`, both sets).
+defect. The queries that chose the candidate are in `freeze/NOTE_2_queries.md`, section "The
+formula search".
 1. `SELECT sql FROM sqlite_master WHERE name='systemmonitoring'`
 2. `SELECT count(*), sum(apilatmark IS NULL), sum(queueline IS NULL), sum(rateremain IS NULL), sum(exectimespan IS NULL), sum(exectimespan=0), min(exectimespan), max(exectimespan), round(avg(exectimespan),2) FROM systemmonitoring`
 3. (short form) `SELECT sum(rateremain<=100), sum(rateremain<100), sum(rateremain=100), min/max of rateremain, queueline, apilatmark, typeof(apilatmark), typeof(queueline), typeof(rateremain) FROM systemmonitoring`
@@ -294,11 +312,18 @@ probe: "How many margin accounts does the exchange hold?" is 224 under the true 
 under each of the three. This follows the natural design: lever B, a coverage slot the battery
 settles, was found infeasible (#61).
 
+**#54's disclosure 13 applies here with a difference.** On the clean copy, `users.usersnode` equals
+`accountbalances.accountbalancesnode` on all 1,000 rows joined through the user key, and
+`orders.orderspivot` on all 999 (queries 27 and 28 below). So on the injected copy the 224 unmatched
+balance rows sit exactly at the 224 `usersnode` values missing from `users` (query 29). The data
+thus suggests that user rows were removed. That weighs against `mistyped` and `other-system`.
+Neither the battery nor the `holds` flags use this, and no prediction changes.
+
 **The other world-fixed readings.** `nothing-cut` is the no-defect reading and the drift reading
 under branch (a). `cut-with-children` removes the margin accounts with their balances, orders and
 those orders' child rows. `options-cut` cuts the account type whose count is closest to the margin
-accounts' (243 against 224). Each is expected to give a battery output different from the true
-reading's; the battery-only trials below check this.
+accounts' (243 against 224). The design trial confirms that each gives a battery output different
+from the true reading's ("Design trials").
 
 **Disclosure: unmatched rows in the value-meaning slot's table.** The cut leaves 224 of the 1,000
 rows of `accountbalances` without their user. `accountbalances` holds the value-meaning slot
@@ -339,16 +364,19 @@ freeze's `release.sha256.crypto`), run while designing this defect on 2026-10-28
 24. `SELECT COUNT(*) FROM orders o WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Options');` (243), and the same on `accountbalances.usertag` (243)
 25. `SELECT ROUND(100.0*776/1000,1), ROUND(100.0*776/999,1), 1000-224, 999-223;` (77.6, 77.7, 776, 776)
 26. `EXPLAIN` of each transformation statement of `margin-cut`, `cut-with-children` and `options-cut`: all compile.
+27. `SELECT COUNT(*), SUM(u.usersnode = a.accountbalancesnode) FROM accountbalances a JOIN users u ON u.userstamp = a.usertag;` (1000, 1000)
+28. `SELECT COUNT(*), SUM(u.usersnode = o.orderspivot) FROM orders o JOIN users u ON u.userstamp = o.userlink;` (999, 999)
+29. `SELECT COUNT(*) FROM accountbalances a JOIN users u ON u.userstamp = a.usertag WHERE u.acctscope = 'Margin' AND u.usersnode = a.accountbalancesnode;` (224)
 
 **Confounding check.** The clean scan has one coverage-bearing finding on `users`: the LINK
 finding "1 of 1000 users.userstamp values are never referenced by orders.userlink"
 (`docs/research/2026-10-13-clean-scan.md:181`). `users` is a touched table, so this finding
 counts. The one unreferenced user is a margin user (query 16 above), so the finding is expected to
-disappear from the true reading's output; a battery-only trial must confirm it.
+disappear from the true reading's output. The design trial confirms that it is gone ("Design trials").
 
 ### Value meaning: `pnl-sign` (`accountbalances.realline`)
 
-The clean copy queried is `crypto_clean.sqlite`. Its SHA-256 is 49103c15…a5e1, which is `freeze/write_line.yaml:20`.
+The clean copy queried is `crypto_clean.sqlite`. Its SHA-256 is 49103c15…a5e1, which is `freeze/write_line_2.yaml:18`.
 
 **Validator.**
 - `_defect` on this block, run in memory from `.venv`: no error and no warning. Every reading statement also passes `reference_claim_problems`: no digit, no comparison symbol, no uppercase SQL word. So no threshold is declared.
@@ -359,7 +387,7 @@ The clean copy queried is `crypto_clean.sqlite`. Its SHA-256 is 49103c15…a5e1,
   - It has `holds: false` (`:137-138`).
   - It carries its own reference claim, which also passes the check (`:158-162`).
 - `expected_drift_type: convention` is one of the drift types the builder computes (`:45`, `:245-246`).
-- `_disjoint` (`:175-194`) against the formula slot (`systemmonitoring: [exectimespan]`) and the coverage slot (`users: ["*"]`, as drafted) finds nothing shared. The whole-freeze `validate` is still to be run on the finished file.
+- `_disjoint` (`:175-194`) against the formula slot (`systemmonitoring: [exectimespan]`) and the coverage slot (`users: ["*"]`) finds nothing shared. The whole-freeze validator passes on the finished file (0 errors, 0 warnings).
 
 **Audit (`warrant/defects/audit.py:61-78`, `:92-110`).**
 - `inject` takes a snapshot just before and just after each defect (`inject.py:59-63`). So this audit compares the copy after the formula and coverage defects with the copy after the negation.
@@ -367,7 +395,7 @@ The clean copy queried is `crypto_clean.sqlite`. Its SHA-256 is 49103c15…a5e1,
 - realline and unrealline each have 1,000 distinct values, with no NULL and no 0, and their negations are 1,000 distinct each. So the recoding is one-to-one on both columns, and no row or other column changes.
 - The users rows the coverage defect removed are already gone in both snapshots, so they do not enter this audit.
 - Stored types (realline/unrealline): 975 rows real/real, 15 integer/real, 9 real/integer, 1 integer/integer. Negation keeps the type [inference from SQLite type affinity].
-- `inject` was not run. Acceptance is shown by these counts, not executed.
+- `build` ran these audits in the design trial and accepted them: 1,000 rows of `accountbalances` changed, with 2,000 one-to-one recodings ("Design trials").
 
 **The true reading's database.**
 - `build` builds it from the clean copy, the other defects' true transformations in declared order, then its own (`build.py:160-174`). It refuses if the result is not the injected copy.
@@ -376,17 +404,8 @@ The clean copy queried is `crypto_clean.sqlite`. Its SHA-256 is 49103c15…a5e1,
 
 **Reading set, under the reading-set rule.**
 - The rule (#61 design comment): a meaning-only reading is `holds: true` if it changes no probe's gold, and `holds: false` if it changes at least one.
-- On this branch-(b) slot the validator allows only one meaning-only reading besides the true one. So the other candidates are listed here with their class, frozen with the set.
-
-| Candidate | Form | Changes a probe's gold? | Class | In the set? |
-|---|---|---|---|---|
-| positive = profit (client side) | meaning-only, convention | yes, all six | `holds: false` | yes, the drift reading |
-| realline is the exchange's own P&L on the account | meaning-only | no: every probe asks for the account holder's figure | `holds: true` | no, `validate.py:150-155` would refuse it |
-| positive = cash out of the account (debit) | meaning-only | no | `holds: true` | no, same reason |
-| unit or currency (quote against base currency) | meaning-only | no: probes ask the stored amount | `holds: true` | no, same reason |
-| period (lifetime against this period) | meaning-only, provenance | no | `holds: true` | no, same reason |
-| one convention per format class | meaning-only | yes | would be `holds: false` | no, see below |
-| clean data as released, `transformation: []` | world-fixed | yes | `holds: false` | no, see below |
+- On this branch-(b) slot the validator allows only one meaning-only reading besides the true one. So the other candidates are listed with their class, frozen with the set, in the table under "The reading-set rule".
+- The drift reading, `positive-is-profit`, changes the gold of all six probes. The `holds: true` candidates are left out because `validate.py:150-155` would refuse a second meaning-only reading.
 
 - **One convention per format class.** The VALUE finding's only split is the sign. So this reading makes every row a loss, or every row a profit, which is not a coherent reading. It would also be a second `holds: false` meaning-only reading, which branch (b) sends back for re-authoring.
 - **Clean data as a world-fixed reading.** The first freeze ruled it out ("the clean database is not a value-meaning reading", `freeze/NOTE.md:209`). Here it would also break the pipeline:
@@ -397,26 +416,25 @@ The clean copy queried is `crypto_clean.sqlite`. Its SHA-256 is 49103c15…a5e1,
 - **A coverage-style reading cannot enter here.** A reading such as "the balance rows with no user are not accounts" is about the coverage slot, not about the sign. The probes below are worded so it changes no gold.
 
 **Drift reading, prediction and warrant.**
-- Branch (b): the drift reading is `positive-is-profit` (`freeze/write_line.yaml:62-63`). It shares the injected copy, so the drift type is convention (`:67-68`; `build.py:180-182`). The bridge prediction is that the battery does not tell it from the true reading.
+- Branch (b): the drift reading is `positive-is-profit` (`freeze/write_line_2.yaml:60-62`). It shares the injected copy, so the drift type is convention (`:65-66`; `build.py:180-182`). The bridge prediction is that the battery does not tell it from the true reading.
 - **Predicted: person only.** No reading's output differs, and the rival has `holds: false` (`predict.py:132-135`).
 - **Warrant.** The surviving rival is a meaning-only convention reading on a person-only slot. So the agent's claim carries no warrant, and the person's claim a declaration warrant (`warrants.py:85-86`).
 
 **Battery output, before and after.**
 - **realline VALUE.**
   - Before (`docs/research/2026-10-13-clean-scan.md:132`): "dominant class is alphanumeric (example -10251.85, 511 rows); 489 rows … 10037.25".
-  - After [inference, `value.py:186-215`]: "dominant class is numeric (example 10251.85, 511 rows); 489 rows use a different format, for example: -10037.25".
+  - After, in the design trial: "The dominant class is numeric (example 10251.85, 511 rows); 489 rows use a different format, for example: -10037.25".
 - **unrealline VALUE.**
   - Before (`clean-scan.md:131`): "numeric (example 10030.42, 513 rows); 487 … -10012.72".
-  - After [inference]: "alphanumeric (example -10030.42, 513 rows); 487 … 10012.72".
-- **How the after examples were found.** They are the minima of `CAST(-col AS TEXT)` per sign class. The same expression gives the clean examples exactly.
+  - After, in the design trial: "The dominant class is alphanumeric (example -10030.42, 513 rows); 487 rows use a different format, for example: 10012.72".
+- **How the after examples were predicted.** They are the minima of `CAST(-col AS TEXT)` per sign class. The same expression gives the clean examples exactly, and the design trial gave the predicted ones.
 - **GRAIN** on both columns does not change: 1,000 distinct values.
-- **RULE.** No sum of two or three numeric columns holds on any row with negated realline or unrealline, in 195 combinations (identity search in `scratchpad/vm61/idsearch.sql`). The walletsum RULE stays as released (`clean-scan.md:136`).
+- **RULE.** No sum of two or three numeric columns holds on any row with negated realline or unrealline, in 195 combinations (`freeze/NOTE_2_queries.md`, section "Identity search"). The walletsum RULE stays as released (`clean-scan.md:136`). In the design trial the injected copy has two RULE findings, the formula finding and walletsum's.
 - **LINK on usertag changes because of the coverage defect, not this one.**
   - Before: "joins to users.userstamp for 100.0% of the 1,000 rows" (`clean-scan.md:115`, `:127`).
-  - After the cut: 776 of 1,000 rows join [the finding's wording is inferred].
+  - After the cut, in the design trial: "usertag joins to users.userstamp for 77.6% of the 1,000 rows that populate it", with an unmatched-rows finding on 224 rows.
   - Both readings share the injected copy, so this changes no reading's output relative to another and no prediction.
-- **Confounding rule** (`write_line.yaml:69-75`). Of the 12 clean-scan findings on accountbalances, only the two VALUE findings bear on value meaning, and both change. GRAIN and LINK map to other claim kinds (`warrant/data/clean_scan.py:51-59`). Nothing disqualifies the defect.
-- A battery-only trial would confirm this wording, and it is listed here if run.
+- **Confounding rule** (`write_line_2.yaml:67-73`). Of the 12 clean-scan findings on accountbalances, only the two VALUE findings bear on value meaning, and both change. GRAIN and LINK map to other claim kinds (`warrant/data/clean_scan.py:51-59`). Nothing disqualifies the defect.
 
 **What the coverage cut changes on this slot's table.** accountbalances is not modified by the cut, but its usertag references users, which loses its 224 `acctscope = 'Margin'` rows.
 - In the clean copy, all 1,000 accountbalances rows join users (exact and trimmed). By scope: Spot 287, Futures 246, Options 243, Margin 224. After the cut, 224 balance rows have no user.
@@ -455,14 +473,14 @@ The clean copy queried is `crypto_clean.sqlite`. Its SHA-256 is 49103c15…a5e1,
 | large-realised-losses | How many account balance records show a realised loss above 10,000 for the account holder? | `SELECT COUNT(*) FROM accountbalances WHERE realline > 10000` = 465 | `… WHERE realline < -10000` = 442 |
 | user-realised-pnl | For user U458616, what is the user's realised profit and loss, positive meaning a profit for the user? | `SELECT -realline FROM accountbalances WHERE TRIM(usertag) = 'U458616'` = -99,813.64 | `SELECT realline FROM accountbalances WHERE TRIM(usertag) = 'U458616'` = 99,813.64 |
 
-- All six separate beyond the 0.01 relative tolerance (`write_line.yaml:177`). The smallest gap is 22 on 511, about 4.3%, on the first probe.
+- All six separate beyond the 0.01 relative tolerance (`write_line_2.yaml:175`). The smallest gap is 22 on 511, about 4.3%, on the first probe.
 - None names the storage convention. "Positive meaning a profit for …" and "as a positive amount" fix only the answer's sign.
 - usertag is padded to 36 characters, so `TRIM` is needed. U458616 occurs once.
 - The probes are correlated through one sign, as the seeing probes were (`configs/write_line_thin.yaml:211-214`).
 - Probe 4 must not be called "profit factor": that would add a named quantity.
 - #152 may want a control-style check that the restricted figures in the table above do not appear among the answers. That is a suggestion, not a rule.
 
-**Business term.** "realised profit and loss" is listed, as `write_line.yaml:77-79` requires (#61 design comment). The term-boundary displacement risk is disclosure 9 on #61.
+**Business term.** "realised profit and loss" is listed, as `write_line_2.yaml:75-77` requires (#61 design comment). The term-boundary displacement risk is disclosure 9 on #61.
 
 **Realism case** (lever C condition (2), stated before injection).
 - **Verified in the release:**
@@ -497,17 +515,16 @@ The clean copy queried is `crypto_clean.sqlite`. Its SHA-256 is 49103c15…a5e1,
 - **(9)** Listing "realised profit and loss" risks a term-boundary claim taking this slot's place in sample 1. In the first run this happened on unrealline in 1 of 20 samples: confident sample 1, none of the abstain samples.
 - **Not on #61's list:**
   - unrealline is flipped for coherence only; it has no slot and no probe;
-  - the design's scratch input files `vm61/idsearch.sql` and `vm61/val_draft.py`;
+  - the identity search and the draft's queries, in `freeze/NOTE_2_queries.md` ("Identity search", "The value-meaning draft's and fact-check's queries");
   - the in-memory runs of `_defect` and `_disjoint`.
 
 **Open risks.**
 1. **Sample 1 may write no sign direction.** Such a claim is not addressed on both readings (`freeze/judge_rubric.md:41-42`), so agreement is low and the slot may not rank most confident.
 2. **The judge has never labelled a value-meaning claim on "exchange's side" wording.** The validation on the two reference claims tests part of this.
-3. **The after-injection VALUE wording is inferred.** It assumes DuckDB reads the column as text, which matched exactly on the clean data.
-4. **An answerer may still join users despite the wording.** The restricted figures above let #154 see whether it did.
-5. **Controls must stay off accountbalances, users, orders and its child tables** (#61 design comment).
+3. **An answerer may still join users despite the wording.** The restricted figures above let #154 see whether it did.
+4. **Controls must stay off accountbalances, users, orders and its child tables** (#61 design comment).
 
-**Read-only SQL run for this section.** All were run through `sqlite3` on `file:…/scratchpad/vm61/crypto_clean.sqlite?mode=ro`, plus `shasum -a 256` of the file (not SQL).
+**Read-only SQL run for this section.** All were run through `sqlite3` with `mode=ro` on a copy whose SHA-256 matches `release.sha256.crypto`, plus `shasum -a 256` of the file (not SQL).
 - `SELECT name, sql FROM sqlite_master WHERE name IN ('users','accountbalances')`
 - `SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE '%REFERENCES users%'`
 - `SELECT acctscope, COUNT(*) FROM users GROUP BY 1 ORDER BY 1`
@@ -527,7 +544,7 @@ The clean copy queried is `crypto_clean.sqlite`. Its SHA-256 is 49103c15…a5e1,
 - `SELECT usertag, -realline, length(usertag) FROM accountbalances WHERE TRIM(usertag)='U458616'`
 - `SELECT SUM((realline<0)=(unrealline<0)), MIN(walletsum), MIN(availsum), MIN(frozensum), MIN(margsum) FROM accountbalances`
 
-The design-time queries of the draft and the fact-check (Q1 to Q17, R1 to R13, and the identity search) are listed in `/private/tmp/claude-501/-Users-ryan-Warrant/a9079c7f-28f3-45fc-90ff-d78327932596/scratchpad/vm_design_check.md`, section "SQL run", and go into the note's full list.
+The design-time queries of the draft and the fact-check (Q1 to Q17, R1 to R13, and the identity search) are in `freeze/NOTE_2_queries.md`, sections "The value-meaning draft's and fact-check's queries" and "Identity search".
 
 ## Conditions on the questions (#152)
 
@@ -544,8 +561,8 @@ bound by them. A configuration whose probes break either condition is re-authore
 
 ## Disclosures
 
-1. The coverage slot follows the natural design, because lever B was found infeasible. The read-only clean-copy queries used while designing all three slots are listed under "Clean-copy queries".
-2. This freeze chose a realistic situation that is hard for the confidence rule. The formula slot's reading set was chosen knowing it lowers that slot's agreement.
+1. The coverage slot follows the natural design, because lever B was found infeasible. The read-only clean-copy queries used while designing all three slots are listed under "Clean-copy queries", except those of the earlier analysis of 2026-10-25, whose counts are cited where they are used.
+2. This freeze chose a realistic situation that is hard for the confidence rule. The formula slot's reading set was chosen knowing it lowers that slot's agreement. It lowers it only for samples that name a cause or drop the exception, so the formula slot may still rank first ("Why the design is what it is").
 3. First-run statistics were used to choose the slots (`results/thin/2026-10-24-66a86cb.jsonl`): on `realline`, 10 of 10 `confident` samples wrote a value-meaning claim and 8 of 10 committed to a sign, and 5 of 10 `abstain` samples committed; on `systemmonitoring`, no first-run claim named `exectimespan`, `apilatmark`, `queueline` or `rateremain`.
 4. `accountbalances`, the first freeze's wallet-sum table, is reused on a fresh copy.
 5. Release KB 34 and related entries contradict the negated profit and loss. The agents do not see the KB.
@@ -557,6 +574,7 @@ bound by them. A configuration whose probes break either condition is re-authore
 11. The order the tie-break seed 20261012 gives is already known from the first run.
 12. Every battery-only trial is listed under "Design trials", as `CONTRIBUTING.md` requires.
 13. The blind auditor could read the first run's key once it was public (#146), so the audit may show a learning effect.
+14. #54's disclosure 13 (aligned integer row keys) applies with a difference. `users.usersnode` equals `accountbalances.accountbalancesnode` on all 1,000 clean rows and `orders.orderspivot` on 999, so on the injected copy the 224 unmatched balance rows sit exactly at the `usersnode` values missing from `users`. The data thus suggests that user rows were removed, which weighs against `mistyped` and `other-system`. Neither the battery nor the `holds` flags use this, and no prediction changes.
 
 ## Design trials
 
@@ -565,7 +583,8 @@ on a scratch copy of the crypto clean database outside the data directory (SHA-2
 the freeze's). No model was called. It used the project's own code, not a stand-in:
 `warrant.defects.build.build` on this file's three defects, then `warrant.write_line.predict.predict`
 with this file's battery settings, then `warrant.write_line.warrants.slot_warrants`, and a second
-battery run on the clean copy for comparison. The two scripts are in `freeze/NOTE_2_queries.md`.
+battery run on the clean copy for comparison. The two scripts are in `freeze/NOTE_2_queries.md`,
+section "The design trial's scripts".
 
 **Results.**
 
@@ -581,9 +600,13 @@ battery run on the clean copy for comparison. The two scripts are in `freeze/NOT
   - `pnl-sign`: neither reading differs; the rival fails.
 - **The bridge:** the battery tells both data-part drift readings from the true reading, and cannot
   tell the convention drift reading apart.
-- **#50's warrant rule** accepts all three slots: formula data and data, coverage none and testimony
-  ("a record of how the data came to be could settle it"), value meaning none and declaration. So the
-  real run will not refuse them (`warrant/write_line/warrants.py:89`).
+- **#50's warrant rule** accepts all three slots. The agent's claim and the person's claim carry:
+  - on the formula slot, a data warrant each;
+  - on the coverage slot, no warrant and a testimony warrant ("a record of how the data came to be
+    could settle it");
+  - on the value-meaning slot, no warrant and a declaration warrant.
+
+  So the real run will not refuse them (`warrant/write_line/warrants.py:89`).
 - **The formula finding**, word for word: "exectimespan equals apilatmark + queueline for 90.1% of
   the 1,000 rows where it is non-zero. On the remaining 99 it exceeds the sum, so at least one further
   component contributes to exectimespan and is not present in this data. Any breakdown built from
@@ -601,14 +624,18 @@ battery run on the clean copy for comparison. The two scripts are in `freeze/NOT
   No other finding changed. Finding counts on the injected copy: GRAIN 47, VALUE 21, LINK 11,
   LIMIT 2, RULE 2.
 
-No clean scan was run, so the first freeze's committed scan in `docs/research/` is untouched.
+No clean scan with `warrant.data.clean_scan` was run. The comparison battery run on the clean copy
+wrote only to the scratch directory, so the first freeze's committed scan in `docs/research/` is
+untouched.
 
 ## Clean-copy queries
 
 - The queries run while writing each defect are listed in its section above.
 - The queries of the lever-B search and of the formula search, run by sub-agents on 2026-10-28, are
-  in `freeze/NOTE_2_queries.md`, as they were recorded.
+  in `freeze/NOTE_2_queries.md`, sections "The lever-B search" and "The formula search".
+- The queries of the value-meaning draft and its fact-check, and the identity search, are in the
+  same file, sections "The value-meaning draft's and fact-check's queries" and "Identity search".
 - The earlier analysis of 2026-10-25 (the location and lever studies) also queried the clean copies
-  read-only; the counts it gave are cited where they are used.
+  read-only. Its queries are not listed. The counts it gave are cited where they are used.
 - Every query ran on copies whose SHA-256 matches `release.sha256.crypto` or `release.sha256.alien`,
   opened read-only. None ran on an injected copy.
