@@ -133,7 +133,7 @@ class Selected:
         for r in self.of["judgement"]:
             if r.get("complete"):
                 self.judgements.setdefault((r.get("variant", "confident"), r["defect"], r["sample"], r["index"]), r)
-        # Every record with tokens, whatever its run or configuration: what the $100 cap counts.
+        # Every record with tokens, whatever its run or configuration: what the spending cap counts.
         self.paid = [r for r in records if "input_tokens" in r]
         self.model = next((r["model"] for r in mine if r.get("model")), None)
 
@@ -430,7 +430,7 @@ def _cost(selected: Selected, config: Config, validation: list[Mapping] | None, 
         "evaluation": evaluation,
         # What the run paid, each call once; the judge's validation file is not in it.
         "total_spend": spend(tokens),
-        # The runs set aside, and every paid call in the file, which is what the $100 cap counts.
+        # The runs set aside, and every paid call in the file, which is what the spending cap counts.
         "repeated_runs_spend": others,
         "file_spend": everything,
         # The person is simulated by the written reference claims: asks only, no money or time.
