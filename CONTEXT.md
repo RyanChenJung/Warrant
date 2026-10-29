@@ -118,8 +118,9 @@ _Avoid_: cell, position, target
 
 **Allocation rule**:
 A rule that decides, for each claim, who may write it into the knowledge store: the agent, a person,
-or both. Six are compared: an empty store, everything from a person, everything from the agent, the
-settlement rule, the confidence rule and the hybrid rule.
+or both. Five are run: an empty store, everything from a person, everything from the agent, the
+settlement rule and the confidence rule. The three that write agent claims run under each prompt
+variant, so a run compares eight. The hybrid rule is future work.
 _Avoid_: guideline, policy, routing rule
 
 **Settlement rule**:
@@ -189,7 +190,11 @@ against "'+' means not carcinogenic".
 _Avoid_: interpretation, hypothesis, alternative
 
 **Reading set**:
-All readings of a claim, written down and frozen before its defect is injected.
+All readings of a claim, written down and frozen before its defect is injected. A reading that
+neither the battery nor the data can tell from the true one is one under which the reference claim
+holds if it changes no probe question's gold answer, and one under which it fails if it changes at
+least one. When a freeze's rules admit fewer such readings than a defect has, the candidate readings
+left outside the set, each with its class, are listed in the freeze's note and frozen with the set.
 _Avoid_: candidate set, hypothesis space
 
 **Settled**:
