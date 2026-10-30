@@ -463,7 +463,17 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
 
 ## What follows
 
-_To do._
+- **This write-up:** the question-design section comes from @lin-jhe-yu (due 2026-11-04), and the
+  placeholders for the wallet-sum per-question review are filled once PR #160 merges. The write-up is
+  #54's last open acceptance criterion; #54 closes with it.
+- **A second freeze exists** (#61, ADR 0011): the first complete pass finished before 2026-11-16, the
+  condition for authoring it. It adds three more slots, with its own configuration, k, matched asks
+  and run id, so that the two rules can differ. Its confirmatory test is reported separately and is not
+  pooled with this run. If its rules coincide too, that is reported as it is.
+- **Other work in the issue tracker:** a replication with a model from another family (#94) and the
+  paired familiarity experiment (#4), which this run cannot supply (disclosure 6). The maintenance line
+  is deferred (ADR 0010), and the hybrid rule, in which the agent may also write a very confident claim
+  the battery did not settle, is future work (`CONTEXT.md`).
 
 ## How to reproduce
 
