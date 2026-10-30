@@ -368,7 +368,62 @@ complete pass finished at 01:35:08 UTC.
 
 ## Disclosures
 
-_To do: disclosures 1 to 14, each with its latest wording (#54)._
+These are the 14 disclosures collected on #54 for the write-up, each in its latest wording: item 1 as
+replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19; 13 on 2026-10-21; and
+14 on 2026-10-23. Small edits, so that the text reads on its own:
+
+- item 1's heading no longer says it replaces an item;
+- items 12 and 13 had no heading, so their first sentence stands in its place, and item 13's "found
+  reviewing PR #122, 2026-10-21" moves to its end;
+- item 10's last sentence says the safeguards "say so" where it said they "should";
+- item 14's heading links ADR 0013, and its last bullet names the committed configuration;
+- items 6 and 8 end with a note beginning "In the run", pointing to the result.
+
+`CONTEXT.md` defines the terms.
+
+1. **Design trials before the freeze.** Candidate defects were tried on about 53 scratch copies outside the data directory, with about 100 runs of the public Gloss detectors and stand-ins for the export and the declared-key pairing, on 2026-10-12, before PR #84 added the exception that allows such trials. They included candidates later dropped (two other column formulas, a margin formula, a cut of the open orders) and the Excellent/Poor swap that the 1/2/3 recoding replaced; the frozen recoding itself was never tried. Gold answers of candidate probes, predicted outcomes under several battery settings and power calculations were also computed on the copies. The battery settings (exact normalisation, child-to-parent declared keys, the fixed date) and the column-formula and coverage reading sets were chosen after seeing them. No defect was written into the data directory, and no project code called a model. The freeze note, committed with the freeze, lists every trial. Safeguards as before: the drift-reading rule reads declarations only, and the coverage readings are the link check's own answers (item 10).
+
+2. **No invisible data-part drift.** Both data-part drift readings (column formula, coverage) land in battery classes other than the true reading's, so the thin line has no case of data-part drift the battery cannot see.
+
+3. **The column-formula relation is injected,** not native (walletsum := availsum + frozensum + margsum), chosen because the released relation is guessable from the column names; knowledge-base entry 33 and the column meanings no longer describe walletsum.
+
+4. **The coverage claim cannot be settled by any battery on this database:** order status exists only in `orders`, and the rival readings (archived orders, another system, mistyped references) leave the database identical. Its testimony warrant rests on a fact about the export, not on a stronger battery.
+
+5. **Residual hints** in the data about cancellations: the column name `cancelnote` and the `timespan` codes IOC and FOK.
+
+6. **The value-meaning defect is an undirected grade** (seeingprofile recoded to '1', '2', '3', true reading '1' best; amended 2026-10-13, see [#34](https://github.com/RyanChenJung/Warrant/issues/34#issuecomment-6155738787)). Real seeing scales run both ways, so the defect is realistic, but the direction a model assumes is not known in advance; an astronomy-aware model may read it as the Antoniadi scale and be right, leaving the confirmatory test to rest on the coverage slot. One defect per claim kind cannot separate familiarity from claim kind (the paired familiarity experiment is #4).
+
+   *In the run:* the value-meaning slot gave no contrast, as this disclosure warned it might: the empty store answered every value-meaning question correctly (see the descriptive results).
+
+7. **Synthetic data** (ADR 0009): in 639 of 728 coded text columns the most frequent code is at most 1.25 times as frequent as the least frequent.
+
+8. **The confirmatory test may not run:** if the two rules' stores coincide, report "rules coincide; H3 not tested at write time" (#34; whether to add slots is on the #57 agenda).
+
+   *In the run:* the rules coincided under both prompt variants (see the confirmatory result).
+
+9. **Branch (b) of the drift-reading rule was amended after the value-meaning defect was redesigned.** #34 asks for the rule to be fixed before the first defect is authored. Branch (b) was amended on 2026-10-13, after the defect became the 1/2/3 recoding, because its old wording ("every value the defect wrote means what the same value meant in the clean release") selects the true reading for a recoding to new codes. The amendment reads declarations only, never battery output, and branch (a), which selects the other two drift readings, is unchanged. The freeze note says so too.
+
+10. **The coverage defect's meaning-only readings:** the three answers are the vendored link check's own (its unmatched-rows question offers retired or historical records, records from a system not present here, and data-entry errors), but the wording that makes the reference claim fail under them ("whatever their status; the exchange has no cancelled status", "complete for this exchange", "complete") is the authors'. Disclosure 1's safeguards say so.
+
+11. **The defects were designed with an AI assistant of the experiment model's family.** The defects, trials and checks were written with Claude Code running Claude Opus 5.5; the experiment model is Claude Sonnet 5. The assistant's conversations are not available to the experiment model, but its sense of what a model can guess shaped choices such as replacing the guessable released walletsum relation. A replication with a model from another family is future work (#94).
+
+12. The confounding rule's reading of "touches" by the declared touches (#34) was added to the freeze draft on 2026-10-14 by the AI coding assistant, after #30's clean scan was posted and two minutes after a check reported that a table reading would disqualify the value-meaning defect, and was reported to the lead as already settled rather than as a decision. The lead adopted it on 2026-10-17 and confirmed it on 2026-10-18 and 2026-10-19 as the timeline was corrected, knowing that result and that the table reading would leave only `users.acctscope`, an unordered code list, as a value-meaning candidate on crypto and alien. Read by table, `seeing-recode` has seven confounding findings on other columns of `observatories`. The drafting notes of 2026-10-12 had reviewed the defects by "touched columns" with the design trials' stand-in scan, which already held those findings, in view, but never discussed them. The timeline is in `freeze/NOTE.md` and on #34.
+
+13. The synthetic crypto data's integer row keys line up across tables (`orders.orderspivot` = `users.usersnode` = `fees.feesnode` = `orderexecutions.orderexecmark` = `riskandmargin.riskandmarginpivot`, 999/999 on the clean copy, 733/733 on the injected one). So the cut orders' child rows can be tied to their users by row number, though no declared key links them. This made the planned refusal probe ("Which users placed the cancelled orders?") answerable; it is replaced on #122 by one about the cancelled orders' order type, which no column recovers (best held-out accuracy 34.5 percent against 25.5 percent for the commonest type). It belongs with disclosure 7 (synthetic data, ADR 0009). It does not touch the coverage readings: the alignment says nothing about why the rows are missing. (Found reviewing PR #122, 2026-10-21.)
+
+14. **`max_tokens` is raised from the frozen 16,000 to 64,000 before the run's first call** (ADR 0013, decided by the lead on 2026-10-22, PR #140).
+
+   - **The test call behind it** (`results/claim_writing_probe/`): one claim-writing call on 2026-10-23 at about 00:26 UTC.
+     - **Setup:** the committed prompt (version 1, the `confident` variant) and the settings frozen before the pilot, on the release's `robot` database, which neither line uses. It cost $0.21 at list price, outside the run's cap.
+     - **Result:** it wrote 32 valid claims and used **15,566 of 16,000 output tokens**, about 5,400 of them text and the rest thinking.
+   - **Why it matters:** the run's own claim-writing prompts are as long or longer.
+     - At the cap, a sample fails. A failed sample 1 stops the run, and a failed later sample counts as disagreeing in the confidence ranking.
+     - The model does not see the cap, so a call below it is unchanged.
+     - Effort and thinking stay as frozen. The answers, whose pilot maximum was 4,411 output tokens, and the judge stay far below either cap.
+   - **What changes in the code:** every call is now streamed, since the SDK refuses a request that is not streamed above about 21,000 max_tokens.
+   - **The configuration:** `configs/write_line_thin.yaml` (PR #122) sets `max_tokens: 64000`; it is frozen from the run's first call.
+
+     The streaming path is checked on Amazon Bedrock (PR #141): one more claim-writing call on `robot` with `main` at `baad963` and max_tokens 64,000 ended its turn (`end_turn`) with 14,447 output tokens and 45 claims, against 15,566 and 32 in the first call. The run's first call can use the streamed path as it is.
 
 ## Limitations
 
