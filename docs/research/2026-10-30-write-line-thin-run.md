@@ -477,4 +477,48 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
 
 ## How to reproduce
 
-_To do._
+The summary and the audit table are recomputed from the committed files, with no model call. The run
+itself (the model calls, about $43 at list price on a Bedrock account) is described in
+`docs/write-line-run.md` and is not needed for this.
+
+```bash
+git switch main && git pull
+uv sync
+```
+
+**The summary** (`results/thin/summary.json`):
+
+```bash
+uv run python -m warrant.write_line.summary \
+  --config configs/write_line_thin.yaml \
+  --results results/thin/2026-10-24-66a86cb.jsonl \
+  --judge-validation results/judge_validation/2026-10-21-4af7c61.jsonl
+```
+
+It prints a short report and writes `results/thin/summary.json` by default; add `--out <path>` to write
+elsewhere. Run on the committed files, it gives the committed `summary.json` byte for byte (checked with
+`--out` pointing outside the repo). It refuses a judge-validation file that was not made with the run's
+judge method and model.
+
+**The audit records** (the blind audit's agreement with the judge):
+
+```bash
+uv run python -m warrant.write_line.audit agreement \
+  --results results/thin/2026-10-24-66a86cb.jsonl \
+  --sheet results/thin/audit/2026-10-24-sheet-filled.csv \
+  --key results/thin/audit/2026-10-24-key.json \
+  --auditor juan-de-haro \
+  --out <a new path>
+```
+
+The command appends to `--out`, and `results/thin/audit/2026-10-24-audit.jsonl` already holds the 20
+records, so give it a new path. Its output equals the committed file byte for byte.
+
+**The checks on the inputs:** `uv run pytest` runs the test suite. The injection and predictions the
+run used are `injections/9cfd501f2182-write_line.json` and `predictions/9cfd501f2182-write_line.json`;
+the run checks the recomputed predictions against the committed ones before its first claim-writing call.
+The clean databases come from `uv run python -m warrant.data.fetch`, which checks every file against
+`configs/livesqlbench-base-lite.sha256`.
+
+The results are data derived from LiveSQLBench-Base-Lite (table and column names, values and SQL),
+under CC BY-SA 4.0 ([LICENSE-DATA](../../LICENSE-DATA)).
