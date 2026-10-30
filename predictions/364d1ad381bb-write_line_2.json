@@ -1,0 +1,199 @@
+{
+  "commit": "364d1ad381bbb4bb61e5dbbba22583cf4805becd",
+  "freeze": "freeze/write_line_2.yaml",
+  "freeze_sha256": "257540b4ecb7f4e73c4cbe34918e75e5016e8153883ce2274d70b4d3fe245944",
+  "injection_record": "injections/364d1ad381bb-write_line_2.json",
+  "injection_record_sha256": "04f90f8f3128fbc5057b1768ed77095af16dc78a4f5149342b98f1a691d5f16e",
+  "settings": {
+    "normalisation": {
+      "counts": "keep",
+      "percentages": "keep"
+    },
+    "fixed_date": "2026-10-12",
+    "duckdb_version": {
+      "frozen": "1.5.5",
+      "installed": "1.5.5"
+    },
+    "pairing": "declared_child_to_parent",
+    "peers": "declared_foreign_keys",
+    "per_kind_combination": "the prediction all claims of the kind share, else mixed, and a mixed kind is not compared in H1 (one claim per kind here)"
+  },
+  "outputs": {
+    "2009e57ff3a2b0d7b9c6767fa0a99bea9e204aa3e0a0cebc3f1b41e217dd3d86": {
+      "file": "364d1ad381bb-write_line_2/2009e57ff3a2b0d7b9c6767fa0a99bea9e204aa3e0a0cebc3f1b41e217dd3d86.jsonl",
+      "sha256": "5cdf09409b1a38ac098073866a72f0a3e8f06b9333293ed361bf7bd4fec6f1c1",
+      "records": 83
+    },
+    "5ccf19c55fb79f0508c221770383b467fbcf20ed2a587d5a127e1a6cff854892": {
+      "file": "364d1ad381bb-write_line_2/5ccf19c55fb79f0508c221770383b467fbcf20ed2a587d5a127e1a6cff854892.jsonl",
+      "sha256": "67896ef5155a7fdafeb42a5dde8d26acdea7125803ca68c3e5714be018f08d01",
+      "records": 84
+    },
+    "7011fbfe3a7000e5bf60dcd3a4dc05de5b0fae4a2bac9736cb23fdfdc4c8b729": {
+      "file": "364d1ad381bb-write_line_2/7011fbfe3a7000e5bf60dcd3a4dc05de5b0fae4a2bac9736cb23fdfdc4c8b729.jsonl",
+      "sha256": "c9749e0045335e75a0c8b5dc7250ad73e4a1fb0ec88b811862e769d2f37a14c7",
+      "records": 84
+    },
+    "8d7bb88972a60df9172aac575f3b2eea714754fb6a7e291ac25b75eb5a8bc726": {
+      "file": "364d1ad381bb-write_line_2/8d7bb88972a60df9172aac575f3b2eea714754fb6a7e291ac25b75eb5a8bc726.jsonl",
+      "sha256": "472597051c01c6a9617b4ebea2a06a6fc73d9bd93ed06099860d2026e5629666",
+      "records": 83
+    },
+    "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1": {
+      "file": "364d1ad381bb-write_line_2/cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1.jsonl",
+      "sha256": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+      "records": 83
+    },
+    "dd569591986e50bdd3df85ffaaf20ffc2d1a555614cd13afc9c28c9dd4bc84f2": {
+      "file": "364d1ad381bb-write_line_2/dd569591986e50bdd3df85ffaaf20ffc2d1a555614cd13afc9c28c9dd4bc84f2.jsonl",
+      "sha256": "481cc3545cdad62430133aace2f71ae8e41d44d434e11675bdb6a685107e14da",
+      "records": 82
+    },
+    "fe11db1fd2f52975980db36c24d5c2398c93230cd537160c6195cd0fa99edfc0": {
+      "file": "364d1ad381bb-write_line_2/fe11db1fd2f52975980db36c24d5c2398c93230cd537160c6195cd0fa99edfc0.jsonl",
+      "sha256": "6a7d2cf6b84a0b895ec73f9e11e45bf2bc2ede6cf9e142fb1c690f3beb66b650",
+      "records": 82
+    }
+  },
+  "claims": {
+    "exec-throttle": {
+      "claim_kind": "column_formula",
+      "subject": "systemmonitoring.exectimespan",
+      "outcome": "agent_alone",
+      "readings": {
+        "throttle-wait": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": true
+        },
+        "as-released": {
+          "database": "fe11db1fd2f52975980db36c24d5c2398c93230cd537160c6195cd0fa99edfc0",
+          "output": "6a7d2cf6b84a0b895ec73f9e11e45bf2bc2ede6cf9e142fb1c690f3beb66b650",
+          "differs": true,
+          "holds": false
+        },
+        "sum-everywhere": {
+          "database": "2009e57ff3a2b0d7b9c6767fa0a99bea9e204aa3e0a0cebc3f1b41e217dd3d86",
+          "output": "5cdf09409b1a38ac098073866a72f0a3e8f06b9333293ed361bf7bd4fec6f1c1",
+          "differs": true,
+          "holds": false
+        },
+        "retry-rows": {
+          "database": "8d7bb88972a60df9172aac575f3b2eea714754fb6a7e291ac25b75eb5a8bc726",
+          "output": "472597051c01c6a9617b4ebea2a06a6fc73d9bd93ed06099860d2026e5629666",
+          "differs": true,
+          "holds": true
+        },
+        "cause-retries": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": true
+        },
+        "cause-old-logger": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": true
+        },
+        "cause-gateway": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": true
+        }
+      }
+    },
+    "margin-cut": {
+      "claim_kind": "coverage",
+      "subject": "users",
+      "outcome": "both",
+      "readings": {
+        "margin-left-out": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": true
+        },
+        "nothing-cut": {
+          "database": "dd569591986e50bdd3df85ffaaf20ffc2d1a555614cd13afc9c28c9dd4bc84f2",
+          "output": "481cc3545cdad62430133aace2f71ae8e41d44d434e11675bdb6a685107e14da",
+          "differs": true,
+          "holds": false
+        },
+        "cut-with-children": {
+          "database": "7011fbfe3a7000e5bf60dcd3a4dc05de5b0fae4a2bac9736cb23fdfdc4c8b729",
+          "output": "c9749e0045335e75a0c8b5dc7250ad73e4a1fb0ec88b811862e769d2f37a14c7",
+          "differs": true,
+          "holds": false
+        },
+        "options-cut": {
+          "database": "5ccf19c55fb79f0508c221770383b467fbcf20ed2a587d5a127e1a6cff854892",
+          "output": "67896ef5155a7fdafeb42a5dde8d26acdea7125803ca68c3e5714be018f08d01",
+          "differs": true,
+          "holds": false
+        },
+        "closed-accounts": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": false
+        },
+        "other-system": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": false
+        },
+        "mistyped": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": false
+        }
+      }
+    },
+    "pnl-sign": {
+      "claim_kind": "value_meaning",
+      "subject": "accountbalances.realline",
+      "outcome": "person_only",
+      "readings": {
+        "positive-is-loss": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": true
+        },
+        "positive-is-profit": {
+          "database": "cf8ecf78c2dc92bd71776e2f0fe30abe7c82aff3576f6c26de17e8a8e6519bb1",
+          "output": "6be532b58795c296d4cb0fba37bb9b36825682c9a35dbca86f9a4ce9054ee97b",
+          "differs": false,
+          "holds": false
+        }
+      }
+    }
+  },
+  "kinds": {
+    "column_formula": "agent_alone",
+    "coverage": "both",
+    "value_meaning": "person_only"
+  },
+  "bridge": {
+    "exec-throttle": {
+      "drift_reading": "as-released",
+      "drift_type": "data_part",
+      "battery_tells_apart": true
+    },
+    "margin-cut": {
+      "drift_reading": "nothing-cut",
+      "drift_type": "data_part",
+      "battery_tells_apart": true
+    },
+    "pnl-sign": {
+      "drift_reading": "positive-is-profit",
+      "drift_type": "convention",
+      "battery_tells_apart": false
+    }
+  }
+}
