@@ -183,7 +183,102 @@ is not pooled with this one.
 
 ## Descriptive results
 
-_To do._
+Everything in this section is descriptive: no test was pre-registered for it, and the intervals show how
+uncertain the figures are, not whether a result is "significant". Numbers are from
+`results/thin/summary.json` and `results/thin/README.md` unless the text names another file.
+
+### Accuracy by rule
+
+Each rule answered the 23 probe questions three times (69 answers). **Accuracy** is correct answers and
+correct refusals over all answers except clarification requests and failed calls. A **wrong answer** is
+a scored answer that is wrong or an over-refusal.
+
+| Rule | Accuracy | Wrong answers |
+|---|---|---|
+| empty | 0.657 | 23 |
+| all_person | 0.942 | 4 |
+| all_agent | 0.631 | 24 |
+| settlement | 0.826 | 12 |
+| confidence | 0.812 | 13 |
+| all_agent_abstain | 0.710 | 20 |
+| settlement_abstain | 0.956 | 3 |
+| confidence_abstain | 0.928 | 5 |
+
+The settlement and confidence rules answered from identical stores, so the difference between them is
+run-to-run noise. The same holds for each `_abstain` pair.
+
+### What each claim kind contributes
+
+The **agent's contribution** A, for a claim kind, is accuracy when the agent writes every claim minus
+accuracy with the empty store. The **person's contribution** P is accuracy when a person writes every
+claim minus accuracy when the agent writes every claim. Both are computed per question and then
+averaged over the kind's probe questions. The **allocation outcome** is read from the two with a cutoff
+of 0.25 fixed in advance (`global.outcome_rule`):
+
+- **agent alone** if A is at least 0.25 and P is below it;
+- **both** if both are at least 0.25;
+- **person only** if A is below 0.25 and P is at least it;
+- **no measurable contribution** otherwise, which agrees with no prediction.
+
+"Near the cutoff" flags a figure whose 95% bootstrap interval, over questions, contains 0.25; the
+outcome is still read from the point estimate. **H1** is the hypothesis that each claim kind's measured
+outcome equals its predicted outcome.
+
+| Variant | Kind (probes) | A | P | Outcome | Predicted |
+|---|---|---|---|---|---|
+| confident | coverage (9) | −0.11 [−0.33, 0] | 0.74 [0.44, 1] | person only | both |
+| confident | column formula (6) | 0.17 [0, 0.5] | 0.06 [−0.44, 0.5] | no measurable contribution, near the cutoff | agent alone |
+| confident | value meaning (8) | 0 | 0 | no measurable contribution | person only |
+| abstain | coverage | 0 | 0.63 [0.33, 0.89] | person only | both |
+| abstain | column formula | 0.28 [−0.11, 0.67] | −0.06 [−0.5, 0.33] | agent alone, near the cutoff | agent alone |
+| abstain | value meaning | 0 | 0 | no measurable contribution | person only |
+
+**H1 agrees on 0 of 3 kinds under `confident` and 1 of 3 under `abstain`** (column formula, agent alone).
+
+- **Coverage.** A person's note raised accuracy by 0.74 [0.44, 1] on the questions about the orders,
+  and the agent's own notes added nothing over the empty store (A = −0.11). The predicted outcome was
+  both. The claim that stands for the agent in the stores is sample 1's. Under `confident`, the judge labelled
+  it "not addressed" on all 7 readings, so it settles none of them, which is consistent with A being
+  at or below 0 (`results/thin/2026-10-24-66a86cb.jsonl`, the judgement of sample 1 on `orders-cut`).
+- **Column formula.** The agent's contribution was 0.17 under `confident` (no measurable contribution)
+  and 0.28 under `abstain` (agent alone); both intervals contain the 0.25 cutoff. The person's
+  contribution was close to 0 under both variants.
+- **Value meaning.** The empty store answered all 24 value-meaning answers (8 probes, 3 runs) correctly,
+  so no note could add anything: A and P are both 0 under both variants. No claim-writing sample wrote a
+  claim on this slot (0 of 20), so the agent's stores held none. The predicted outcome was person only;
+  the defect opened no gap for a note to fill. Disclosure 6 anticipated that the direction of an
+  undirected grade is not known in advance.
+
+### Wrong writes
+
+A **wrong write** is an agent claim, written into a store, that the judge labels as failing under its
+slot's true reading. The **wrong-writes curve** counts them at every k from 0 (the agent writes every
+slot it wrote a claim on) to 3 (it writes none), with the confidence rule's ranking deciding which slots
+go to a person. It is **0 wrong writes at every k under both variants**, and the settlement rule's point
+(2 asks) is also 0. A claim is **incomplete**, not wrong, when the judge leaves it "not addressed" on
+its true reading. Under `confident`, one claim was incomplete at k = 0 and k = 1 (the claim on the
+coverage slot, which goes to a person from k = 2 on) and none at k = 2 and 3; under `abstain` none was
+incomplete at any k (`summary.json`: `curve.points`). The judge split no true reading.
+
+### Other descriptive figures
+
+- **Flip rate: 0.3125.** The share of questions whose three runs did not all give the same response
+  class under at least one rule.
+- **Judge instability.** The judge's three calls did not all agree on 6 of 120 (claim, reading) pairs
+  under `confident`, none of them on a true reading, and on 8 of 120 under `abstain`, one of them on a
+  true reading, settled 2 to 1 (the pair counts are in `summary.json`; which readings are in
+  `results/thin/README.md`, and the results file agrees). No call was re-sent.
+- **All 792 answers, by response class** (the results file): 671 correct answers, 101 wrong answers, 10
+  correct refusals, 3 over-refusals, 4 clarification requests and 3 failures.
+- **Failures.** The 3 failures came after retries: cancelled-share under `empty`, runs 0 and 1, where the
+  model asked for more than 8 tool calls; and cancelled-limit-orders under `settlement_abstain`, run 2,
+  where the response was malformed. The 4 clarification requests were all under `all_agent`.
+- **The wallet-sum per-question review.** @lin-jhe-yu checked, probe by probe, whether the correct
+  answers on the column-formula slot read `walletsum` or reach the answer by summing the balance
+  columns, since a probe that can be answered without the note cannot show what the note is worth.
+  The result is in PR #160 (`results/thin/wallet_sum_review/`), which is not merged yet:
+  [N of M correct wallet-sum answers read `walletsum`; K use `availsum + frozensum`, all on one probe;
+  from #160 after it merges]. [What this means for the column-formula figures above, from #160.]
 
 ## The blind audit
 
