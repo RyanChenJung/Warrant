@@ -5,9 +5,11 @@ frozensum + margsum. So an agent that sums the balance columns instead of readin
 reach the gold answer. For each wallet-sum probe, which answers read `walletsum`, and how many
 correct answers rest on the components instead?
 
-**Answer:** 14 of the 116 correct wallet-sum answers (about 12%) rest on `availsum + frozensum`
-instead of `walletsum`. All 14 are on `user-wallet-excluding-margin`, where that sum equals the gold
-`walletsum - margsum`. Every correct answer to the other five probes reads `walletsum`.
+**Answer:**
+- **Most correct answers read `walletsum`:** 102 of the 116 correct wallet-sum answers (88%).
+- **14 (12%) use `availsum + frozensum` instead.** All 14 are on `user-wallet-excluding-margin`,
+  where that sum equals the gold `walletsum - margsum`.
+- **Every correct answer to the other five probes reads `walletsum`.**
 
 ## Method
 
@@ -48,28 +50,41 @@ Correct / wrong / other answers per question and category (`summary.csv`):
 | user-wallet-excluding-margin | 4 / 2 / 0 | **14** / 3 / 0 | 0 / 0 / 1 |
 | user-wallet-excluding-unrealised | 14 / 10 / 0 | 0 / 0 / 0 | 0 / 0 / 0 |
 
-Components-only answers on `user-wallet-excluding-margin`, per rule (all of them, and the correct
-ones):
+### `user-wallet-excluding-margin` per rule
 
-| Rule | Wallet-sum note in the store | components_only | correct |
-|---|---|---|---|
-| empty | none | 0 | 0 |
-| all_person | the person's | 3 | 3 |
-| all_agent | the agent's | 3 | 2 |
-| settlement | the agent's | 3 | 3 |
-| confidence | the agent's | 3 | 3 |
-| all_agent_abstain | the agent's | 2 | 1 |
-| settlement_abstain | the agent's | 1 | 1 |
-| confidence_abstain | the agent's | 2 | 1 |
+The three empty-store answers all read `walletsum`. Seven rules have a wallet-sum note in their
+store: the person's under `all_person`, and the agent's claim under the other six. Settlement and
+confidence both leave wallet-sum to the agent (`../README.md`). Under those seven rules:
+- 17 of the 21 answers use `availsum + frozensum`;
+- 3 read `walletsum`;
+- 1 has no SQL.
 
-- **Components-only answers appear under every rule whose store holds a note on wallet-sum, and
-  never under `empty`.** Under `empty`, all three answers read `walletsum`.
-- **Whose note it is varies by rule.** Only `all_person` holds the person's note on this slot. The
-  six other rules hold the agent's claim, since both settlement and confidence leave wallet-sum to
-  the agent (see `../README.md`).
-- **Both notes state the formula.** The agent's claim says "walletsum equals availsum + frozensum +
-  margsum for all 1,000 rows". So with either note, the agent can compute the answer from the
-  components.
+Answers per rule (A `reads_walletsum`, B `components_only`):
+
+| Rule | Wallet-sum note in the store | A | B | No SQL |
+|---|---|---|---|---|
+| empty | none | 3 | 0 | 0 |
+| all_person | the person's | 0 | 3 | 0 |
+| all_agent | the agent's | 0 | 3 | 0 |
+| settlement | the agent's | 0 | 3 | 0 |
+| confidence | the agent's | 0 | 3 | 0 |
+| all_agent_abstain | the agent's | 0 | 2 | 1 |
+| settlement_abstain | the agent's | 2 | 1 | 0 |
+| confidence_abstain | the agent's | 1 | 2 | 0 |
+
+### Why it matters
+
+- **The sum is the same under every reading.** Every reading in `freeze/write_line.yaml` changes
+  only `walletsum`, and `without-margin` changes nothing. So `availsum + frozensum` has the same
+  value whichever reading of `walletsum` holds, and it is the gold value.
+- **So these answers do not test the note.** An answer that uses the sum scores the same whatever
+  the note says `walletsum` is, so it cannot tell a correct note from a wrong one.
+- **On this probe, most answers with a note did not test its content.**
+- **No score is wrong because of it.** Every wallet-sum note in this run was correct. But the
+  probe's correct answers under these seven rules are not evidence about the note.
+- **A possible explanation, not a finding.** Both notes state `walletsum`'s formula. The agent's
+  claim says "walletsum equals availsum + frozensum + margsum for all 1,000 rows". That may be why
+  the agent switched to the components, but the records do not show its reasoning.
 
 ## The answer-column check
 
@@ -90,9 +105,9 @@ carry extra columns from wrong answers whose answer is wrong.
 (correct / wrong / other in each cell)
 
 - **Every correct answer's answer column holds the gold value.**
-- **5 wrong answers on `user-wallet-excluding-margin` have the right answer column.** They were
-  scored wrong only for their extra columns (`usertag`, or the balance columns listed beside the
-  answer). Three are `components_only` and two `reads_walletsum`.
+- **5 wrong answers on `user-wallet-excluding-margin` hold the gold value in their answer column.**
+  They were scored wrong only for their extra columns (`usertag`, or the balance columns listed
+  beside the answer). Three are `components_only` and two `reads_walletsum`.
 - **The 5 extra-column answers on `user-wallet-excluding-unrealised` are not near-misses.** Each
   lists `walletsum`, which is the gold value (528,690.97), but its answer column is
   `walletsum - unrealline` = 475,988.33. That is the value under the wrong readings `four-terms` and
@@ -104,6 +119,9 @@ carry extra columns from wrong answers whose answer is wrong.
 
 ## Limits
 
+- **The components-only pattern rests on one probe and small counts.** It is on
+  `user-wallet-excluding-margin` alone, against only 3 empty-store answers.
+- **The records hold no reasoning.** They do not record why the agent chose its columns.
 - **The review classes SQL text, not reasoning.** An answer that reads `walletsum` may still have
   been written with the formula in mind.
 - **Aliases are resolved without scopes.** An alias defined twice would resolve to both of its
