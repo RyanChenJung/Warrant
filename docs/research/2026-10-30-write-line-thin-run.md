@@ -427,7 +427,39 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
 
 ## Limitations
 
-_To do._
+- **There is no confirmatory result.** The settlement rule and the confidence rule composed identical
+  stores, so the write line's central comparison (H3) was not tested. Nothing here says which rule is
+  better. The accuracy figures per rule are descriptive and come with no test.
+- **Three slots only.** There is one defect per claim kind, so each claim kind's result rests on one
+  slot, and 23 probe questions (9, 6 and 8 per kind). The intervals in the descriptive results are wide
+  (for example the column-formula contribution's interval spans the 0.25 cutoff under both variants).
+  One defect per claim kind also cannot separate how familiar a defect looks from its claim kind
+  (disclosure 6).
+- **The predicted outcomes did not hold.** H1 agrees on 0 of 3 kinds under `confident` and 1 of 3 under
+  `abstain`. On the value-meaning slot the defect opened no gap (the empty store was always right), so
+  that slot says nothing about when a person is needed. On the coverage slot the agent's own claim, the
+  one in the stores, settled none of the readings under `confident`.
+- **The agent was not pointed at any slot.** The claim-writing prompt names no slot, so what the agent
+  writes a claim about is its own choice: all 10 samples wrote on `wallet-sum`, and none wrote on
+  `seeing-recode`. ADR 0011 gave this as the reason to expect the two rules to coincide, and they did.
+- **One model, and a designer of the same family.** Claims, the judge and answers all use Claude Sonnet 5.
+  The judge is the same model that writes the claims it judges, and the defects were designed with an AI
+  assistant of the same family (disclosure 11). A replication with a model from another family is future
+  work (#94).
+- **One judge and one auditor.** The judge and the blind auditor agree on 108 of 120 pairs and on all 20
+  true readings, but they differ on rival readings of the coverage slot, mostly on one reading they
+  interpret differently. The audit is by one person, once.
+- **Synthetic data and two databases.** The data is a synthetic benchmark (disclosure 7) and the run
+  uses two of its databases, with defects we planted. How often such defects occur in real data is not
+  measured here.
+- **Some answers are not scored.** Three answers failed after retries and four were clarification
+  requests; accuracy leaves them out, and the counts are given above.
+- **The per-question review of the column-formula slot is pending.** A probe that can be answered
+  without the claim cannot show what the claim is worth, so the column-formula figures should be read
+  with the review in PR #160 [what it finds: from #160, after it merges].
+- **The cost is not confirmed by the Bedrock bill** (see Cost).
+- **The run departs from the freeze in one setting:** `max_tokens` is 64,000, not 16,000
+  (disclosure 14).
 
 ## What follows
 
