@@ -330,7 +330,41 @@ principle move it; this run's ranking is read from the judge's labels, as the fr
 
 ## Cost
 
-_To do._
+**The $43.43 is not confirmed by the Bedrock bill.** The recorded spend is the **token counts times list
+price**: Anthropic's published price for Claude Sonnet 5, $2 per million input tokens and $10 per million
+output tokens (`LIST_PRICES` in `warrant/write_line/guards.py`). Amazon Bedrock prices Claude separately,
+and its pricing page does not list Sonnet 5. The runbook's last step was to compare the recorded spend
+with the lead's Bedrock bill, but the IAM user the run used has Bedrock access only and the lead has no
+billing access to the account, so the bill could not be read (#54). The figures below may therefore
+differ from what the account was charged.
+
+| Step | Calls | Cost (list price) |
+|---|---|---|
+| Claim writing | 40 | $9.70 |
+| Judging | 40 judgements | $2.74 |
+| Answers | 792 | $30.94 |
+| The run | | $43.38 |
+| With the judge's validation (`results/judge_validation/`) | | $43.43, against the $100 cap |
+
+The sources are `results/thin/README.md` and `summary.json` (`descriptive.cost.total_spend`, $43.38, and
+`file_spend`, $43.43). In tokens, the run used 14,816,613 input and 1,374,279 output tokens, and with the
+judge's validation 14,829,981 input and 1,377,207 output tokens. The runbook (`docs/write-line-run.md`)
+had estimated about $43 in all against the $100 cap, which the run did not come near; the first-pass
+pause (twice the first pass's estimate) did not trigger.
+
+**Method cost per rule**, the cost of writing and judging the claims a rule needs (`summary.json`,
+`descriptive.cost.method`), at list price:
+
+- **settlement:** $0.60 and the battery's 5.3 seconds. It needs only sample 1 of each database.
+- **confidence:** $6.31. It needs ten samples per database and their judging.
+- **under `abstain`:** $0.42 and $6.13.
+
+A call that two rules need (sample 1) is counted in both, so these figures say what it costs to run
+each rule on its own and do not add up across rules. The empty and all-person rules write no claims, so
+they have no method cost.
+
+**Time.** The run started at 2026-10-24 22:36:23 UTC and completed at 2026-10-25 02:31:37 UTC; its first
+complete pass finished at 01:35:08 UTC.
 
 ## Disclosures
 
