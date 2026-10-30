@@ -132,7 +132,54 @@ _To be added from @lin-jhe-yu's section (due 2026-11-04)._
 
 ## Confirmatory result
 
-_To do._
+**The confirmatory test did not run: the rules coincide.** Under both prompt variants, the settlement
+rule and the confidence rule composed identical knowledge stores at k = 2. The comparison between them
+has no question to test, so the frozen result is the one the freeze prescribes
+(`global.confirmatory_test.rules_coincide`): **"rules coincide; H3 not tested at write time"**. H3 is
+the hypothesis that, at matched asks, the settlement rule leads to fewer wrong answers than the
+confidence rule. This is reported as it is: it was not re-run under another seed.
+
+"Rules coincide" means that no slot is filled from different sources by the two rules. The test compares
+the rules on the probe questions of exactly those slots (the question set called Q\*), and Q\* is empty
+here (`summary.json`: `confirmatory.slots` and `confirmatory.questions` are empty, `test` is null).
+
+Who wrote each slot's claim under each rule (`results/thin/README.md`):
+
+| Rule | `wallet-sum` | `orders-cut` | `seeing-recode` |
+|---|---|---|---|
+| empty | none | none | none |
+| all_person | person | person | person |
+| all_agent, all_agent_abstain | agent | agent | none |
+| settlement, settlement_abstain | agent | person | person |
+| confidence, confidence_abstain | agent | person | person |
+
+Why they coincide. Both rules leave exactly one slot to the agent when k = 2 and there are three slots.
+The settlement rule leaves it to the agent because the battery settles it; the confidence rule because
+the agent is most confident about it. Here those are the same slot:
+
+- **`wallet-sum`** is the slot the battery settles. All 10 claim-writing samples of each variant wrote a
+  claim on it and agreed (agreement 1.0; mean stated confidence 0.917 under `confident`, 0.927 under
+  `abstain`). It ranked most confident.
+- **`orders-cut`**: all 10 samples of each variant wrote a claim on it, but the claims varied (agreement
+  0.1111, which is 1 of 9 other samples, under `confident`; 0.4444, 4 of 9, under `abstain`). It ranked
+  second.
+- **`seeing-recode`**: no sample wrote a claim on it (0 of 20 samples), so it ranked least confident.
+  The claim-writing prompt names no slot, so an agent that is not pointed at a column does not write
+  about it.
+
+The confidence ranking, least confident first, was `seeing-recode`, `orders-cut`, `wallet-sum` under
+both variants (`summary.json`: `confirmatory.ranking`, `descriptive.variants.abstain.comparison.ranking`).
+So the confidence rule asked a person about `seeing-recode` and `orders-cut`, exactly the settlement
+rule's two slots.
+
+**What this does and does not say.** It says nothing about whether the settlement rule beats the
+confidence rule: there was no test. Their accuracy over the defect probes was 0.826
+(settlement) and 0.812 (confidence) under `confident`, but their stores are identical, so that gap is run-to-run noise (see the
+descriptive results). ADR 0011 foresaw this outcome: with three slots and k = 2, each rule leaves one
+slot to the agent, so the two stores either coincide or swap one slot, and an agent that is not pointed
+at a slot makes coinciding likely. A second freeze with more slots exists (#61): the first pass finished before
+2026-11-16, which ADR 0011 set as the condition for authoring it. Its test is reported separately and
+is not pooled with this one.
 
 ## Descriptive results
 
