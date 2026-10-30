@@ -282,7 +282,51 @@ incomplete at any k (`summary.json`: `curve.points`). The judge split no true re
 
 ## The blind audit
 
-_To do._
+The judge's labels decide what counts as a wrong write and which claims agree with each other, so they
+need a check. The **blind audit** (#123) is that check: a teammate who did not design the defects
+labels the agent's claims himself, without seeing the judge's labels and without being told which
+reading is true, and the two sets of labels are compared. The audit measures agreement only. **The
+judge's labels stand** whatever the audit finds.
+
+**What was labelled.** Juan (auditor id `juan-de-haro`) labelled the 20 distinct `confident` claims the agent wrote on a
+slot (10 on `wallet-sum` and 10 on `orders-cut`; none was written on `seeing-recode`). For each claim
+he gave a label (holds, fails or not addressed) for each reading in the slot's reading set: 5 readings
+for `wallet-sum` and 7 for `orders-cut`, so **120 (claim, reading) pairs**. The blank sheet is
+`results/thin/audit/2026-10-24-sheet.csv`, his labels are `2026-10-24-sheet-filled.csv`, the key that maps
+each item to its defect and readings stayed out of the repo until the labels were in
+(`2026-10-24-key.json`), and `2026-10-24-audit.jsonl` holds one record per claim. He wrote the labels
+without AI; the commit that adds them carries a Claude Code co-author line, which covers the commit and
+the PR (#145). It took him about 4 hours.
+
+**Agreement** (`results/thin/README.md`; the audit file and the results file give the same counts):
+
+| | Agree |
+|---|---|
+| All pairs | 108 of 120 |
+| `wallet-sum` | 50 of 50 |
+| `orders-cut` | 58 of 70 |
+| True readings | 20 of 20 |
+
+**The 12 differences**
+
+- **Judge "fails", auditor "not addressed" (8).**
+  - 7 are on one reading of `orders-cut`: "Cancelled orders were removed together with their executions,
+    fees and risk records". The judge takes it to leave no orphan records, so a claim that counts
+    orphans fails under it. The auditor takes it to say nothing about other orphans. His one
+    practice-round difference was on the same reading.
+  - 1 is on the "orders are in another system" reading, where the judge's three calls went 2 to 1.
+- **Judge "fails", auditor "holds" (3).** On readings that keep the orders table complete: the "other
+  system" reading (2) and the "mistyped references" reading (1). On one of them the judge's calls went
+  2 to 1.
+- **Judge "holds", auditor "fails" (1).** On the "archived orders" reading.
+
+**How to read this.** The auditor and the judge agree on all 20 true readings and on every pair of
+`wallet-sum`. The differences are on the rival readings of `orders-cut`, mostly on one reading whose
+meaning the two read differently, so the judge's labels on those rivals are less certain than its labels
+on the true readings. A wrong write is a claim that fails under the true reading, and the two agree on
+every true reading, so the count of wrong writes (0) would be the same under the auditor's labels. The
+confidence ranking uses the judge's whole profile of labels, so disagreements on rival readings could in
+principle move it; this run's ranking is read from the judge's labels, as the freeze prescribes.
 
 ## Cost
 
