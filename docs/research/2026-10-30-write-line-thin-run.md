@@ -1,6 +1,7 @@
 # The write line's thin run: write-up (#54)
 
-Status: draft, in progress (PR #163). Due 2026-11-09.
+Status: draft for review (PR #163). Due 2026-11-09. The question-design section and the wallet-sum review
+(PR #160) are placeholders.
 
 Every number below comes from a committed file: `results/thin/README.md`, `results/thin/summary.json`,
 `results/thin/2026-10-24-66a86cb.jsonl` and `results/thin/audit/`. Where a number is not in
@@ -9,7 +10,54 @@ in [CONTEXT.md](../../CONTEXT.md).
 
 ## Summary
 
-_To be written last, from the sections below._
+**The question.** An AI agent that answers questions about a database can write down **claims** about
+it for later use, such as "the orders table only holds orders that were not cancelled". Some of these a
+person has to supply, because the data cannot show the truth. An **allocation rule** decides which
+claims the agent may write on its own and which a person writes. We planted three problems in a public
+benchmark's databases, one for each of three kinds of claim (a column formula, a coverage gap, and the
+meaning of coded values), so that the true claim for each is known. A **slot** is one such claim kind
+with its subject, for example the coverage of the `orders` table.
+
+**The two rules compared.** The **settlement rule** lets the agent write exactly the claims a fixed set
+of automatic data checks (the check battery) can settle, and gives a person the rest. Here that is one
+slot for the agent and two for a person, so **k = 2**, where k is the number of slots a person writes.
+The **confidence rule** lets the agent write the claims it is most confident in, and gives a person the
+same k = 2, its least confident ones. Comparing the two at the same k is called matched asks. Three
+other rules bracket them: an empty store, everything from a person, and everything from the agent. Each
+agent-writing rule ran under two prompt variants, so eight rules ran in all.
+
+**What was run.** On 2026-10-24 and 25, Claude Sonnet 5 on Amazon Bedrock wrote claims (40 calls),
+a judge labelled them, and the agent answered 33 questions (23 **probe questions**, whose answer depends
+on a slot's claim, and 10 controls) under each of the 8 rules, 3 times: **792 answers**. It cost
+**$43.43** at list price, counting tokens; the Bedrock bill could not be read, so that figure is not
+confirmed by it.
+
+**Result 1: the confirmatory test did not run.** The settlement and confidence rules composed identical
+stores under both prompt variants: the agent was most confident about the one slot the checks settle,
+wrote nothing on the value-meaning slot, and wrote varied claims on the coverage slot. When two rules'
+stores are identical, the rules **coincide**, there is nothing to compare, and the frozen result is
+**"rules coincide; H3 not tested at write time"**. H3, the hypothesis that the settlement rule leads to
+fewer wrong answers than the confidence rule at matched asks, was not tested.
+
+**Result 2: what each kind of claim contributes (descriptive).** The agent's contribution is its
+accuracy with its own claims minus accuracy with no claims, and a person's contribution is accuracy
+with a person's claims minus accuracy with the agent's. Read against a cutoff of 0.25, the predicted
+outcomes held for 0 of 3 claim kinds under the primary prompt variant and for 1 of 3 under the other:
+- **coverage:** a person's claim raised accuracy by 0.74, and the agent's own claims added nothing
+  (predicted: both the agent and a person contribute);
+- **column formula:** the agent's contribution was 0.17 (0.28 under the other variant), near the
+  cutoff (predicted: the agent alone);
+- **value meaning:** no contribution from either, because the agent already answered every such
+  question correctly without any claim (predicted: a person only).
+
+No claim the agent wrote was judged wrong on its true reading, at any k.
+
+**The blind audit.** A teammate labelled 120 (claim, reading) pairs blind to the judge's labels, and
+agreed with the judge on 108 of them, and on all 20 true readings.
+
+**What it means.** The run shows the pipeline works end to end and gives a first descriptive picture,
+but it cannot support a claim about which rule is better. A second freeze with three more slots exists
+(#61) so that the rules can differ; its test is reported separately.
 
 ## What was run
 
