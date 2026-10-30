@@ -1,0 +1,455 @@
+# The write line's second freeze (#61, #149; ADR 0011). Nothing is injected before its commit is on
+# the public remote (ADR 0007). It adds three slots on fresh clean copies of crypto, with their own
+# configuration, k and run id, reported next to the first freeze (freeze/write_line.yaml), not pooled.
+# The design is the lead's comment on #61 of 2026-10-28; freeze/NOTE_2.md records how it was reached,
+# the reading-set rule, the realism case, the design trials and every disclosure.
+#
+# The release and global parts are the first freeze's, copied unchanged except the grounding, which
+# names this freeze's business term (freeze/NOTE_2.md).
+#
+# Table and column names, codes and counts in this file come from LiveSQLBench-Base-Lite
+# (birdsql/livesqlbench-base-lite-sqlite, CC BY-SA 4.0); this file is licensed under CC BY-SA 4.0,
+# see LICENSE-DATA.
+release:
+  config: configs/livesqlbench-base-lite.yaml
+  revision: 0664a2f28555faa0dd2947c8c23288df79bcc06b
+  # The clean databases, checked against configs/livesqlbench-base-lite.sha256.
+  sha256:
+    crypto: 49103c15d930b290298ac52e2f965877f3caacde6c5269c6c798e596b4c7a5e1
+    alien: e160643c9abb43ba69917532f2654637e677460df25678f9daecdefb416046ed
+global:
+  battery:
+    checks: >-
+      the eight checks of Gloss's run_all, in its order (warrant/battery/gloss/detect/__init__.py),
+      per table, called one by one by warrant.battery.run (#30) rather than through run_all, so that
+      the link detector alone also gets the declared keys
+    detectors: >-
+      the vendored Gloss detectors, public release b5025fb, with the declared-key pairing added to
+      detect/link.py (warrant/battery/gloss/VENDORING.md)
+    documentation: none is passed to the checks
+    today: the fixed date
+    normalisation: exact
+    normalised_record: >-
+      {check: assertion type, subject, statement, evidence: [[evidence SQL with whitespace runs
+      collapsed, evidence result as JSON]]}, sorted by canonical JSON (sort_keys, separators (',',
+      ':'), ensure_ascii=False; the evidence result serialised the same way), duplicates kept
+    dropped: everything else, including measured_at, valid_from, valid_to, tier, author, ids, questions, impact and conflicts_with
+    kept_exactly: [counts, percentages, per-code frequencies, example values]
+    cannot_tell_apart: the two readings' normalised lists are byte-identical
+    pairing: declared_child_to_parent
+    pairing_detail: same-named columns as released, plus each declared foreign key from child to parent only
+    peers: declared_foreign_keys
+    peers_detail: the tables linked by a declared foreign key, in either direction
+    export_floats: positional notation
+  fixed_date: "2026-10-12"
+  duckdb_version: "1.5.5"
+  python_version: "3.13"
+  seeds: {matched_asks_tie_break: 20261012, bootstrap: 20261013, judge_reading_order: 20261014}
+  reading_databases: >-
+    All defects of a database are injected into one copy of its clean database, in the declared
+    order: the injected copy. A world-fixed reading's database is the clean database with the other
+    defects of the same database applied through their true transformations, then the reading's own
+    transformation. A meaning-only reading has no transformation of its own and shares the injected
+    copy. Content hashes are taken over a canonical dump (schema plus each table's rows, sorted), not
+    over file bytes.
+  drift_reading_rule: >-
+    A defect's drift reading is its no-defect reading: the reading in its reading set, other than
+    the true one, under which the defect was never made. (a) If the reading set has world-fixed
+    readings other than the true one, it is the world-fixed reading whose own transformation is
+    empty (`[]`, written out); its database is the clean database with only the other defects of the
+    same database applied through their true transformations. (b) Otherwise it is the reading set's
+    only meaning-only reading other than the true one; a defect with more than one such reading is
+    re-authored. The rule reads only declared forms, transformations and reading statements, never
+    battery output. A defect is re-authored if the rule selects no reading, more than one, the true
+    reading, or a reading under which the reference claim holds. No other drift reading may be
+    declared. The drift type follows by content hash: data-part drift if the drift reading's
+    database differs from the injected copy, convention drift otherwise.
+  confounding_rule: >-
+    A clean-scan finding (#30) disqualifies a defect only if it is on a table or column the defect
+    touches, bears on the defect's claim kind, and appears unchanged in the true reading's battery
+    output. "On a table or column the defect touches" follows the declared touches: a finding on a
+    column counts if that column is listed or the table is touched as a whole (`*`); a finding on
+    the table itself counts if the table is touched. The claim kind a finding bears on is its
+    assertion type's under the clean scan's mapping (CLAIM_KINDS in warrant/data/clean_scan.py).
+  claim_writing:
+    business_terms: >-
+      only the named quantities the probe questions use (such as "wallet balance", "total fees"); no
+      population or code term of any defect
+    grounding: >-
+      the term list points "realised profit and loss" to accountbalances.realline; that grounding is
+      held fixed and stays outside the reading set
+    sampling: >-
+      the model's default, whose temperature is above 0 (anthropic.claude-sonnet-5 rejects a
+      non-default temperature, top_p or top_k, so none is sent); effort, thinking and max_tokens are
+      fixed, committed and pushed to the public repository before the first model call on this
+      freeze's defects or claims (the pilot, the judge's validation or claim writing, whichever
+      comes first)
+  outcome_rule:
+    contributions: >-
+      Per claim kind, over its defect probes (not the controls): A = mean per-question
+      accuracy(everything from the agent) - accuracy(empty store); P = mean per-question
+      accuracy(everything from a person) - accuracy(everything from the agent), over questions with
+      at least one scored run in both conditions.
+    cutoff: 0.25
+    applied_to: point estimates
+    outcomes: >-
+      agent alone if A >= c and P < c; both if A >= c and P >= c; person only if A < c and P >= c;
+      otherwise no measurable contribution, which agrees with no prediction
+    bootstrap: {over: questions, runs_averaged_within_question: true, resamples: 10000, level: 0.95, method: percentile, seed: bootstrap}
+    near_cutoff: an interval containing c is flagged "near the cutoff" and does not change the outcome
+  per_kind_combination: >-
+    the prediction all claims of the kind share, else mixed, and a mixed kind is not compared in H1
+    (one claim per kind here)
+  judge:
+    operation: the judge operation, three calls per slot claim
+    model: >-
+      anthropic.claude-sonnet-5 on Amazon Bedrock in us-east-1, the experiment model (#26, #97), the
+      same model that writes the claims it judges
+    sampling: >-
+      none sent: the model rejects a non-default temperature, top_p or top_k, so it runs at its
+      default sampling and one call's labels are not guaranteed to repeat
+    settings: >-
+      effort, thinking and max_tokens are those fixed for claim writing, by the same deadline
+      (claim_writing.sampling)
+    valid_call: >-
+      a call's answer is the first JSON object in its text output, with labels matched exactly
+      (holds, fails, not_addressed, in lower case); a call that fails, or whose answer does not give
+      exactly one of those labels for every reading letter and no other key, is discarded and
+      re-sent, at most three extra calls per claim; the number of re-sent calls is reported
+    runs: >-
+      each claim is judged in one run: its three valid calls and any re-sent calls are the only judge
+      calls on it, and every answer is kept with the run; a judge run repeated for any reason is
+      reported with all its outputs, and the first complete run is the one used
+    combination: >-
+      for each reading, the label at least two valid calls give; a reading on which the three calls
+      give three different labels, or that has no label two valid calls share after the extra calls,
+      is not_addressed, since the judge does not settle the claim on it. These splits are counted and
+      reported, those on the true reading of agent claims separately: there a split makes a claim
+      incomplete instead of a wrong write, so a split never turns a claim into a wrong write, though
+      splits on any reading can move the confidence ranking and with it which slots keep the agent's
+      claim. The curve of wrong writes is also reported, descriptively, with the ranking unchanged
+      and those true-reading splits counted as wrong writes when at least one valid call gives
+      fails. The combined labels are the judge's labels wherever they are used (agreement,
+      wrong writes, validation, audit). The share of (claim, reading) pairs on which the three calls
+      do not all agree is reported, for agent claims and validation claims separately; with one
+      shared reading order it measures repeat instability, not order effects
+    rubric: freeze/judge_rubric.md
+    input: >-
+      the claim, its slot and the slot's reading statements in the slot's reading order, with no
+      indication of which reading is true, of the forms or of the holds flags
+    reading_order: >-
+      for each slot in order of (database, claim kind, subject), the slot's reading ids in declared
+      order shuffled by one random.Random(judge seed); the order is drawn once per slot and shared by
+      every claim on it and by all three calls
+    profile: [holds, fails, not_addressed]
+    same_profile_agrees: true
+    identical_strings_agree_without_a_call: true
+    wrong_write: an agent claim that fails on the true reading; not addressed on it is reported as incomplete
+    validation: >-
+      before the first claim-writing call, the judge's outputs on every reference claim are compared
+      with the frozen holds flags on every reading (holds true expects holds, holds false expects
+      fails, and not_addressed, a split included, is a mismatch either way), and each drift-reading
+      statement's outputs on two readings only: holds on its own drift reading and fails on the true
+      reading; the other readings settle no expected output for it. Mismatches are reported, not
+      fixed
+    audit: >-
+      a teammate who did not author the defects labels every slot claim blind; agreement is
+      reported and the judge's labels stand
+  confidence_combination:
+    order: lexicographic, higher is more confident, each later key breaking ties of the earlier
+    keys:
+      - agreement: >-
+          the share of claim-writing samples 2 to 10 whose claim on the slot agrees with sample 1's;
+          no claim counts as disagreeing; a slot where sample 1 has no claim ranks least confident
+      - mean_confidence: the mean self-reported confidence of sample 1 and the samples agreeing with it
+      - seeded_permutation: >-
+          the slots in order of (database, claim kind, subject) shuffled by random.Random(matched-asks
+          seed); earlier is more confident
+  matched_asks:
+    scope: all_slots_pooled
+    k: settlement_ask_count, fixed when the predictions are committed
+    expected_k: 2
+    selection: the confidence rule writes the reference claim on its k least confident slots and the agent's claim on the rest
+    tie_break: seeded_permutation
+    curve: k = 0 to 3 is reported
+  numeric_tolerance: 0.01
+  numeric_floor: 1.0e-9
+  refusal_check: >-
+    the missing-piece field names a recorded term, matched at a word start and case-insensitively,
+    and the alternative is not empty; otherwise the refusal is a wrong answer, bucketed inadequate
+    refusal. The terms, with spelling variants such as cancelled and canceled, are committed with
+    the question. Refusing an answerable probe is an over-refusal.
+  confirmatory_test:
+    statistic:
+      name: sum_of_question_differences
+      sign: confidence_minus_settlement
+      per_question: d_q, the mean over the question's kept pairs of e_confidence - e_settlement
+      "on": the non-zero d_q
+      test: exact_sign_flip
+      tails: one_sided
+      tail: upper, p = the share of the 2^n sign assignments with T* >= T
+      alpha: 0.05
+    pairing: {by: question, runs_per_question: 3, run_matching: same_index, question_without_kept_pair: drops out}
+    question_set: >-
+      Q*, the defect probes of the slots the two rules fill from different sources, fixed when the
+      stores are composed
+    error_coding: [wrong_answer, inadequate_refusal, unanswerable_answered, over_refusal]
+    failures:
+      primary: pairs_where_both_rules_scored
+      scored_excludes: [failure_after_retries, clarification_request]
+      sensitivity: [failures_as_wrong, clarifications_as_wrong, all_defect_probes]
+      sensitivity_role: descriptive
+      report_failure_rate_per_rule: true
+      report_clarification_rate_per_rule: true
+    also_reported: [two_sided_p, mean d_q with the outcome rule's bootstrap interval]
+    rules_coincide: >-
+      if the two rules' stores are identical, no test runs and the result is "rules coincide; H3 not
+      tested at write time", with the slot ranking and no re-run under another seed
+defects:
+  # crypto, in declared injection order: the column formula, the coverage defect, then the value
+  # meaning.
+  - id: exec-throttle
+    database: crypto
+    slot: {claim_kind: column_formula, subject: systemmonitoring.exectimespan}
+    declared_as: data_change
+    touches: {systemmonitoring: [exectimespan]}
+    # Expected audit: 1,000 rows updated; the relation holds on 901 of 1,000 rows; on the other 99,
+    # the rows with rateremain at most 100, exectimespan exceeds apilatmark + queueline by 110 to
+    # 1,100 (57,900 in all); exectimespan then runs from 66 to 2,807, none NULL, zero or negative.
+    # On the clean copy the relation holds on no row.
+    transformation:
+      - UPDATE systemmonitoring SET exectimespan = apilatmark + queueline + CASE WHEN rateremain <= 100 THEN 10 * (110 - rateremain) ELSE 0 END
+    # The reference claim does not name the snapshots that carry the extra amount: the battery cannot
+    # tell which they are (freeze/NOTE_2.md).
+    reference_claim: >-
+      The execution time exectimespan in systemmonitoring is the API latency apilatmark plus the
+      queue length queueline, except on some snapshots, where it also carries an extra amount that is
+      not stored in any column.
+    relation: {table: systemmonitoring, target: exectimespan, form: sum, operands: [apilatmark, queueline]}
+    readings:
+      - id: throttle-wait
+        statement: >-
+          The execution time exectimespan is the API latency apilatmark plus the queue length
+          queueline, each queued task taken to add about one millisecond. On the snapshots where at
+          most '100' requests remain before the rate limit (rateremain), about one in ten, the client
+          also waited before sending: ten milliseconds for each request by which rateremain falls
+          short of '110'. That wait is part of exectimespan and is not stored in any column.
+        form: world_fixed
+        transformation:
+          - UPDATE systemmonitoring SET exectimespan = apilatmark + queueline + CASE WHEN rateremain <= 100 THEN 10 * (110 - rateremain) ELSE 0 END
+        holds: true
+        is_true: true
+      # The no-defect reading: systemmonitoring as released (its database is the clean one with the
+      # coverage and value-meaning defects applied).
+      - id: as-released
+        statement: >-
+          The execution time exectimespan in systemmonitoring is measured on its own: on no snapshot
+          is it the API latency apilatmark plus the queue length queueline.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+      - id: sum-everywhere
+        statement: >-
+          The execution time exectimespan is the API latency apilatmark plus the queue length
+          queueline on every snapshot; no snapshot carries any extra amount.
+        form: world_fixed
+        transformation:
+          - UPDATE systemmonitoring SET exectimespan = apilatmark + queueline
+        holds: false
+        is_true: false
+      # Retries on other snapshots, with another extra amount: the reference claim holds under it,
+      # and the battery's identity finding gives another share and count.
+      - id: retry-rows
+        statement: >-
+          The execution time exectimespan is the API latency apilatmark plus the queue length
+          queueline, except on the snapshots where at least one call in twenty failed (apierrtotal
+          against apireqtotal), about one in ten. There the failed call was retried, and exectimespan
+          also carries the retry: its latency apilatmark again plus a fixed back-off of '200'
+          milliseconds, an amount not stored in any column.
+        form: world_fixed
+        transformation:
+          - UPDATE systemmonitoring SET exectimespan = apilatmark + queueline + CASE WHEN apierrtotal * 20 >= apireqtotal THEN apilatmark + 200 ELSE 0 END
+        holds: true
+        is_true: false
+      # Meaning-only: they share the injected copy and give another cause for the same extra amount
+      # on the same snapshots. Under the reading-set rule they are holds: true, since they change no
+      # probe's gold answer: the probes ask about values as recorded, not about the cause.
+      - id: cause-retries
+        statement: >-
+          The execution time exectimespan is the API latency apilatmark plus the queue length
+          queueline, except on about one in ten snapshots, where it also carries time spent on calls
+          that failed and were retried. It is not a wait for the rate limit, and it is not stored in
+          any column.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: true
+        is_true: false
+      - id: cause-old-logger
+        statement: >-
+          The execution time exectimespan is the API latency apilatmark plus the queue length
+          queueline, except on about one in ten snapshots, which an older logger recorded. That
+          logger timed the whole round trip, so exectimespan there also carries the client's network
+          time. It is not a wait for the rate limit, and it is not stored in any column.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: true
+        is_true: false
+      - id: cause-gateway
+        statement: >-
+          The execution time exectimespan is the API latency apilatmark plus the queue length
+          queueline, except on about one in ten snapshots, where the gateway ran extra risk checks
+          before matching, and exectimespan also carries their time. It is not a wait for the rate
+          limit, and it is not stored in any column.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: true
+        is_true: false
+    drift_reading: {reading: as-released, expected_drift_type: data_part}
+
+  - id: margin-cut
+    database: crypto
+    slot: {claim_kind: coverage, subject: users}
+    touches: {users: ["*"]}
+    # Expected audit: users goes from 1,000 to 776 rows (224 deleted). The tables that reference users
+    # by a declared key are accountbalances (usertag) and orders (userlink). They keep all their rows:
+    # 224 of accountbalances' 1,000 rows and 223 of orders' 999 rows are then without their user.
+    # orderexecutions, fees and riskandmargin keep every order, since orders is not cut. The one user
+    # the clean copy's orders never reference is a margin user, so after the cut every remaining user
+    # has an order and a balance.
+    transformation:
+      - DELETE FROM users WHERE acctscope = 'Margin'
+    cut_tables: []
+    kept_tables: [accountbalances, orders]
+    reference_claim: >-
+      The users table only holds spot, futures and options accounts. The margin accounts, acctscope
+      'Margin', were left out of this export, but their balances and orders are still in
+      accountbalances and orders.
+    readings:
+      - id: margin-left-out
+        statement: >-
+          The users table leaves out the margin accounts, acctscope 'Margin'; their balances and orders
+          were kept in accountbalances and orders.
+        form: world_fixed
+        transformation:
+          - DELETE FROM users WHERE acctscope = 'Margin'
+        holds: true
+        is_true: true
+      # The no-defect reading: users as released, holding every account (its database is the clean
+      # one with the formula and value-meaning defects applied).
+      - id: nothing-cut
+        statement: The users table holds every account, margin accounts included.
+        form: world_fixed
+        transformation: []
+        holds: false
+        is_true: false
+      # The cut with every row below it. Its database also loses 224 rows of accountbalances, the
+      # value-meaning slot's table; the value-meaning readings' databases are not affected, since a
+      # reading's database applies only the other defects' true transformations.
+      - id: cut-with-children
+        statement: >-
+          The margin accounts were removed together with their balances, their orders and those
+          orders' executions, fees and risk records.
+        form: world_fixed
+        transformation:
+          - DELETE FROM orderexecutions WHERE ordersmark IN (SELECT recordvault FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin'))
+          - DELETE FROM fees WHERE orderslink IN (SELECT recordvault FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin'))
+          - DELETE FROM riskandmargin WHERE ordervault IN (SELECT recordvault FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin'))
+          - DELETE FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+          - DELETE FROM accountbalances WHERE usertag IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+          - DELETE FROM users WHERE acctscope = 'Margin'
+        holds: false
+        is_true: false
+      # The other cut: the account type whose count is closest to the margin accounts' (243 against
+      # 224), so the number of unmatched rows alone is close; the acctscope code list tells them apart.
+      - id: options-cut
+        statement: >-
+          The users table leaves out the options accounts, acctscope 'Options'; their balances and
+          orders were kept in accountbalances and orders.
+        form: world_fixed
+        transformation:
+          - DELETE FROM users WHERE acctscope = 'Options'
+        holds: false
+        is_true: false
+      # Meaning-only: they share the injected copy. They are the three answers the vendored link
+      # check's own unmatched-rows question offers (retired or historical records, records from a
+      # system not present here, data-entry errors; warrant/battery/gloss/detect/link.py), worded by
+      # the authors so that the reference claim fails under them. Under the reading-set rule each is
+      # holds: false, because it changes the gold answer of a natural probe such as "How many margin
+      # accounts does the exchange hold?": 224 under margin-left-out, none under each of these three.
+      - id: closed-accounts
+        statement: >-
+          The balances and orders with no user belong to closed accounts, left out of this export
+          whatever their account type; the exchange has no margin accounts.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: false
+        is_true: false
+      - id: other-system
+        statement: >-
+          The users table is complete for this exchange, which has no margin accounts; the balances and
+          orders with no user belong to accounts of another business, kept in another system that is
+          not present here.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: false
+        is_true: false
+      - id: mistyped
+        statement: >-
+          The users table is complete, and the exchange has no margin accounts; the balances and
+          orders with no user carry mistyped user references.
+        form: meaning_only
+        kind: provenance
+        transformation: []
+        holds: false
+        is_true: false
+    drift_reading: {reading: nothing-cut, expected_drift_type: data_part}
+
+  - id: pnl-sign
+    database: crypto
+    slot: {claim_kind: value_meaning, subject: accountbalances.realline}
+    touches: {accountbalances: [realline, unrealline]}
+    # Expected audit: 1,000 rows of accountbalances updated (one statement), no other table changed;
+    # 2,000 recodings, 1,000 per column, each value to its negative; no NULL and no 0 in either
+    # column, all 1,000 values distinct per column before and after. After: realline 511 positive /
+    # 489 negative; unrealline 487 positive / 513 negative. The coverage defect, applied before it,
+    # leaves 224 of these rows without their user; it removes no row here, so the recoding is the same.
+    transformation:
+      - UPDATE accountbalances SET realline = -realline, unrealline = -unrealline
+    reference_claim: >-
+      The realised profit and loss realline in accountbalances is signed from the exchange's side: a
+      positive value is a realised loss for the account holder and a negative value is a realised profit.
+    readings:
+      - id: positive-is-loss
+        statement: >-
+          realline in accountbalances is the account holder's realised profit and loss signed from the
+          exchange's side: a positive value is a realised loss for the account holder, a negative value
+          a realised profit.
+        form: world_fixed
+        transformation:
+          - UPDATE accountbalances SET realline = -realline, unrealline = -unrealline
+        holds: true
+        is_true: true
+      # The no-defect reading under branch (b): the only other reading, differing on a convention.
+      # Meaning-only, so it shares the injected copy. Other candidate readings are classified in
+      # freeze/NOTE_2.md under the reading-set rule and frozen with this set.
+      - id: positive-is-profit
+        statement: >-
+          realline in accountbalances is the account holder's realised profit and loss signed from the
+          account holder's side: a positive value is a realised profit, a negative value a realised loss.
+        form: meaning_only
+        kind: convention
+        transformation: []
+        holds: false
+        is_true: false
+    drift_reading:
+      reading: positive-is-profit
+      expected_drift_type: convention
+      reference_claim: >-
+        The realised profit and loss realline in accountbalances is signed from the account holder's
+        side: a positive value is a realised profit and a negative value is a realised loss.
