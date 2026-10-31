@@ -1,7 +1,7 @@
 # The write line's thin run: write-up (#54)
 
-Status: draft for review (PR #163). Due 2026-11-09. The question-design section and the wallet-sum review
-(PR #160) are placeholders.
+Status: draft for review (PR #163). Due 2026-11-09. The question-design section is a placeholder; the
+wallet-sum review (PR #160, merged) is filled in.
 
 Every number below comes from a committed file: `results/thin/README.md`, `results/thin/summary.json`,
 `results/thin/2026-10-24-66a86cb.jsonl` and `results/thin/audit/`. Where a number is not in
@@ -324,9 +324,18 @@ incomplete at any k (`summary.json`: `curve.points`). The judge split no true re
 - **The wallet-sum per-question review.** @lin-jhe-yu checked, probe by probe, whether the correct
   answers on the column-formula slot read `walletsum` or reach the answer by summing the balance
   columns, since a probe that can be answered without the note cannot show what the note is worth.
-  The result is in PR #160 (`results/thin/wallet_sum_review/`), which is not merged yet:
-  [N of M correct wallet-sum answers read `walletsum`; K use `availsum + frozensum`, all on one probe;
-  from #160 after it merges]. [What this means for the column-formula figures above, from #160.]
+  The result is in PR #160 (`results/thin/wallet_sum_review/README.md`, the source of the figures here):
+  - **102 of the 116 correct wallet-sum answers (88%) read `walletsum`.**
+  - **14 (12%) use `availsum + frozensum` instead,** all on `user-wallet-excluding-margin`, where that
+    sum equals the gold answer. Every correct answer to the other five probes reads `walletsum`.
+  - **Why it matters:** every reading changes only `walletsum` (and `without-margin` changes nothing),
+    so `availsum + frozensum` has the same value whichever reading holds. An answer that uses the sum
+    scores the same whatever the note says, so it cannot tell a correct note from a wrong one. On this
+    probe, most answers with a note did not test its content.
+  - **No score is wrong because of it:** every wallet-sum note in this run was correct. But the probe's
+    correct answers under the seven rules with a wallet-sum note are not evidence about the note.
+  - **For the column-formula figures above:** they include this probe's answers (one of the six
+    column-formula probes), so read them with this caveat. The review does not recompute them.
 
 ## The blind audit
 
@@ -502,17 +511,19 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
   measured here.
 - **Some answers are not scored.** Three answers failed after retries and four were clarification
   requests; accuracy leaves them out, and the counts are given above.
-- **The per-question review of the column-formula slot is pending.** A probe that can be answered
-  without the claim cannot show what the claim is worth, so the column-formula figures should be read
-  with the review in PR #160 [what it finds: from #160, after it merges].
+- **One column-formula probe does not test the note.** On `user-wallet-excluding-margin`, 14 of the
+  116 correct wallet-sum answers (12%) sum `availsum + frozensum`, which equals the gold answer under
+  every reading, so most answers with a note on that probe cannot tell a correct note from a wrong one
+  (`results/thin/wallet_sum_review/README.md`, PR #160). The components-only pattern rests on that one
+  probe and small counts, and the records do not show the agent's reasoning.
 - **The cost is not confirmed by the Bedrock bill** (see Cost).
 - **The run departs from the freeze in one setting:** `max_tokens` is 64,000, not 16,000
   (disclosure 14).
 
 ## What follows
 
-- **This write-up:** the question-design section comes from @lin-jhe-yu (due 2026-11-04), and the
-  placeholders for the wallet-sum per-question review are filled once PR #160 merges. The write-up is
+- **This write-up:** the question-design section comes from @lin-jhe-yu (due 2026-11-04); the
+  wallet-sum per-question review (PR #160) is filled in. The write-up is
   #54's last open acceptance criterion; #54 closes with it.
 - **A second freeze exists** (#61, ADR 0011): the first complete pass finished before 2026-11-16, the
   condition for authoring it. It adds three more slots, with its own configuration, k, matched asks
