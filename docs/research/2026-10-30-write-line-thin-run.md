@@ -242,7 +242,10 @@ its `missing_terms`: order type, ordertune, type of order, type, ordertype. Term
 starts, case-insensitively (`global.refusal_check`), and none of them occurs in the question, so a
 refusal that only repeats the question fails; a test checks this. `--check` skips refusal probes, so
 this one was reviewed by hand. It has no gold answer: the clean copy holds 69 limit orders among the
-266 cancelled ones, recorded on PR #122 only.
+266 cancelled ones. This follows from the battery's value check on `orders.ordertune` in the committed
+predictions (`predictions/9cfd501f2182-write_line/`): Limit is 246 of the 999 orders on the clean copy
+(`8558694443b0….jsonl`, line 77) and 177 of the 733 on the injected copy (`9f3e510217e8….jsonl`,
+line 79), and 246 − 177 = 69.
 
 ### Column formula: the wallet total (6)
 
