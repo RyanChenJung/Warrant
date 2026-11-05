@@ -1061,6 +1061,12 @@ def split_of(records, variant="confident", slot=SPLIT_SLOT):
     return summarise_(records)["descriptive"]["agreement_split"]["variants"][variant][slot]
 
 
+def split_only(records, variant="confident"):
+    """The split alone, for a run whose stores the rest of the summary would refuse (a slot sample 1 does
+    not claim on, which the fixture's stores fill)."""
+    return summary_module._split(summary_module.Selected(records, HASH), CONFIG, variant)
+
+
 # Sample 1 holds on both readings, with one call on `other` that fails, so its label there is steady and
 # its calls are not. Samples 2 to 10, by hand, against it:
 #   2, 3  N  no claim on the slot, and a failed sample
@@ -1143,9 +1149,8 @@ def test_fewer_than_three_valid_calls_leave_a_split_that_is_judge_type():
 
 
 def test_sample_one_without_a_claim_has_no_split_and_says_so():
-    found = split_of(with_samples(s1="none"))
-    assert found == {"sample_one": "sample 1 has no claim"}
-    assert split_of(with_samples(s1="failure"))["sample_one"] == "sample 1 has no claim"
+    assert split_only(with_samples(s1="none"))[SPLIT_SLOT] == {"sample_one": "sample 1 has no claim"}
+    assert split_only(with_samples(s1="failure"))[SPLIT_SLOT] == {"sample_one": "sample 1 has no claim"}
 
 
 def test_a_slot_whose_samples_all_agree_has_agreement_one_and_nothing_to_split():
@@ -1166,7 +1171,7 @@ def test_the_split_agreement_is_the_confidence_rules_agreement():
     from warrant.write_line.confidence import CombinationRule, scores
     records = with_samples()
     own = [r for r in records if r["record"] != "judgement" or r["variant"] == "confident"]
-    own = [r for r in own if r["record"] != "sample" or (r["variant"] == "confident" and not r["failure"])]
+    own = [r for r in own if r["record"] != "sample" or (r["variant"] == "confident" and not (r["failure"] and r["sample"] == 1))]
     ranked = scores(own, [d for d in CONFIG.defects if d.id == SPLIT_SLOT], CombinationRule(seed=0))
     assert ranked[SPLIT_SLOT][0] == Fraction(split_of(records)["agreement"]["exact"])
 
@@ -1195,9 +1200,14 @@ def test_the_report_has_a_line_per_variant_and_slot():
     text = _report(summarise_(with_samples()))
     assert ("agreement split confident total-is-sum: agreement 1/9, agent part 5/9 (no claim 2, claim differs 3), "
             "judge part 1/3") in text
-    assert "agreement split confident site-swap: agreement 1" in text
+    # The slot's other samples have no claim on it (the set-up empties samples 2 and 3 whole).
+    assert "agreement split confident site-swap: agreement 7/9, agent part 2/9 (no claim 2, claim differs 0)" in text
+    assert "agreement split abstain total-is-sum: agreement 1, agent part 0" in text
+    assert "judge-type differences by reading: {'other': 4}" in text
 
 
-def test_a_slot_without_readings_or_a_sample_one_claim_is_reported_as_such_in_the_text():
+def test_a_slot_without_a_sample_one_claim_is_reported_as_such_in_the_text():
     from warrant.write_line.summary import _report
-    assert "agreement split confident total-is-sum: sample 1 has no claim" in _report(summarise_(with_samples(s1="none")))
+    summary = summarise_()
+    summary["descriptive"]["agreement_split"]["variants"]["confident"] = split_only(with_samples(s1="none"))
+    assert "agreement split confident total-is-sum: sample 1 has no claim" in _report(summary)
