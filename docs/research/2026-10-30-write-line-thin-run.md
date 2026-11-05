@@ -1,7 +1,7 @@
 # The write line's thin run: write-up (#54)
 
-Status: draft for review (PR #163). Due 2026-11-09. The question-design section is a placeholder; the
-wallet-sum review (PR #160, merged) is filled in.
+Status: draft for review (PR #163). Due 2026-11-09. The question-design section (@lin-jhe-yu) and the
+wallet-sum review (PR #160, merged) are filled in; no placeholders remain.
 
 Every number below comes from a committed file: `results/thin/README.md`, `results/thin/summary.json`,
 `results/thin/2026-10-24-66a86cb.jsonl` and `results/thin/audit/`. Where a number is not in
@@ -176,7 +176,189 @@ complete record.
 
 ## Question design
 
-_To be added from @lin-jhe-yu's section (due 2026-11-04)._
+The run asks 33 questions: 23 **probe questions**, whose correct answer depends on whether the slot's
+claim is known, and 10 **control questions** on content no defect touches. They are in
+`configs/write_line_thin.yaml` (#52, PR #122). The pilot's 8 coverage probes (#49) are copied into it
+unchanged, and a test keeps the two files equal. The other 25 questions were drafted with Claude Code
+and reviewed by @lin-jhe-yu and, in two review rounds, by the lead.
+
+- **Sources.** Every gold answer is a SQLite query on the injected copies, rebuilt and checked against
+  `injections/9cfd501f2182-write_line.json`. No BIRD-Interact task or withheld ground truth was used,
+  and no model was called to write or check a question. The questions and gold SQL are data derived
+  from LiveSQLBench-Base-Lite, under CC BY-SA 4.0.
+- **Commit order.** The column-formula, value-meaning and control questions were committed before any
+  agent call on them. The coverage refusal probe was committed after the pilot ran the coverage set,
+  which does not matter: a coverage refusal probe had been public on #52 since 2026-10-13, and the
+  pilot had no refusals.
+
+| Set | Slot | Database | Questions |
+|---|---|---|---|
+| Coverage | `orders-cut` | crypto | 9: the pilot's 8, plus 1 correct-refusal probe |
+| Column formula | `wallet-sum` | crypto | 6 |
+| Value meaning | `seeing-recode` | alien | 8 |
+| Controls | none | crypto 5, alien 5 | 10 |
+| **Total** | | | **33** |
+
+### What a probe and a control must do
+
+- **A probe separates readings.** Each probe with a gold answer names the rival readings it separates
+  (`separates:`), each with the SQL that answers it on the injected copy under that reading. Under every
+  named reading, the answer must differ from the gold answer by more than 2 percent
+  (`SEPARATION = 0.02` in `warrant/write_line/run.py`). The bar is above the scoring tolerance (0.01,
+  `global.numeric_tolerance`), so an answer that follows a wrong reading cannot be scored correct.
+- **A control does not move.** Each control's gold answer must be the same on the clean and the injected
+  copy, so a control measures the agent itself and not the defect.
+- **The check.** `uv run python -m warrant.write_line.run --config configs/write_line_thin.yaml --check`
+  tests both rules with read-only SQL and no model call. It reported 0 problems before the run.
+
+The tables below give each probe's gold answer, the rival reading's answer closest to it, and the gap
+between them, from `--check` on the injected copies.
+
+### Coverage: the missing orders (9)
+
+The defect removed the 266 cancelled orders from `orders` and kept their executions, fees and risk
+records. The pilot's 8 probes fall into two groups (comments in the configuration):
+
+- **Answerable with the agent's own claim** (4): the orders the table lacks are still referenced by the
+  child tables, so a claim that only says "orders is missing rows" is enough.
+- **Answerable only with the person's claim** (4): the missing orders are the *cancelled* ones, which
+  no data shows.
+
+| Probe | Gold | Closest rival | Gap |
+|---|---|---|---|
+| `orders-placed` | 999 | 733 | 26.6% |
+| `fees-charged` | 63,479.90 | 48,761.07 | 23.2% |
+| `filled-notional` | 61,061,292.47 | 46,204,537.28 | 24.3% |
+| `fee-per-order` | 63.54 | 66.52 | 4.7% |
+| `orders-cancelled` | 266 | 0 | 100% |
+| `cancelled-share` | 0.266 | 0 | 100% |
+| `fees-on-cancelled` | 14,718.83 | 0 | 100% |
+| `filled-notional-on-cancelled` | 14,856,755.19 | 0 | 100% |
+
+**The refusal probe.** `cancelled-limit-orders` asks "How many of the cancelled orders were limit
+orders?". The order type (`orders.ordertune`) exists only in `orders`, so it went with the cut rows,
+and the correct response is a refusal. A refusal passes only if it names the missing piece by one of
+its `missing_terms`: order type, ordertune, type of order, type, ordertype. Terms match where a word
+starts, case-insensitively (`global.refusal_check`), and none of them occurs in the question, so a
+refusal that only repeats the question fails; a test checks this. `--check` skips refusal probes, so
+this one was reviewed by hand. It has no gold answer: the clean copy holds 69 limit orders among the
+266 cancelled ones, recorded on PR #122 only.
+
+### Column formula: the wallet total (6)
+
+The defect sets `walletsum` to `availsum + frozensum + margsum`. Each probe turns on which balances
+`walletsum` includes.
+
+- None joins `accountbalances` to `orders`, so the coverage defect cannot affect them.
+- The two per-user probes avoid the eight accounts whose `margsum` is under 1 percent of `walletsum`.
+- The unrealised profit and loss is only 0.34 percent of the total wallet balance, so only a per-user
+  probe separates the reading that adds it (`four-terms`). For user U575806 it is 10 percent.
+
+| Probe | Gold | Closest rival | Gap |
+|---|---|---|---|
+| `total-held` | 989,529,482.55 | 1,466,262,845.63 | 48.2% |
+| `margin-majority` | 467 | 312 | 33.2% |
+| `frozen-majority` | 147 | 78 | 46.9% |
+| `available-majority` | 132 | 81 | 38.6% |
+| `user-wallet-excluding-margin` | 506,236.34 | 1,079,120.61 | 113% |
+| `user-wallet-excluding-unrealised` | 528,690.97 | 475,988.33 | 10.0% |
+
+A known limit was flagged in the configuration before the run: an agent can reach a gold answer by
+summing the balance columns instead of reading `walletsum`. The per-question review below measures how
+often it did.
+
+### Value meaning: the seeing grades (8)
+
+The defect recoded `observatories.seeingprofile` from Excellent, Good and Poor to '1', '2' and '3'; the
+true reading is '1' best, and the rival is '3' best. The probes are counts of what lies at the
+best-seeing observatories, since counts are the only answers that separate the two readings beyond the
+tolerance (#52). They all filter on the same grade, so they are correlated, a limitation of the
+confirmatory test recorded on #41.
+
+| Probe | Table it reaches | Gold ('1' best) | Rival ('3' best) | Gap |
+|---|---|---|---|---|
+| `best-seeing-observatories` | `observatories` | 315 | 291 | 7.6% |
+| `best-seeing-clear-weather` | `observatories` | 109 | 98 | 10.1% |
+| `best-seeing-telescopes` | `telescopes` | 302 | 293 | 3.0% |
+| `best-seeing-signals` | `signals` | 323 | 307 | 5.0% |
+| `best-seeing-technosignatures` | `signalprobabilities` | 179 | 147 | 17.9% |
+| `best-seeing-dwarf-sources` | `sourceproperties` | 94 | 83 | 11.7% |
+| `best-seeing-completed-decodings` | `signaldecoding` | 107 | 101 | 5.6% |
+| `best-seeing-natural-signals` | `signalclassification` | 86 | 72 | 16.3% |
+
+### Controls (10)
+
+Five on each database, on tables no defect touches, and not on the orders' child tables or `users`:
+
+- **crypto:** `positive-funding-rate`, `daily-turnover`, `api-errors`, `api-error-rate`,
+  `websocket-disconnected`;
+- **alien:** `snr-above-10`, `average-signal-strength`, `operational-telescopes`,
+  `high-technosignature-probability`, `broadband-signals`.
+
+Every control's gold answer is the same on the clean and the injected copy (`--check`).
+
+### Questions replaced in review
+
+A **mirror** is a probe whose answer is another probe's answer shifted or scaled by a number the defect
+never changes. It scores one belief twice, so the review replaced every mirror it found.
+
+| Replaced | Why | Replacement |
+|---|---|---|
+| "Which users placed the cancelled orders?" (refusal) | answerable exactly: the synthetic data's row keys line up across tables (disclosure 13) | `cancelled-limit-orders` |
+| `wallet-excluding-margin` | `total-held` minus SUM(`margsum`), a total the defect never changes | `available-majority` |
+| `worst-seeing-observatories`, `signals-worst-seeing` | mirrors of the best-seeing counts | probes on `signalprobabilities` and `sourceproperties` |
+| `best-seeing-share`, `better-than-worst-seeing` | the best count divided by 963, and 963 minus the worst count | probes on `signaldecoding` and `signalclassification` |
+
+Of the alternatives tried for the value-meaning probes, only total observation hours failed the
+2 percent bar (1.9 percent). Two controls also changed in the first review, on tables no defect
+touches: `api-error-rate` was reworded to name its formula, total API errors divided by total API
+requests, and `commonest-signal-class` was replaced by `broadband-signals` ("How many signals are
+Broadband?").
+
+### Business terms
+
+Claim writing sees a list of the business terms the questions use, without definitions
+(`global.claim_writing`): for crypto, wallet balance, margin balance, holdings, unrealised profit and
+loss, trading fees and notional value of fills; for alien, technosignature probability. Only "wallet
+balance" is grounded to a column (`accountbalances.walletsum`).
+
+- **Removed:** "seeing grade", following #50's decision that nothing in the claim-writing input points
+  at a slot; and "frozen balance", which no question uses.
+- **Kept out:** "orders placed" and "fee per order", which would point at the `orders` slot.
+
+### Disclosures that touch the questions
+
+- **Disclosure 5, residual hints:** the column `cancelnote` hints at cancellations. In the run it is
+  the wrong route on `orders-cancelled`: all 10 wrong answers to that probe count execution rows with
+  a `cancelnote` (756 or 556) instead of the 266 orders missing from `orders`.
+- **Disclosure 6, the undirected grade:** the direction a model assumes for '1', '2', '3' was not known
+  in advance. In the run the agent assumed '1' best, which is true, so the value-meaning probes opened
+  no gap.
+- **Disclosure 7, synthetic data,** and **disclosure 13, aligned row keys:** the aligned keys made the
+  planned refusal probe answerable, so it was replaced. No column recovers the order type (best held-out
+  accuracy 34.5 percent against 25.5 percent for the commonest type).
+
+### What the run shows about the design
+
+- **Value meaning gave no contrast.** The empty store answered all 24 value-meaning answers right, so no
+  note could add anything (disclosure 6).
+- **Two coverage probes separated readings but not stores.** `fees-charged` and `filled-notional` were
+  answered right in all 24 of their answers each, under every rule including the empty store. Summing
+  the fees or execution tables gives the gold answer without knowing that `orders` lost rows, so these
+  probes pass `--check` yet cannot show what any note is worth.
+- **Most correct wallet-sum answers read `walletsum`** (per-question review, PR #160,
+  `results/thin/wallet_sum_review/`). 102 of the 116 correct answers (88%) read it; 14 (12%) use
+  `availsum + frozensum`, all on `user-wallet-excluding-margin`.
+  - On that probe, the 3 empty-store answers all read `walletsum`. Under the seven rules whose store
+    holds a wallet-sum note, 17 of 21 answers use `availsum + frozensum`, which gives the gold value
+    under every reading. So with a note, most of that probe's answers did not test the note.
+  - 5 wrong answers on the same probe hold the gold value in their answer column and were scored wrong
+    only for returning extra columns.
+- **For the next freeze** (#152): a probe should need the slot's claim to be answered, not only give a
+  different answer under each reading. Probes on a grade whose usual direction is the wrong one would
+  open the gap this run lacked; formula probes should ask for a quantity that no simple sum of other
+  columns reproduces under every reading; and coverage probes should not be answerable from the child
+  tables alone.
 
 ## Confirmatory result
 
@@ -526,8 +708,8 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
 
 ## What follows
 
-- **This write-up:** the question-design section comes from @lin-jhe-yu (due 2026-11-04); the
-  wallet-sum per-question review (PR #160) is filled in. The write-up is
+- **This write-up:** the question-design section is @lin-jhe-yu's and the wallet-sum
+  per-question review is PR #160's; both are filled in. The write-up is
   #54's last open acceptance criterion; #54 closes with it.
 - **A second freeze exists** (#61, ADR 0011): the first complete pass finished before 2026-11-16, the
   condition for authoring it. It adds three more slots, with its own configuration, k, matched asks
