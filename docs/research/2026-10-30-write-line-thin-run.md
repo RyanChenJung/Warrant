@@ -433,7 +433,11 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
 - items 12 and 13 had no heading, so their first sentence stands in its place, and item 13's "found
   reviewing PR #122, 2026-10-21" moves to its end;
 - item 10's last sentence says the safeguards "say so" where it said they "should";
-- item 14's heading links ADR 0013, and its last bullet names the committed configuration;
+- item 14's heading names ADR 0013 in plain text, as the original did (it does not link it), with the
+  bold moved to the front and the "Disclosure 14, for the write-up" prefix dropped; its last bullet
+  names the committed configuration. Two other changes to item 14: the paragraph on the streaming path
+  (PR #141, from a later comment on #54) is added, and the "Also from the dry run" paragraph is left
+  out, because it is not part of the `max_tokens` disclosure;
 - items 6 and 8 end with a note beginning "In the run", pointing to the result.
 
 `CONTEXT.md` defines the terms.
