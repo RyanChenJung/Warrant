@@ -15,8 +15,9 @@ reported as repeated runs and never used. `spent` records add cost and are never
 - **Descriptive**: per variant, the per-kind contributions by `paired_difference` (global.outcome_rule),
   the allocation outcomes and their agreement with the committed predictions (H1), and the curve of
   wrong writes against person asks (global.matched_asks, global.judge.wrong_write); the per-slot
-  breakdown of Q* and the sensitivity analyses; the flip rate; slot and judge counts; and cost and
-  time per rule in three classes (#53, 2026-10-22).
+  breakdown of Q* and the sensitivity analyses; the flip rate; slot and judge counts; the agreement
+  split of each slot's confidence-rule agreement (#154); and cost and time per rule in three classes
+  (#53, 2026-10-22).
 
 Neither function here builds a model client.
 """
@@ -34,7 +35,7 @@ from warrant.scoring.classify import ResponseClass, accuracy
 from warrant.scoring.stats import ERRORS, UNSCORED, flip_rate, paired_difference, write_line_test
 from warrant.store.claims import PredictedOutcome
 from warrant.store.results import config_hash
-from warrant.write_line.confidence import allocation, settlement_ask_count, slot_claim_index
+from warrant.write_line.confidence import CombinationRule, allocation, settlement_ask_count, slot_claim_index
 from warrant.write_line.config import Config, load_config
 from warrant.write_line.guards import prices_for, validation_problems
 from warrant.write_line.run import committed_predictions_for, run_ids
@@ -361,6 +362,86 @@ def _judge(selected: Selected, config: Config, variant: str) -> dict:
             "true_reading_splits": true_splits, "resent": sum(j.get("resent", 0) for j in mine), "cut_short": cut_short}
 
 
+SPLIT_CAVEAT = ("observed disagreement only: agreements that the judge's noise could have broken are not counted "
+                "(the share of unstable pairs in `judge` covers those), and two claims that say the same thing "
+                "but are labelled steadily differently count as the agent's part")
+NO_SAMPLE_ONE = "sample 1 has no claim"
+
+
+def _part(value: Fraction) -> dict:
+    return {"exact": _exact(value), "value": float(value)}
+
+
+def _judgement_with_a_call(selected: Selected, variant: str, defect: str, claim: str) -> Mapping:
+    """The first complete judgement made with a call on a slot's claim string, in this run and variant: the
+    source of what a judgement made without a call copies."""
+    for j in selected.of["judgement"]:
+        if (j.get("complete") and not j.get("without_a_call") and j.get("variant", "confident") == variant
+                and j["defect"] == defect and j.get("claim") == claim):
+            return j
+    raise ValueError(f"{defect} ({variant}): a judgement without a call, but no judgement with a call on its claim")
+
+
+def _calls_of(selected: Selected, variant: str, defect: str, j: Mapping) -> tuple[Mapping, Mapping]:
+    """A judgement's labels and what its valid calls and splits are: those of its source when it was made
+    without a call."""
+    source = _judgement_with_a_call(selected, variant, defect, j["claim"]) if j.get("without_a_call") else j
+    return j["labels"], source
+
+
+def _split(selected: Selected, config: Config, variant: str) -> dict:
+    """Each slot's agreement split (freeze/NOTE_2.md, "The agreement split"), from the records alone:
+    samples 2 to 10 against sample 1's claim, in the classes N (no claim), A (agrees), C (the claim
+    differs) and J (the judge differs). The agent's part is N and C together."""
+    samples = CombinationRule(seed=0).samples
+    found = {}
+    for d in config.defects:
+        if not d.readings:
+            continue
+        first = selected.sample_one.get((variant, d.database))
+        index = None if first is None else slot_claim_index(first, d)
+        if index is None:
+            found[d.id] = {"sample_one": NO_SAMPLE_ONE}
+            continue
+        one = selected.judgements.get((variant, d.id, 1, index))
+        if one is None:
+            raise ValueError(f"sample 1's claim on {d.id} ({variant}) has no complete judgement")
+        labels_one, source_one = _calls_of(selected, variant, d.id, one)
+        classes, per_reading = {}, {r: {"agent": 0, "judge": 0} for r in labels_one}
+        for number in range(2, samples + 1):
+            sample = selected.samples.get((variant, d.database, number))
+            if sample is None:
+                raise ValueError(f"no record of {d.database} sample {number} ({variant})")
+            index = None if sample.get("failure") else slot_claim_index(sample, d)
+            if index is None:
+                classes[number] = "N"
+                continue
+            j = selected.judgements.get((variant, d.id, number, index))
+            if j is None:
+                raise ValueError(f"{d.id}: the claim of sample {number} has no complete judgement ({variant})")
+            labels, source = _calls_of(selected, variant, d.id, j)
+            differing = [r for r in labels_one if labels[r] != labels_one[r]]
+            if not differing:
+                classes[number] = "A"
+                continue
+            kinds = []
+            for r in differing:
+                calls_one = {call[r] for call in source_one["valid"]}
+                calls_here = {call[r] for call in source["valid"]}
+                judge_type = r in source_one["splits"] or r in source["splits"] or bool(calls_one & calls_here)
+                per_reading[r]["judge" if judge_type else "agent"] += 1
+                kinds.append(judge_type)
+            classes[number] = "J" if all(kinds) else "C"
+        count = {c: sum(v == c for v in classes.values()) for c in "NACJ"}
+        n = samples - 1
+        found[d.id] = {"agreement": _part(Fraction(count["A"], n)),
+                       "agent_part": _part(Fraction(count["N"] + count["C"], n)),
+                       "judge_part": _part(Fraction(count["J"], n)),
+                       "no_claim": count["N"], "claim_differs": count["C"], "judge_differs": count["J"],
+                       "classes": classes, "per_reading": per_reading}
+    return found
+
+
 def _calls(records: Iterable[Mapping], prices) -> dict:
     records = [r for r in records if not r.get("without_a_call")]
     # A record with no duration_s (the judge validation's) leaves the time unknown, not zero.
@@ -522,6 +603,8 @@ def summarise(config: Config, records: Sequence[Mapping], predictions: Mapping, 
             "flip_rate": flip_rate([a for a in selected.answers if a["question_id"] in {q.id for q in config.questions}]),
             "slots": {v: _slots(selected, config, predictions, v) for v in variants},
             "judge": {v: _judge(selected, config, v) for v in variants},
+            "agreement_split": {"label": DESCRIPTIVE, "primary": "confident", "caveat": SPLIT_CAVEAT,
+                                "variants": {v: _split(selected, config, v) for v in variants}},
             "cost": _cost(selected, config, validated, tokens),
             "tokens": tokens,
         },
@@ -559,6 +642,18 @@ def _report(summary: Mapping) -> str:
         if "curve" in v:
             lines.append(f"  {variant} wrong writes by k: {[p['wrong_writes'] for p in v['curve']['points']]}, "
                          f"settlement {v['curve']['settlement']['wrong_writes']} at {v['curve']['settlement']['asks']} asks")
+    for variant, slots in summary["descriptive"]["agreement_split"]["variants"].items():
+        for slot, f in slots.items():
+            head = f"  agreement split {variant} {slot}:"
+            if "sample_one" in f:
+                lines.append(f"{head} {f['sample_one']}")
+                continue
+            lines.append(f"{head} agreement {f['agreement']['exact']}, agent part {f['agent_part']['exact']} "
+                         f"(no claim {f['no_claim']}, claim differs {f['claim_differs']}), "
+                         f"judge part {f['judge_part']['exact']}")
+            judged = {r: c["judge"] for r, c in f["per_reading"].items() if c["judge"]}
+            if judged:
+                lines.append(f"    judge-type differences by reading: {judged}")
     return "\n".join(lines)
 
 

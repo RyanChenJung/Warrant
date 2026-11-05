@@ -134,7 +134,7 @@ def replaced(rule, record):
 def judgement(variant, defect, sample, index, label="holds", **fields):
     called = sample == 1
     return {"record": "judgement", "variant": variant, "defect": defect, "sample": sample, "index": index,
-            "complete": True, "error": "", "labels": labels(defect, label),
+            "complete": True, "error": "", "claim": f"A claim on {defect}.", "labels": labels(defect, label),
             "valid": [labels(defect, label)] * 3, "splits": [], "without_a_call": not called,
             "input_tokens": 500 if called else 0, "output_tokens": 50 if called else 0,
             "duration_s": 1.0 if called else 0.0, "method": METHOD, **fields}
@@ -1004,3 +1004,210 @@ def test_the_command_exits_non_zero_on_a_refusal_and_writes_no_summary(tmp_path,
     assert main([*command, "--out", str(out)]) == 1
     assert "refused" in capsys.readouterr().out and not out.exists()
     assert main(command) == 1 and not out.exists()
+
+
+# The agreement split (#154) -----------------------------------------------------------------------------
+
+SPLIT_SLOT = "total-is-sum"  # sample 1's first claim on the fixture's plant database, so claim index 0
+R, O = TRUE[SPLIT_SLOT], "other"
+H, F, N = "holds", "fails", "not_addressed"
+
+
+def calls(*pairs):
+    """Valid calls, each given as the labels on (R, O)."""
+    return [{R: r, O: o} for r, o in pairs]
+
+
+def steady(r, o):
+    return calls((r, o)) * 3
+
+
+def split_records(variant="confident", **samples):
+    """The fixture run with the slot's samples set up one by one. Each keyword is `s<n>`: "none" (no claim
+    on the slot), "failure" (a failed sample), or a dict of the judgement's fields, with `labels` and
+    `valid` as (R, O) pairs of labels, `splits`, `claim` (the statement and the judgement's string) and
+    `called` (a judgement without a call has no valid calls and no splits)."""
+    records = build()
+    for key, spec in samples.items():
+        n = int(key[1:])
+        for i, r in enumerate(records):
+            mine = r["record"] == "sample" and (r["variant"], r["database"], r["sample"]) == (variant, "plant", n)
+            if r["record"] == "judgement" and (r["variant"], r["defect"], r["sample"]) == (variant, SPLIT_SLOT, n):
+                if isinstance(spec, str):
+                    records[i] = None
+                    continue
+                fields = dict(spec)
+                label_pair = fields.pop("labels")
+                claim_text = fields.pop("claim", f"claim {n}")
+                called = fields.pop("called", True)
+                valid = fields.pop("valid", [label_pair] * 3 if called else [])
+                records[i] = {**r, "claim": claim_text, "labels": {R: label_pair[0], O: label_pair[1]},
+                              "valid": [{R: a, O: b} for a, b in valid], "without_a_call": not called,
+                              "splits": fields.pop("splits", []) if called else [], **fields}
+            elif mine:
+                if r["failure"] and not isinstance(spec, str):
+                    continue  # the fixture's failed first draw of sample 1, drawn again by the resume
+                if isinstance(spec, str):
+                    records[i] = {**r, "claims": [], "failure": "malformed" if spec == "failure" else ""}
+                else:
+                    claims = [dict(c) for c in r["claims"]]
+                    claims[0]["statement"] = spec.get("claim", f"claim {n}")
+                    records[i] = {**r, "claims": claims}
+        records = [r for r in records if r is not None]
+    return records
+
+
+def split_of(records, variant="confident", slot=SPLIT_SLOT):
+    return summarise_(records)["descriptive"]["agreement_split"]["variants"][variant][slot]
+
+
+def split_only(records, variant="confident"):
+    """The split alone, for a run whose stores the rest of the summary would refuse (a slot sample 1 does
+    not claim on, which the fixture's stores fill)."""
+    return summary_module._split(summary_module.Selected(records, HASH), CONFIG, variant)
+
+
+# Sample 1 holds on both readings, with one call on `other` that fails, so its label there is steady and
+# its calls are not. Samples 2 to 10, by hand, against it:
+#   2, 3  N  no claim on the slot, and a failed sample
+#   4     A  the same labels
+#   5     C  differs on R, steady fails against its holds, no shared label: agent-type
+#   6     J  differs on O, where its steady fails shares a label with sample 1's calls: judge-type
+#   7     J  differs on O, where its own claim is a split: judge-type
+#   8     C  differs on R (agent-type) and on O (judge-type): one agent-type reading is enough
+#   9     C  not_addressed on R in all its calls, no split, against steady holds: agent-type
+#   10    J  judged without a call, the same string as sample 6's: it takes sample 6's calls
+SAMPLES = {
+    "s1": {"labels": (H, H), "valid": [(H, H), (H, H), (H, F)], "claim": "claim 1"},
+    "s2": "none",
+    "s3": "failure",
+    "s4": {"labels": (H, H)},
+    "s5": {"labels": (F, H)},
+    "s6": {"labels": (H, F)},
+    "s7": {"labels": (H, N), "valid": [(H, H), (H, F), (H, N)], "splits": [O]},
+    "s8": {"labels": (F, F)},
+    "s9": {"labels": (N, H)},
+    "s10": {"labels": (H, F), "called": False, "claim": "claim 6"},
+}
+
+
+def with_samples(**changes):
+    return split_records(**{**SAMPLES, **changes})
+
+
+def test_each_sample_is_one_class_and_the_parts_are_the_hand_computed_fractions_of_nine():
+    # sample 1 is a keyed override too: its judgement, not a sample, is the one called
+    found = split_of(with_samples())
+    assert found["classes"] == {2: "N", 3: "N", 4: "A", 5: "C", 6: "J", 7: "J", 8: "C", 9: "C", 10: "J"}
+    assert (found["agreement"]["exact"], found["agent_part"]["exact"], found["judge_part"]["exact"]) == ("1/9", "5/9", "1/3")
+    assert (found["no_claim"], found["claim_differs"], found["judge_differs"]) == (2, 3, 3)
+    assert found["agreement"]["value"] == pytest.approx(1 / 9) and found["agent_part"]["value"] == pytest.approx(5 / 9)
+    parts = [Fraction(found[k]["exact"]) for k in ("agreement", "agent_part", "judge_part")]
+    assert sum(parts) == 1
+
+
+def test_a_difference_is_judge_type_when_either_claim_is_split_or_their_calls_share_a_label():
+    classes = split_of(with_samples())["classes"]
+    assert classes[6] == "J"  # shares fails with sample 1's calls on O
+    assert classes[7] == "J"  # a split on its own claim
+    # Sample 1's claim split on O: a steady fails on O is then a judge-type difference as well.
+    first = {**SAMPLES["s1"], "labels": (H, N), "valid": [(H, H), (H, F), (H, N)], "splits": [O]}
+    assert split_of(with_samples(s1=first, s5={"labels": (H, F)}))["classes"][5] == "J"
+    # With no split and no shared label, the same difference is agent-type.
+    assert split_of(with_samples(s6={"labels": (H, N)}))["classes"][6] == "C"
+
+
+def test_one_agent_type_reading_makes_the_sample_c_and_the_per_reading_counts_show_each_type():
+    found = split_of(with_samples())
+    assert found["classes"][8] == "C"
+    # Over samples 2 to 10: R differs agent-type on samples 5, 8 and 9; O differs judge-type on 6, 7, 8 and 10.
+    assert found["per_reading"] == {R: {"agent": 3, "judge": 0}, O: {"agent": 0, "judge": 4}}
+
+
+def test_a_sample_with_no_claim_on_the_slot_or_a_failed_one_is_class_n_and_counted_apart():
+    found = split_of(with_samples())
+    assert found["classes"][2] == found["classes"][3] == "N" and found["no_claim"] == 2
+    # Both are the agent's part.
+    assert found["agent_part"]["exact"] == "5/9"
+
+
+def test_a_judgement_without_a_call_takes_the_valid_calls_and_splits_of_the_judgement_with_the_same_string():
+    # Sample 10 holds the labels of sample 6 and no valid calls; copying sample 6's calls makes it judge-type.
+    assert split_of(with_samples())["classes"][10] == "J"
+    # Sample 6 split on O: sample 10, with its string, takes the split too, so is judge-type on a steady difference.
+    six = {"labels": (H, N), "valid": [(H, H), (H, F), (H, N)], "splits": [O]}
+    assert split_of(with_samples(s6=six, s10={**six, "called": False, "claim": "claim 6"}))["classes"][10] == "J"
+    # A string equal to sample 1's takes its labels, so is class A.
+    same = {"labels": (H, H), "called": False, "claim": "claim 1"}
+    assert split_of(with_samples(s5=same))["classes"][5] == "A"
+
+
+def test_fewer_than_three_valid_calls_leave_a_split_that_is_judge_type():
+    # Two valid calls that disagree on O are a split on O: label not_addressed, recorded in `splits`.
+    two = {"labels": (H, N), "valid": [(H, H), (H, F)], "splits": [O]}
+    assert split_of(with_samples(s5=two))["classes"][5] == "J"
+
+
+def test_sample_one_without_a_claim_has_no_split_and_says_so():
+    assert split_only(with_samples(s1="none"))[SPLIT_SLOT] == {"sample_one": "sample 1 has no claim"}
+    assert split_only(with_samples(s1="failure"))[SPLIT_SLOT] == {"sample_one": "sample 1 has no claim"}
+
+
+def test_a_slot_whose_samples_all_agree_has_agreement_one_and_nothing_to_split():
+    found = split_of(split_records())
+    assert found["agreement"]["exact"] == "1" and found["agent_part"]["exact"] == "0" and found["judge_part"]["exact"] == "0"
+    assert found["per_reading"] == {R: {"agent": 0, "judge": 0}, O: {"agent": 0, "judge": 0}}
+
+
+def test_the_split_is_per_variant():
+    # The abstain variant's one claim agrees on every sample; the confident one has the set-up above.
+    result = summarise_(with_samples())["descriptive"]["agreement_split"]["variants"]
+    assert set(result) == {"confident", "abstain"}
+    assert result["abstain"][SPLIT_SLOT]["agreement"]["exact"] == "1"
+    assert result["confident"][SPLIT_SLOT]["agreement"]["exact"] == "1/9"
+
+
+def test_the_split_agreement_is_the_confidence_rules_agreement():
+    from warrant.write_line.confidence import CombinationRule, scores
+    records = with_samples()
+    own = [r for r in records if r["record"] != "judgement" or r["variant"] == "confident"]
+    own = [r for r in own if r["record"] != "sample" or (r["variant"] == "confident" and not (r["failure"] and r["sample"] == 1))]
+    ranked = scores(own, [d for d in CONFIG.defects if d.id == SPLIT_SLOT], CombinationRule(seed=0))
+    assert ranked[SPLIT_SLOT][0] == Fraction(split_of(records)["agreement"]["exact"])
+
+
+def test_a_sample_without_a_record_is_refused():
+    records = [r for r in build() if not (r["record"] == "sample" and r["variant"] == "confident"
+                                         and r["database"] == "plant" and r["sample"] == 7)]
+    with pytest.raises(ValueError, match="plant sample 7"):
+        summarise_(records)
+
+
+def test_a_judgement_without_a_call_whose_string_has_no_source_is_refused():
+    records = with_samples(s10={"labels": (H, F), "called": False, "claim": "no such claim"})
+    with pytest.raises(ValueError, match="no judgement with a call"):
+        summarise_(records)
+
+
+def test_the_split_is_labelled_descriptive_and_says_it_counts_observed_disagreement_only():
+    block = summarise_()["descriptive"]["agreement_split"]
+    assert block["label"] == "descriptive" and block["primary"] == "confident"
+    assert "observed disagreement only" in block["caveat"]
+
+
+def test_the_report_has_a_line_per_variant_and_slot():
+    from warrant.write_line.summary import _report
+    text = _report(summarise_(with_samples()))
+    assert ("agreement split confident total-is-sum: agreement 1/9, agent part 5/9 (no claim 2, claim differs 3), "
+            "judge part 1/3") in text
+    # The slot's other samples have no claim on it (the set-up empties samples 2 and 3 whole).
+    assert "agreement split confident site-swap: agreement 7/9, agent part 2/9 (no claim 2, claim differs 0)" in text
+    assert "agreement split abstain total-is-sum: agreement 1, agent part 0" in text
+    assert "judge-type differences by reading: {'other': 4}" in text
+
+
+def test_a_slot_without_a_sample_one_claim_is_reported_as_such_in_the_text():
+    from warrant.write_line.summary import _report
+    summary = summarise_()
+    summary["descriptive"]["agreement_split"]["variants"]["confident"] = split_only(with_samples(s1="none"))
+    assert "agreement split confident total-is-sum: sample 1 has no claim" in _report(summary)
