@@ -22,6 +22,8 @@ expression, and it does not change the category.
     uv run python -m warrant.write_line.wallet_sum_review --config configs/write_line_thin.yaml --freeze freeze/write_line.yaml --results results/thin/2026-10-24-66a86cb.jsonl --out-dir results/thin/wallet_sum_review
 
 The gold values are read from the injected copies, which are built, not changed. No model is called.
+sqlglot, used to parse and normalise the SQL, is a dev-only dependency (pyproject.toml
+[dependency-groups] dev); run with `uv run` from a dev install.
 """
 
 import argparse
