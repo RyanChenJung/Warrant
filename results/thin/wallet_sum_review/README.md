@@ -34,8 +34,9 @@ The data is the 144 answers to the six probes with `defect: wallet-sum` in
 
 **Manual overrides** (`manual_overrides.csv`): 3 distinct SQL strings, covering 6 answers, were
 moved from `unclear` to `reads_walletsum` after a hand check. They are the `total-held` answers that
-list `SUM(walletsum) AS total_wallet` and `SUM(margsum)`, and in five of them also their sum. Every
-projection in them reads `walletsum`, and none of them has a route through the components alone.
+list `SUM(walletsum) AS total_wallet` and `SUM(margsum)`, and in five of them also their sum. Each
+of their columns either reads `walletsum` or is `SUM(margsum)`, which is no reading's answer on its
+own, so none of them has a route through the components alone.
 
 ## Results
 
@@ -76,12 +77,15 @@ Answers per rule (A `reads_walletsum`, B `components_only`):
 
 - **The sum is the same under every reading.** Every reading in `freeze/write_line.yaml` changes
   only `walletsum`, and `without-margin` changes nothing. So `availsum + frozensum` has the same
-  value whichever reading of `walletsum` holds, and it is the gold value.
-- **So these answers do not test the note.** An answer that uses the sum scores the same whatever
-  the note says `walletsum` is, so it cannot tell a correct note from a wrong one.
-- **On this probe, most answers with a note did not test its content.**
+  value whichever reading of `walletsum` holds, and it equals the scored gold value (injected copy).
+- **So these answers cannot tell the true note from `without-margin`.** That sum is what both the
+  true note and the `without-margin` note imply; a note with another formula (`without-frozen`,
+  `with-unrealised-pnl`, `four-terms`) would lead to a different sum. No wrong note occurred in this
+  run, so this is not observed.
+- **On this probe, most answers with a note could not tell the true note from `without-margin`.**
 - **No score is wrong because of it.** Every wallet-sum note in this run was correct. But the
-  probe's correct answers under these seven rules are not evidence about the note.
+  probe's correct answers under these seven rules are not evidence that the note was read as the
+  true one rather than `without-margin`.
 - **A possible explanation, not a finding.** Both notes state `walletsum`'s formula. The agent's
   claim says "walletsum equals availsum + frozensum + margsum for all 1,000 rows". That may be why
   the agent switched to the components, but the records do not show its reasoning.
