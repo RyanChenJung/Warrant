@@ -357,11 +357,6 @@ balance" is grounded to a column (`accountbalances.walletsum`).
     under every reading. So with a note, most of that probe's answers did not test the note.
   - 5 wrong answers on the same probe hold the gold value in their answer column and were scored wrong
     only for returning extra columns.
-- **For the next freeze** (#152): a probe should need the slot's claim to be answered, not only give a
-  different answer under each reading. Probes on a grade whose usual direction is the wrong one would
-  open the gap this run lacked; formula probes should ask for a quantity that no simple sum of other
-  columns reproduces under every reading; and coverage probes should not be answerable from the child
-  tables alone.
 
 ## Confirmatory result
 
