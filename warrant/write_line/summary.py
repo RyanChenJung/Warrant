@@ -382,7 +382,7 @@ def _judgement_with_a_call(selected: Selected, variant: str, defect: str, claim:
     raise ValueError(f"{defect} ({variant}): a judgement without a call, but no judgement with a call on its claim")
 
 
-def _calls_of(selected: Selected, variant: str, defect: str, j: Mapping) -> tuple[Mapping, Mapping]:
+def _labels_and_source(selected: Selected, variant: str, defect: str, j: Mapping) -> tuple[Mapping, Mapping]:
     """A judgement's labels and what its valid calls and splits are: those of its source when it was made
     without a call."""
     source = _judgement_with_a_call(selected, variant, defect, j["claim"]) if j.get("without_a_call") else j
@@ -406,7 +406,7 @@ def _split(selected: Selected, config: Config, variant: str) -> dict:
         one = selected.judgements.get((variant, d.id, 1, index))
         if one is None:
             raise ValueError(f"sample 1's claim on {d.id} ({variant}) has no complete judgement")
-        labels_one, source_one = _calls_of(selected, variant, d.id, one)
+        labels_one, source_one = _labels_and_source(selected, variant, d.id, one)
         classes, per_reading = {}, {r: {"agent": 0, "judge": 0} for r in labels_one}
         for number in range(2, samples + 1):
             sample = selected.samples.get((variant, d.database, number))
@@ -419,7 +419,7 @@ def _split(selected: Selected, config: Config, variant: str) -> dict:
             j = selected.judgements.get((variant, d.id, number, index))
             if j is None:
                 raise ValueError(f"{d.id}: the claim of sample {number} has no complete judgement ({variant})")
-            labels, source = _calls_of(selected, variant, d.id, j)
+            labels, source = _labels_and_source(selected, variant, d.id, j)
             differing = [r for r in labels_one if labels[r] != labels_one[r]]
             if not differing:
                 classes[number] = "A"
@@ -428,7 +428,7 @@ def _split(selected: Selected, config: Config, variant: str) -> dict:
             for r in differing:
                 calls_one = {call[r] for call in source_one["valid"]}
                 calls_here = {call[r] for call in source["valid"]}
-                judge_type = r in source_one["splits"] or r in source["splits"] or bool(calls_one & calls_here)
+                judge_type = r in source_one.get("splits", ()) or r in source.get("splits", ()) or bool(calls_one & calls_here)
                 per_reading[r]["judge" if judge_type else "agent"] += 1
                 kinds.append(judge_type)
             classes[number] = "J" if all(kinds) else "C"
