@@ -1211,3 +1211,31 @@ def test_a_slot_without_a_sample_one_claim_is_reported_as_such_in_the_text():
     summary = summarise_()
     summary["descriptive"]["agreement_split"]["variants"]["confident"] = split_only(with_samples(s1="none"))
     assert "agreement split confident total-is-sum: sample 1 has no claim" in _report(summary)
+
+
+FIRST_RUN = Path(__file__).resolve().parents[1] / "results" / "thin" / "2026-10-24-66a86cb.jsonl"
+FIRST_CONFIG = Path(__file__).resolve().parents[1] / "configs" / "write_line_thin.yaml"
+
+
+def test_the_split_of_the_first_run_is_the_freeze_notes_worked_example():
+    records = [json.loads(line) for line in FIRST_RUN.read_text().splitlines()]
+    selected = summary_module.Selected(records, records[0]["config_hash"])
+    config = load_config(FIRST_CONFIG)
+    confident = summary_module._split(selected, config, "confident")
+    abstain = summary_module._split(selected, config, "abstain")
+    cut = confident["orders-cut"]
+    assert [cut[k]["exact"] for k in ("agreement", "agent_part", "judge_part")] == ["1/9", "8/9", "0"]
+    assert (cut["no_claim"], cut["claim_differs"], cut["judge_differs"]) == (0, 8, 0)
+    assert list(cut["classes"].values()) == list("ACCCCCCCC")
+    assert {r: c["agent"] for r, c in cut["per_reading"].items()} == dict.fromkeys(cut["per_reading"], 8)
+    assert not any(c["judge"] for c in cut["per_reading"].values())
+    cut = abstain["orders-cut"]
+    assert [cut[k]["exact"] for k in ("agreement", "agent_part", "judge_part")] == ["4/9", "1/9", "4/9"]
+    assert (cut["no_claim"], cut["claim_differs"], cut["judge_differs"]) == (0, 1, 4)
+    assert list(cut["classes"].values()) == list("AJACAJAJJ")
+    assert cut["per_reading"]["other-system"] == {"agent": 0, "judge": 5}
+    assert cut["per_reading"]["cut-with-children"] == {"agent": 1, "judge": 0}
+    assert sum(c["agent"] + c["judge"] for c in cut["per_reading"].values()) == 6
+    # The wallet-sum slot agrees on every sample under both variants: nothing to split.
+    for found in (confident, abstain):
+        assert found["wallet-sum"]["agreement"]["exact"] == "1" and found["wallet-sum"]["judge_differs"] == 0
