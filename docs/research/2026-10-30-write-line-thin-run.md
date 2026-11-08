@@ -1,11 +1,9 @@
 # The write line's thin run: write-up (#54)
 
-Status: draft for review (PR #163). Due 2026-11-09. The question-design section (@lin-jhe-yu) and the
-wallet-sum review (PR #160, merged) are filled in; no placeholders remain.
-
 Every number below comes from a committed file: `results/thin/README.md`, `results/thin/summary.json`,
-`results/thin/2026-10-24-66a86cb.jsonl` and `results/thin/audit/`. Where a number is not in
-`summary.json`, the text names the file it comes from. Terms are defined where they first appear and
+`results/thin/2026-10-24-66a86cb.jsonl`, `results/thin/audit/`, `configs/write_line_thin.yaml` (with its
+`--check`), `results/thin/wallet_sum_review/` and `results/judge_validation/`, or from #54's comments.
+Where a number is not in `summary.json`, the text names the file it comes from. Terms are defined where they first appear and
 in [CONTEXT.md](https://github.com/RyanChenJung/Warrant/blob/66a86cb/CONTEXT.md), the version the run used.
 
 ## Summary
@@ -22,7 +20,7 @@ with its subject, for example the coverage of the `orders` table.
 of automatic data checks (the check battery) can settle, and gives a person the rest. Here that is one
 slot for the agent and two for a person, so **k = 2**, where k is the number of slots a person writes.
 The **confidence rule** lets the agent write the claims it is most confident in, and gives a person the
-same k = 2, its least confident ones. Comparing the two at the same k is called matched asks. Three
+same k = 2, its least confident ones. Comparing the two when both send the same number of slots to a person is called matched asks. Three
 other rules bracket them: an empty store, everything from a person, and everything from the agent. Each
 agent-writing rule ran under two prompt variants, so eight rules ran in all.
 
@@ -131,7 +129,7 @@ of claims the agent is given when it answers questions. The run has five rules:
 
 **k** is the number of slots a person writes under the settlement rule: **k = 2**. The two rules are
 compared at **matched asks**: the confidence rule also sends exactly k = 2 slots to a person. The
-confirmatory test of the write line (hypothesis H3) asks whether, at the same k, the settlement rule
+confirmatory test of the write line (hypothesis H3) asks whether, when both send the same number of slots to a person, the settlement rule
 leads to fewer wrong answers than the confidence rule. The person is simulated: a person's claim for a
 slot is the slot's reference claim.
 
@@ -494,7 +492,8 @@ incomplete at any k (`summary.json`: `curve.points`). The judge split no true re
 ### Other descriptive figures
 
 - **Flip rate: 0.3125.** The share of questions whose three runs did not all give the same response
-  class under at least one rule.
+  class under at least one rule. It is 10 of the 32 questions with at least two scored runs under every
+  rule; `cancelled-share` is left out.
 - **Judge instability.** The judge's three calls did not all agree on 6 of 120 (claim, reading) pairs
   under `confident`, none of them on a true reading, and on 8 of 120 under `abstain`, one of them on a
   true reading, settled 2 to 1 (the pair counts are in `summary.json`; which readings are in
@@ -565,7 +564,8 @@ the PR (#145). It took him about 4 hours.
 `wallet-sum`. The differences are on the rival readings of `orders-cut`, mostly on one reading whose
 meaning the two read differently, so the judge's labels on those rivals are less certain than its labels
 on the true readings. A wrong write is a claim that fails under the true reading, and the two agree on
-every true reading, so the count of wrong writes (0) would be the same under the auditor's labels. The
+every true reading, so under `confident` the count of wrong writes (0) would be the same under the
+auditor's labels. The audit labelled `confident` claims only, so this says nothing about `abstain`. The
 confidence ranking uses the judge's whole profile of labels, so disagreements on rival readings could in
 principle move it; this run's ranking is read from the judge's labels, as the freeze prescribes.
 
@@ -712,9 +712,6 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
 
 ## What follows
 
-- **This write-up:** the question-design section is @lin-jhe-yu's and the wallet-sum
-  per-question review is PR #160's; both are filled in. The write-up is
-  #54's last open acceptance criterion; #54 closes with it.
 - **A second freeze exists** (#61, ADR 0011): the first complete pass finished before 2026-11-16, the
   condition for authoring it. It adds three more slots, with its own configuration, k, matched asks
   and run id, so that the two rules can differ. Its confirmatory test is reported separately and is not
