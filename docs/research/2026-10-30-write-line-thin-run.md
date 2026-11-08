@@ -243,9 +243,9 @@ starts, case-insensitively (`global.refusal_check`), and none of them occurs in 
 refusal that only repeats the question fails; a test checks this. `--check` skips refusal probes, so
 this one was reviewed by hand. It has no gold answer: the clean copy holds 69 limit orders among the
 266 cancelled ones. This follows from the battery's value check on `orders.ordertune` in the committed
-predictions (`predictions/9cfd501f2182-write_line/`): Limit is 246 of the 999 orders on the clean copy
-(`8558694443b0….jsonl`, line 77) and 177 of the 733 on the injected copy (`9f3e510217e8….jsonl`,
-line 79), and 246 − 177 = 69.
+predictions (`predictions/9cfd501f2182-write_line/`): Limit is 246 of the 999 orders in the
+`nothing-cut` reading's database, whose orders table is the released one (`8558694443b0….jsonl`,
+line 77), and 177 of the 733 on the injected copy (`9ac982a1ca01….jsonl`, line 80); 246 − 177 = 69.
 
 ### Column formula: the wallet total (6)
 
@@ -353,8 +353,10 @@ balance" is grounded to a column (`accountbalances.walletsum`).
   `results/thin/wallet_sum_review/`). 102 of the 116 correct answers (88%) read it; 14 (12%) use
   `availsum + frozensum`, all on `user-wallet-excluding-margin`.
   - On that probe, the 3 empty-store answers all read `walletsum`. Under the seven rules whose store
-    holds a wallet-sum note, 17 of 21 answers use `availsum + frozensum`, which gives the gold value
-    under every reading. So with a note, most of that probe's answers did not test the note.
+    holds a wallet-sum note, 17 of 21 answers use `availsum + frozensum`. That sum is what both
+    the true note and the `without-margin` note imply, so these answers cannot tell the true note from
+    `without-margin`, though a note with another formula would lead to a different sum. No wrong note
+    occurred in this run.
   - 5 wrong answers on the same probe hold the gold value in their answer column and were scored wrong
     only for returning extra columns.
 
@@ -392,8 +394,9 @@ the agent is most confident about it. Here those are the same slot:
   0.1111, which is 1 of 9 other samples, under `confident`; 0.4444, 4 of 9, under `abstain`). It ranked
   second.
 - **`seeing-recode`**: no sample wrote a claim on it (0 of 20 samples), so it ranked least confident.
-  The claim-writing prompt names no slot, so an agent that is not pointed at a column does not write
-  about it.
+  The claim-writing input names no slot, except that the business-term list grounds "wallet balance"
+  to `accountbalances.walletsum`, the wallet-sum slot's subject, so an agent that is not pointed at a
+  column does not write about it.
 
 The confidence ranking, least confident first, was `seeing-recode`, `orders-cut`, `wallet-sum` under
 both variants (`summary.json`: `confirmatory.ranking`, `descriptive.variants.abstain.comparison.ranking`).
@@ -508,12 +511,13 @@ incomplete at any k (`summary.json`: `curve.points`). The judge split no true re
   - **102 of the 116 correct wallet-sum answers (88%) read `walletsum`.**
   - **14 (12%) use `availsum + frozensum` instead,** all on `user-wallet-excluding-margin`, where that
     sum equals the gold answer. Every correct answer to the other five probes reads `walletsum`.
-  - **Why it matters:** every reading changes only `walletsum` (and `without-margin` changes nothing),
-    so `availsum + frozensum` has the same value whichever reading holds. An answer that uses the sum
-    scores the same whatever the note says, so it cannot tell a correct note from a wrong one. On this
-    probe, most answers with a note did not test its content.
+  - **Why it matters:** `availsum + frozensum` is what both the true note and the `without-margin` note
+    imply, so an answer that uses the sum cannot tell the true note from `without-margin`, though a note
+    with another formula would lead an agent that sums the components to a different value. On this
+    probe, most answers with a note cannot separate those two notes.
   - **No score is wrong because of it:** every wallet-sum note in this run was correct. But the probe's
-    correct answers under the seven rules with a wallet-sum note are not evidence about the note.
+    correct answers under the seven rules with a wallet-sum note cannot tell the true note from
+    `without-margin`.
   - **For the column-formula figures above:** they include this probe's answers (one of the six
     column-formula probes), so read them with this caveat. The review does not recompute them.
 
@@ -680,9 +684,9 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
   `abstain`. On the value-meaning slot the defect opened no gap (the empty store was always right), so
   that slot says nothing about when a person is needed. On the coverage slot the agent's own claim, the
   one in the stores, settled none of the readings under `confident`.
-- **The agent was not pointed at any slot.** The claim-writing prompt names no slot, so what the agent
-  writes a claim about is its own choice: all 10 samples wrote on `wallet-sum`, and none wrote on
-  `seeing-recode`. ADR 0011 gave this as the reason to expect the two rules to coincide, and they did.
+- **The agent was pointed at one slot only.** The claim-writing input names no slot, except that the
+  business-term list grounds "wallet balance" to `accountbalances.walletsum`, the wallet-sum slot's
+  subject. All 10 samples wrote on `wallet-sum`, and none on `seeing-recode`. ADR 0011 gave this as the reason to expect the two rules to coincide, and they did.
 - **One model, and a designer of the same family.** Claims, the judge and answers all use Claude Sonnet 5.
   The judge is the same model that writes the claims it judges, and the defects were designed with an AI
   assistant of the same family (disclosure 11). A replication with a model from another family is future
@@ -696,8 +700,10 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
 - **Some answers are not scored.** Three answers failed after retries and four were clarification
   requests; accuracy leaves them out, and the counts are given above.
 - **One column-formula probe does not test the note.** On `user-wallet-excluding-margin`, 14 of the
-  116 correct wallet-sum answers (12%) sum `availsum + frozensum`, which equals the gold answer under
-  every reading, so most answers with a note on that probe cannot tell a correct note from a wrong one
+  116 correct wallet-sum answers (12%) sum `availsum + frozensum`, which is what both the true note and the
+  `without-margin` note imply, so most answers with a note on that probe cannot tell the true note from
+  `without-margin` (a note with another formula would lead to a different sum, and no wrong note occurred
+  in this run)
   (`results/thin/wallet_sum_review/README.md`, PR #160). The components-only pattern rests on that one
   probe and small counts, and the records do not show the agent's reasoning.
 - **The cost is not confirmed by the Bedrock bill** (see Cost).
