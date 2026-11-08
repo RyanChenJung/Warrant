@@ -583,6 +583,239 @@
         "cut_short": []
       }
     },
+    "agreement_split": {
+      "label": "descriptive",
+      "primary": "confident",
+      "caveat": "observed disagreement only: agreements that the judge's noise could have broken are not counted (the share of unstable pairs in `judge` covers those), and two claims that say the same thing but are labelled steadily differently count as the agent's part",
+      "variants": {
+        "confident": {
+          "wallet-sum": {
+            "agreement": {
+              "exact": "1",
+              "value": 1.0
+            },
+            "agent_part": {
+              "exact": "0",
+              "value": 0.0
+            },
+            "judge_part": {
+              "exact": "0",
+              "value": 0.0
+            },
+            "no_claim": 0,
+            "claim_differs": 0,
+            "judge_differs": 0,
+            "classes": {
+              "2": "A",
+              "3": "A",
+              "4": "A",
+              "5": "A",
+              "6": "A",
+              "7": "A",
+              "8": "A",
+              "9": "A",
+              "10": "A"
+            },
+            "per_reading": {
+              "with-margin": {
+                "agent": 0,
+                "judge": 0
+              },
+              "four-terms": {
+                "agent": 0,
+                "judge": 0
+              },
+              "without-frozen": {
+                "agent": 0,
+                "judge": 0
+              },
+              "with-unrealised-pnl": {
+                "agent": 0,
+                "judge": 0
+              },
+              "without-margin": {
+                "agent": 0,
+                "judge": 0
+              }
+            }
+          },
+          "orders-cut": {
+            "agreement": {
+              "exact": "1/9",
+              "value": 0.1111111111111111
+            },
+            "agent_part": {
+              "exact": "8/9",
+              "value": 0.8888888888888888
+            },
+            "judge_part": {
+              "exact": "0",
+              "value": 0.0
+            },
+            "no_claim": 0,
+            "claim_differs": 8,
+            "judge_differs": 0,
+            "classes": {
+              "2": "A",
+              "3": "C",
+              "4": "C",
+              "5": "C",
+              "6": "C",
+              "7": "C",
+              "8": "C",
+              "9": "C",
+              "10": "C"
+            },
+            "per_reading": {
+              "filled-cut": {
+                "agent": 8,
+                "judge": 0
+              },
+              "nothing-cut": {
+                "agent": 8,
+                "judge": 0
+              },
+              "cancelled-cut": {
+                "agent": 8,
+                "judge": 0
+              },
+              "archived": {
+                "agent": 8,
+                "judge": 0
+              },
+              "mistyped": {
+                "agent": 8,
+                "judge": 0
+              },
+              "cut-with-children": {
+                "agent": 8,
+                "judge": 0
+              },
+              "other-system": {
+                "agent": 8,
+                "judge": 0
+              }
+            }
+          },
+          "seeing-recode": {
+            "sample_one": "sample 1 has no claim"
+          }
+        },
+        "abstain": {
+          "wallet-sum": {
+            "agreement": {
+              "exact": "1",
+              "value": 1.0
+            },
+            "agent_part": {
+              "exact": "0",
+              "value": 0.0
+            },
+            "judge_part": {
+              "exact": "0",
+              "value": 0.0
+            },
+            "no_claim": 0,
+            "claim_differs": 0,
+            "judge_differs": 0,
+            "classes": {
+              "2": "A",
+              "3": "A",
+              "4": "A",
+              "5": "A",
+              "6": "A",
+              "7": "A",
+              "8": "A",
+              "9": "A",
+              "10": "A"
+            },
+            "per_reading": {
+              "with-margin": {
+                "agent": 0,
+                "judge": 0
+              },
+              "four-terms": {
+                "agent": 0,
+                "judge": 0
+              },
+              "without-frozen": {
+                "agent": 0,
+                "judge": 0
+              },
+              "with-unrealised-pnl": {
+                "agent": 0,
+                "judge": 0
+              },
+              "without-margin": {
+                "agent": 0,
+                "judge": 0
+              }
+            }
+          },
+          "orders-cut": {
+            "agreement": {
+              "exact": "4/9",
+              "value": 0.4444444444444444
+            },
+            "agent_part": {
+              "exact": "1/9",
+              "value": 0.1111111111111111
+            },
+            "judge_part": {
+              "exact": "4/9",
+              "value": 0.4444444444444444
+            },
+            "no_claim": 0,
+            "claim_differs": 1,
+            "judge_differs": 4,
+            "classes": {
+              "2": "A",
+              "3": "J",
+              "4": "A",
+              "5": "C",
+              "6": "A",
+              "7": "J",
+              "8": "A",
+              "9": "J",
+              "10": "J"
+            },
+            "per_reading": {
+              "filled-cut": {
+                "agent": 0,
+                "judge": 0
+              },
+              "nothing-cut": {
+                "agent": 0,
+                "judge": 0
+              },
+              "cancelled-cut": {
+                "agent": 0,
+                "judge": 0
+              },
+              "archived": {
+                "agent": 0,
+                "judge": 0
+              },
+              "mistyped": {
+                "agent": 0,
+                "judge": 0
+              },
+              "cut-with-children": {
+                "agent": 1,
+                "judge": 0
+              },
+              "other-system": {
+                "agent": 0,
+                "judge": 5
+              }
+            }
+          },
+          "seeing-recode": {
+            "sample_one": "sample 1 has no claim"
+          }
+        }
+      }
+    },
     "cost": {
       "label": "descriptive",
       "note": "each rule's method cost holds everything that rule needs, so a call two rules need (sample 1) is in both, and the method costs do not add up across rules",
