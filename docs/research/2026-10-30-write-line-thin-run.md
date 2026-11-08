@@ -6,7 +6,7 @@ wallet-sum review (PR #160, merged) are filled in; no placeholders remain.
 Every number below comes from a committed file: `results/thin/README.md`, `results/thin/summary.json`,
 `results/thin/2026-10-24-66a86cb.jsonl` and `results/thin/audit/`. Where a number is not in
 `summary.json`, the text names the file it comes from. Terms are defined where they first appear and
-in [CONTEXT.md](../../CONTEXT.md).
+in [CONTEXT.md](https://github.com/RyanChenJung/Warrant/blob/66a86cb/CONTEXT.md), the version the run used.
 
 ## Summary
 
@@ -585,7 +585,7 @@ differ from what the account was charged.
 
 The sources are `results/thin/README.md` and `summary.json` (`descriptive.cost.total_spend`, $43.38, and
 `file_spend`, $43.43). In tokens, the run used 14,816,613 input and 1,374,279 output tokens, and with the
-judge's validation 14,829,981 input and 1,377,207 output tokens. The runbook (`docs/write-line-run.md`)
+judge's validation 14,829,981 input and 1,377,207 output tokens. The runbook ([`docs/write-line-run.md`](https://github.com/RyanChenJung/Warrant/blob/66a86cb/docs/write-line-run.md), the version the run used)
 had estimated about $43 in all against the $100 cap, which the run did not come near; the first-pass
 pause (twice the first pass's estimate) did not trigger.
 
@@ -620,7 +620,7 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
   out, because it is not part of the `max_tokens` disclosure;
 - items 6 and 8 end with a note beginning "In the run", pointing to the result.
 
-`CONTEXT.md` defines the terms.
+[`CONTEXT.md`](https://github.com/RyanChenJung/Warrant/blob/66a86cb/CONTEXT.md) defines the terms.
 
 1. **Design trials before the freeze.** Candidate defects were tried on about 53 scratch copies outside the data directory, with about 100 runs of the public Gloss detectors and stand-ins for the export and the declared-key pairing, on 2026-10-12, before PR #84 added the exception that allows such trials. They included candidates later dropped (two other column formulas, a margin formula, a cut of the open orders) and the Excellent/Poor swap that the 1/2/3 recoding replaced; the frozen recoding itself was never tried. Gold answers of candidate probes, predicted outcomes under several battery settings and power calculations were also computed on the copies. The battery settings (exact normalisation, child-to-parent declared keys, the fixed date) and the column-formula and coverage reading sets were chosen after seeing them. No defect was written into the data directory, and no project code called a model. The freeze note, committed with the freeze, lists every trial. Safeguards as before: the drift-reading rule reads declarations only, and the coverage readings are the link check's own answers (item 10).
 
@@ -712,17 +712,17 @@ replaced on 2026-10-14; items 9, 10 and 11 added on 2026-10-14; 12 on 2026-10-19
 - **A second freeze exists** (#61, ADR 0011): the first complete pass finished before 2026-11-16, the
   condition for authoring it. It adds three more slots, with its own configuration, k, matched asks
   and run id, so that the two rules can differ. Its confirmatory test is reported separately and is not
-  pooled with this run. If its rules coincide too, that is reported as it is.
+  pooled with this run.
 - **Other work in the issue tracker:** a replication with a model from another family (#94) and the
   paired familiarity experiment (#4), which this run cannot supply (disclosure 6). The maintenance line
   is deferred (ADR 0010), and the hybrid rule, in which the agent may also write a very confident claim
-  the battery did not settle, is future work (`CONTEXT.md`).
+  the battery did not settle, is future work ([`CONTEXT.md`](https://github.com/RyanChenJung/Warrant/blob/66a86cb/CONTEXT.md)).
 
 ## How to reproduce
 
 The summary and the audit table are recomputed from the committed files, with no model call. The run
 itself (the model calls, about $43 at list price on a Bedrock account) is described in
-`docs/write-line-run.md` and is not needed for this.
+[`docs/write-line-run.md`](https://github.com/RyanChenJung/Warrant/blob/66a86cb/docs/write-line-run.md) (the version the run used) and is not needed for this.
 
 ```bash
 git switch main && git pull
