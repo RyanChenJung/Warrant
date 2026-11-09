@@ -1,5 +1,5 @@
 # The write line's second run (#152, #153): the second freeze (#149), its injection record (#151) and
-# its questions. Six column-formula, seven coverage and six value-meaning probes, and ten controls on
+# its questions. Six column-formula, six coverage and six value-meaning probes, and ten controls on
 # content no defect touches or links to by a declared key. Each probe names the readings it separates
 # (#34, round 2): gold SQL is run on the injected copy, and each `separates:` entry is the SQL an agent
 # holding that reading's note would run on the same copy.
@@ -25,32 +25,15 @@ model:
 questions:
   # Column formula: the probes ask about execution time as recorded, never about why some snapshots
   # carry more (freeze/NOTE_2.md, "Conditions on the questions"), and none states how execution time
-  # is made up; "not stored in any column" is the reference claim's own phrase. The three cause
-  # readings share the injected copy, so they change no gold; no probe asks a "what if", whose answer
-  # would turn on what the extra amount is. sum-everywhere's SQL rebuilds execution time as latency
-  # plus queue; retry-rows' rebuilds it with the retried latency and back-off on the snapshots where
-  # at least one call in twenty failed, the retried latency counting as API latency. queueing-share
-  # leaves out retry-rows, whose answer is within 2 percent there; as-released, which never splits
-  # execution time into parts, gives the probes that take a part out of it no SQL of its own.
-  - id: total-time-without-queueing
-    database: crypto
-    defect: exec-throttle
-    text: What is the total execution time across all snapshots, not counting queueing?
-    gold_sql: SELECT SUM(exectimespan - queueline) FROM systemmonitoring
-    separates:
-      sum-everywhere: SELECT SUM(apilatmark) FROM systemmonitoring
-      retry-rows: >-
-        SELECT SUM(apilatmark + CASE WHEN apierrtotal * 20 >= apireqtotal THEN apilatmark + 200 ELSE 0 END)
-        FROM systemmonitoring
-  - id: total-time-without-latency
-    database: crypto
-    defect: exec-throttle
-    text: What is the total execution time across all snapshots, not counting API latency?
-    gold_sql: SELECT SUM(exectimespan - apilatmark) FROM systemmonitoring
-    separates:
-      sum-everywhere: SELECT SUM(queueline) FROM systemmonitoring
-      retry-rows: >-
-        SELECT SUM(queueline + CASE WHEN apierrtotal * 20 >= apireqtotal THEN 200 ELSE 0 END) FROM systemmonitoring
+  # is made up; "not stored in any column" is the reference claim's own phrase. Every cause reading
+  # (cause-retries, cause-old-logger, cause-gateway) keeps the extra amount inside exectimespan, on
+  # the same 99 snapshots, stored in no column: the unstored-time probes ask for that amount, not its
+  # cause, and the all-parts probes take SUM(exectimespan) as the total, so no cause reading changes a
+  # gold. No probe takes a part out of execution time, whose answer would turn on whether the extra
+  # amount counts as API latency. sum-everywhere's SQL rebuilds execution time as latency plus queue;
+  # retry-rows' adds the retried latency and back-off on the snapshots where at least one call in
+  # twenty failed. The all-parts probes name the parts as if they were separate (the first run's
+  # total-held): only as-released, which reads execution time as its own part, adds them again.
   - id: snapshots-with-unstored-time
     database: crypto
     defect: exec-throttle
@@ -83,13 +66,33 @@ questions:
       retry-rows: >-
         SELECT MAX(CASE WHEN apierrtotal * 20 >= apireqtotal THEN apilatmark + 200 END) FROM systemmonitoring
       as-released: SELECT MAX(exectimespan) FROM systemmonitoring
-  - id: queueing-share
+  - id: total-time-all-parts
     database: crypto
     defect: exec-throttle
-    text: Summed over all snapshots, what share of the total execution time is queueing, as a fraction between 0 and 1?
-    gold_sql: SELECT 1.0 * SUM(queueline) / SUM(exectimespan) FROM systemmonitoring
+    text: What is the total time across all snapshots, counting API latency, queueing and execution time?
+    gold_sql: SELECT SUM(exectimespan) FROM systemmonitoring
     separates:
-      sum-everywhere: SELECT 1.0 * SUM(queueline) / SUM(apilatmark + queueline) FROM systemmonitoring
+      as-released: SELECT SUM(exectimespan + apilatmark + queueline) FROM systemmonitoring
+  - id: latency-share-all-parts
+    database: crypto
+    defect: exec-throttle
+    text: >-
+      Counting API latency, queueing and execution time, what share of the total time across all
+      snapshots is API latency, as a fraction between 0 and 1?
+    gold_sql: SELECT CAST(SUM(apilatmark) AS REAL) / SUM(exectimespan) FROM systemmonitoring
+    separates:
+      as-released: >-
+        SELECT CAST(SUM(apilatmark) AS REAL) / SUM(exectimespan + apilatmark + queueline) FROM systemmonitoring
+  - id: queueing-share-all-parts
+    database: crypto
+    defect: exec-throttle
+    text: >-
+      Counting API latency, queueing and execution time, what share of the total time across all
+      snapshots is queueing, as a fraction between 0 and 1?
+    gold_sql: SELECT CAST(SUM(queueline) AS REAL) / SUM(exectimespan) FROM systemmonitoring
+    separates:
+      as-released: >-
+        SELECT CAST(SUM(queueline) AS REAL) / SUM(exectimespan + apilatmark + queueline) FROM systemmonitoring
   # Coverage: margin accounts are the accounts of the margin type. users holds none of them; their
   # balances and orders are the rows whose user is not in users. Every rival finds margin accounts
   # only through users, so it finds none: closed-accounts, other-system and mistyped say the exchange
@@ -110,12 +113,14 @@ questions:
       mistyped: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
       options-cut: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
       cut-with-children: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
-  # closed-accounts is left out: its closed accounts are still the exchange's accounts, so its answer
-  # is 1,000 or 776 depending on whether a reader counts them. options-cut also gives 1,000.
+  # accounts-total and spot-share leave out closed-accounts: its closed accounts are still the
+  # exchange's accounts, so its answer depends on whether a reader counts them (1,000 or 776).
+  # options-cut also gives the gold on both. They are the two probes an agent's own claim about the
+  # unmatched rows can answer without the margin label.
   - id: accounts-total
     database: crypto
     defect: margin-cut
-    text: How many accounts does the exchange hold in total?
+    text: How many users does the exchange have in total?
     gold_sql: >-
       SELECT COUNT(*) FROM (SELECT userstamp AS u FROM users UNION SELECT usertag FROM accountbalances
       UNION SELECT userlink FROM orders)
@@ -124,6 +129,18 @@ questions:
       other-system: SELECT COUNT(*) FROM users
       mistyped: SELECT COUNT(*) FROM users
       cut-with-children: SELECT COUNT(*) FROM users
+  - id: spot-share
+    database: crypto
+    defect: margin-cut
+    text: What share of the exchange's accounts are spot accounts, as a fraction between 0 and 1?
+    gold_sql: >-
+      SELECT CAST((SELECT COUNT(*) FROM users WHERE acctscope = 'Spot') AS REAL) / COUNT(*)
+      FROM (SELECT userstamp AS u FROM users UNION SELECT usertag FROM accountbalances)
+    separates:
+      nothing-cut: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
+      other-system: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
+      mistyped: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
+      cut-with-children: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
   - id: margin-orders
     database: crypto
     defect: margin-cut
@@ -142,30 +159,6 @@ questions:
         SELECT COUNT(*) FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
       cut-with-children: >-
         SELECT COUNT(*) FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
-  - id: margin-order-share
-    database: crypto
-    defect: margin-cut
-    text: What share of all orders were placed by accounts of the margin type, as a fraction between 0 and 1?
-    gold_sql: SELECT 1.0 * SUM(userlink NOT IN (SELECT userstamp FROM users)) / COUNT(*) FROM orders
-    separates:
-      nothing-cut: >-
-        SELECT 1.0 * SUM(userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')) / COUNT(*)
-        FROM orders
-      closed-accounts: >-
-        SELECT 1.0 * SUM(userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')) / COUNT(*)
-        FROM orders
-      other-system: >-
-        SELECT 1.0 * SUM(userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')) / COUNT(*)
-        FROM orders
-      mistyped: >-
-        SELECT 1.0 * SUM(userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')) / COUNT(*)
-        FROM orders
-      options-cut: >-
-        SELECT 1.0 * SUM(userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')) / COUNT(*)
-        FROM orders
-      cut-with-children: >-
-        SELECT 1.0 * SUM(userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')) / COUNT(*)
-        FROM orders
   - id: margin-wallet-balance
     database: crypto
     defect: margin-cut
@@ -216,33 +209,8 @@ questions:
       cut-with-children: >-
         SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
         WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
-  - id: margin-filled-notional
-    database: crypto
-    defect: margin-cut
-    text: What is the total notional value of fills on orders placed by accounts of the margin type?
-    gold_sql: >-
-      SELECT SUM(e.fillsum) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
-      WHERE o.userlink NOT IN (SELECT userstamp FROM users)
-    separates:
-      nothing-cut: >-
-        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
-        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
-      closed-accounts: >-
-        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
-        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
-      other-system: >-
-        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
-        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
-      mistyped: >-
-        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
-        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
-      options-cut: >-
-        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
-        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
-      cut-with-children: >-
-        SELECT COALESCE(SUM(e.fillsum), 0) FROM orderexecutions e JOIN orders o ON o.recordvault = e.ordersmark
-        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
-  # Value meaning: the six probes of freeze/NOTE_2.md, worded as there. They ask over account balance
+  # Value meaning: the six probes of freeze/NOTE_2.md, worded as there with #166's review changes
+  # (which records, "as a single number", "as a positive number"). They ask over account balance
   # records, never joining users, and fix the sign for the account holder. usertag is padded to 36
   # characters, so a key literal is compared with TRIM. The probes are correlated through one sign.
   - id: realised-loss-accounts
@@ -257,14 +225,16 @@ questions:
     defect: pnl-sign
     text: >-
       What is the net realised profit and loss across all account balance records, positive meaning a
-      net profit for the account holders?
+      net profit for the account holders, as a single number?
     gold_sql: SELECT -SUM(realline) FROM accountbalances
     separates:
       positive-is-profit: SELECT SUM(realline) FROM accountbalances
   - id: total-realised-losses
     database: crypto
     defect: pnl-sign
-    text: What is the account holders' total realised loss across all account balance records, as a positive amount?
+    text: >-
+      Summed over the account balance records that show a realised loss for the account holder, what
+      is the total realised loss, as a positive amount?
     gold_sql: SELECT SUM(realline) FROM accountbalances WHERE realline > 0
     separates:
       positive-is-profit: SELECT -SUM(realline) FROM accountbalances WHERE realline < 0
@@ -273,7 +243,7 @@ questions:
     defect: pnl-sign
     text: >-
       Across all account balance records, what is the ratio of the account holders' total realised
-      profits to their total realised losses?
+      profits to their total realised losses, as a positive number?
     gold_sql: >-
       SELECT -SUM(CASE WHEN realline < 0 THEN realline END) / SUM(CASE WHEN realline > 0 THEN realline END)
       FROM accountbalances
@@ -291,7 +261,9 @@ questions:
   - id: user-realised-pnl
     database: crypto
     defect: pnl-sign
-    text: For user U458616, what is the user's realised profit and loss, positive meaning a profit for the user?
+    text: >-
+      For user U458616, what is the user's realised profit and loss, positive meaning a profit for the
+      user, as a single number?
     gold_sql: SELECT -realline FROM accountbalances WHERE TRIM(usertag) = 'U458616'
     separates:
       positive-is-profit: SELECT realline FROM accountbalances WHERE TRIM(usertag) = 'U458616'
