@@ -29,10 +29,12 @@ questions:
   # (cause-retries, cause-old-logger, cause-gateway) keeps the extra amount inside exectimespan, on
   # the same 99 snapshots, stored in no column: the unstored-time probes ask for that amount, not its
   # cause, and the all-parts probes take SUM(exectimespan) as the total, so no cause reading changes a
-  # gold. No probe takes a part out of execution time, whose answer would turn on whether the extra
-  # amount counts as API latency. sum-everywhere's SQL rebuilds execution time as latency plus queue;
-  # retry-rows' adds the retried latency and back-off on the snapshots where at least one call in
-  # twenty failed. The all-parts probes name the parts as if they were separate (the first run's
+  # gold. No answer may turn on whether the extra amount counts as API latency or queueing, so no
+  # probe takes a part out of execution time, and the two shares ask for the latency and the queueing
+  # recorded for each snapshot (apilatmark, queueline), which leave the unstored amount out under
+  # every cause reading (#166 review). sum-everywhere's SQL rebuilds execution time as latency plus
+  # queue; retry-rows' adds the retried latency and back-off on the snapshots where at least one call
+  # in twenty failed. The all-parts probes name the parts as if they were separate (the first run's
   # total-held): only as-released, which reads execution time as its own part, adds them again.
   - id: snapshots-with-unstored-time
     database: crypto
@@ -69,7 +71,9 @@ questions:
   - id: total-time-all-parts
     database: crypto
     defect: exec-throttle
-    text: What is the total time across all snapshots, counting API latency, queueing and execution time?
+    text: >-
+      What is the total time across all snapshots, counting API latency, queueing and execution time,
+      as a single number?
     gold_sql: SELECT SUM(exectimespan) FROM systemmonitoring
     separates:
       as-released: SELECT SUM(exectimespan + apilatmark + queueline) FROM systemmonitoring
@@ -78,7 +82,7 @@ questions:
     defect: exec-throttle
     text: >-
       Counting API latency, queueing and execution time, what share of the total time across all
-      snapshots is API latency, as a fraction between 0 and 1?
+      snapshots is the API latency recorded for each snapshot, as a fraction between 0 and 1?
     gold_sql: SELECT CAST(SUM(apilatmark) AS REAL) / SUM(exectimespan) FROM systemmonitoring
     separates:
       as-released: >-
@@ -88,7 +92,7 @@ questions:
     defect: exec-throttle
     text: >-
       Counting API latency, queueing and execution time, what share of the total time across all
-      snapshots is queueing, as a fraction between 0 and 1?
+      snapshots is the queueing recorded for each snapshot, as a fraction between 0 and 1?
     gold_sql: SELECT CAST(SUM(queueline) AS REAL) / SUM(exectimespan) FROM systemmonitoring
     separates:
       as-released: >-
@@ -115,8 +119,9 @@ questions:
       cut-with-children: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
   # accounts-total and spot-share leave out closed-accounts: its closed accounts are still the
   # exchange's accounts, so its answer depends on whether a reader counts them (1,000 or 776).
-  # options-cut also gives the gold on both. They are the two probes an agent's own claim about the
-  # unmatched rows can answer without the margin label.
+  # options-cut also gives the gold on both. They are the probes an agent's own claim about the
+  # unmatched rows can reach without the margin label: accounts-total needs only that those rows are
+  # users; spot-share also needs that none of them is a spot account (#166 review).
   - id: accounts-total
     database: crypto
     defect: margin-cut
@@ -132,7 +137,7 @@ questions:
   - id: spot-share
     database: crypto
     defect: margin-cut
-    text: What share of the exchange's accounts are spot accounts, as a fraction between 0 and 1?
+    text: What share of the exchange's users have spot accounts, as a fraction between 0 and 1?
     gold_sql: >-
       SELECT CAST((SELECT COUNT(*) FROM users WHERE acctscope = 'Spot') AS REAL) / COUNT(*)
       FROM (SELECT TRIM(userstamp) AS u FROM users UNION SELECT TRIM(usertag) FROM accountbalances)
