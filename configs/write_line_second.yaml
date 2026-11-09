@@ -30,8 +30,8 @@ questions:
   # the same 99 snapshots, stored in no column: the unstored-time probes ask for that amount, not its
   # cause, and the all-parts probes take SUM(exectimespan) as the total, so no cause reading changes a
   # gold. No answer may turn on whether the extra amount counts as API latency or queueing, so no
-  # probe takes a part out of execution time, and the two shares ask for the latency and the queueing
-  # recorded for each snapshot (apilatmark, queueline), which leave the unstored amount out under
+  # probe asks for execution time without one of its named parts, and the two shares ask for the
+  # recorded latency and queueing (apilatmark, queueline), which leave the unstored amount out under
   # every cause reading (#166 review). sum-everywhere's SQL rebuilds execution time as latency plus
   # queue; retry-rows' adds the retried latency and back-off on the snapshots where at least one call
   # in twenty failed. The all-parts probes name the parts as if they were separate (the first run's
@@ -82,7 +82,7 @@ questions:
     defect: exec-throttle
     text: >-
       Counting API latency, queueing and execution time, what share of the total time across all
-      snapshots is the API latency recorded for each snapshot, as a fraction between 0 and 1?
+      snapshots is the recorded API latency, as a fraction between 0 and 1?
     gold_sql: SELECT CAST(SUM(apilatmark) AS REAL) / SUM(exectimespan) FROM systemmonitoring
     separates:
       as-released: >-
@@ -92,7 +92,7 @@ questions:
     defect: exec-throttle
     text: >-
       Counting API latency, queueing and execution time, what share of the total time across all
-      snapshots is the queueing recorded for each snapshot, as a fraction between 0 and 1?
+      snapshots is the recorded queueing, as a fraction between 0 and 1?
     gold_sql: SELECT CAST(SUM(queueline) AS REAL) / SUM(exectimespan) FROM systemmonitoring
     separates:
       as-released: >-
