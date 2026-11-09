@@ -135,7 +135,7 @@ questions:
     text: What share of the exchange's accounts are spot accounts, as a fraction between 0 and 1?
     gold_sql: >-
       SELECT CAST((SELECT COUNT(*) FROM users WHERE acctscope = 'Spot') AS REAL) / COUNT(*)
-      FROM (SELECT userstamp AS u FROM users UNION SELECT usertag FROM accountbalances)
+      FROM (SELECT TRIM(userstamp) AS u FROM users UNION SELECT TRIM(usertag) FROM accountbalances)
     separates:
       nothing-cut: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
       other-system: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
@@ -325,7 +325,6 @@ business_terms:
       - queueing
       - wallet balance
       - trading fees
-      - notional value of fills
       - realised profit and loss
     grounding:
       realised profit and loss: accountbalances.realline
