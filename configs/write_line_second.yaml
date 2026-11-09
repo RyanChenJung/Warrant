@@ -1,0 +1,335 @@
+# The write line's second run (#152, #153): the second freeze (#149), its injection record (#151) and
+# its questions. Six column-formula, six coverage and six value-meaning probes, and ten controls on
+# content no defect touches or links to by a declared key. Each probe names the readings it separates
+# (#34, round 2): gold SQL is run on the injected copy, and each `separates:` entry is the SQL an agent
+# holding that reading's note would run on the same copy.
+#
+# The model block, the rules and `runs` are the first run's (configs/write_line_thin.yaml). The cap
+# and the first-pass estimate are #150's keys (docs/write-line-run.md, "The second run").
+#
+# Table and column names, codes and the questions' gold answers in this file come from
+# LiveSQLBench-Base-Lite (CC BY-SA 4.0, see LICENSE-DATA). Paths are relative to this file.
+freeze: ../freeze/write_line_2.yaml
+injection: ../injections/364d1ad381bb-write_line_2.json
+rules: [empty, all_person, all_agent, settlement, confidence, all_agent_abstain, settlement_abstain, confidence_abstain]
+runs: 3
+spending_cap: 80
+estimate_from: ../results/thin/2026-10-24-66a86cb.jsonl
+model:
+  provider: bedrock
+  model: anthropic.claude-sonnet-5
+  region: us-east-1
+  max_tokens: 64000
+  effort: high
+  attempts: 2
+questions:
+  # Column formula: the probes ask about execution time as recorded, never about why some snapshots
+  # carry more (freeze/NOTE_2.md, "Conditions on the questions"), and none states how execution time
+  # is made up; "not stored in any column" is the reference claim's own phrase. Every cause reading
+  # (cause-retries, cause-old-logger, cause-gateway) keeps the extra amount inside exectimespan, on
+  # the same 99 snapshots, stored in no column: the unstored-time probes ask for that amount, not its
+  # cause, and the all-parts probes take SUM(exectimespan) as the total, so no cause reading changes a
+  # gold. No answer may turn on whether the extra amount counts as API latency or queueing, so no
+  # probe asks for execution time without one of its named parts, and the two shares ask for the
+  # recorded latency and queueing (apilatmark, queueline), which leave the unstored amount out under
+  # every cause reading (#166 review). sum-everywhere's SQL rebuilds execution time as latency plus
+  # queue; retry-rows' adds the retried latency and back-off on the snapshots where at least one call
+  # in twenty failed. The all-parts probes name the parts as if they were separate (the first run's
+  # total-held): only as-released, which reads execution time as its own part, adds them again.
+  - id: snapshots-with-unstored-time
+    database: crypto
+    defect: exec-throttle
+    text: On how many snapshots does the execution time include an amount that is not stored in any column?
+    gold_sql: SELECT COUNT(*) FROM systemmonitoring WHERE exectimespan > apilatmark + queueline
+    separates:
+      sum-everywhere: SELECT COUNT(*) FROM systemmonitoring WHERE apilatmark + queueline > apilatmark + queueline
+      retry-rows: SELECT COUNT(*) FROM systemmonitoring WHERE apierrtotal * 20 >= apireqtotal
+      as-released: SELECT COUNT(*) FROM systemmonitoring
+  - id: unstored-time-total
+    database: crypto
+    defect: exec-throttle
+    text: Summed over all snapshots, how much execution time is not stored in any column?
+    gold_sql: >-
+      SELECT SUM(exectimespan - apilatmark - queueline) FROM systemmonitoring
+      WHERE exectimespan > apilatmark + queueline
+    separates:
+      sum-everywhere: SELECT 0
+      retry-rows: >-
+        SELECT SUM(CASE WHEN apierrtotal * 20 >= apireqtotal THEN apilatmark + 200 ELSE 0 END)
+        FROM systemmonitoring
+      as-released: SELECT SUM(exectimespan) FROM systemmonitoring
+  - id: largest-unstored-time
+    database: crypto
+    defect: exec-throttle
+    text: What is the largest amount of execution time on a single snapshot that is not stored in any column?
+    gold_sql: SELECT MAX(exectimespan - apilatmark - queueline) FROM systemmonitoring
+    separates:
+      sum-everywhere: SELECT 0
+      retry-rows: >-
+        SELECT MAX(CASE WHEN apierrtotal * 20 >= apireqtotal THEN apilatmark + 200 END) FROM systemmonitoring
+      as-released: SELECT MAX(exectimespan) FROM systemmonitoring
+  - id: total-time-all-parts
+    database: crypto
+    defect: exec-throttle
+    text: >-
+      What is the total time across all snapshots, counting API latency, queueing and execution time,
+      as a single number?
+    gold_sql: SELECT SUM(exectimespan) FROM systemmonitoring
+    separates:
+      as-released: SELECT SUM(exectimespan + apilatmark + queueline) FROM systemmonitoring
+  - id: latency-share-all-parts
+    database: crypto
+    defect: exec-throttle
+    text: >-
+      Counting API latency, queueing and execution time, what share of the total time across all
+      snapshots is the recorded API latency, as a fraction between 0 and 1?
+    gold_sql: SELECT CAST(SUM(apilatmark) AS REAL) / SUM(exectimespan) FROM systemmonitoring
+    separates:
+      as-released: >-
+        SELECT CAST(SUM(apilatmark) AS REAL) / SUM(exectimespan + apilatmark + queueline) FROM systemmonitoring
+  - id: queueing-share-all-parts
+    database: crypto
+    defect: exec-throttle
+    text: >-
+      Counting API latency, queueing and execution time, what share of the total time across all
+      snapshots is the recorded queueing, as a fraction between 0 and 1?
+    gold_sql: SELECT CAST(SUM(queueline) AS REAL) / SUM(exectimespan) FROM systemmonitoring
+    separates:
+      as-released: >-
+        SELECT CAST(SUM(queueline) AS REAL) / SUM(exectimespan + apilatmark + queueline) FROM systemmonitoring
+  # Coverage: margin accounts are the accounts of the margin type. users holds none of them; their
+  # balances and orders are the rows whose user is not in users. Every rival finds margin accounts
+  # only through users, so it finds none: closed-accounts, other-system and mistyped say the exchange
+  # has none, nothing-cut and cut-with-children that none are left without their user, options-cut
+  # that the rows without a user are options accounts. None of these probes reads realline or
+  # unrealline, the value-meaning slot's columns.
+  - id: margin-accounts
+    database: crypto
+    defect: margin-cut
+    text: How many accounts of the margin type does the exchange hold?
+    gold_sql: >-
+      SELECT COUNT(*) FROM (SELECT usertag AS u FROM accountbalances UNION SELECT userlink FROM orders)
+      WHERE u NOT IN (SELECT userstamp FROM users)
+    separates:
+      nothing-cut: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
+      closed-accounts: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
+      other-system: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
+      mistyped: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
+      options-cut: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
+      cut-with-children: SELECT COUNT(*) FROM users WHERE acctscope = 'Margin'
+  # accounts-total and spot-share leave out closed-accounts: its closed accounts are still the
+  # exchange's accounts, so its answer depends on whether a reader counts them (1,000 or 776).
+  # options-cut also gives the gold on both. They are the probes an agent's own claim about the
+  # unmatched rows can reach without the margin label: accounts-total needs only that those rows are
+  # users; spot-share also needs that none of them is a spot account (#166 review).
+  - id: accounts-total
+    database: crypto
+    defect: margin-cut
+    text: How many users does the exchange have in total?
+    gold_sql: >-
+      SELECT COUNT(*) FROM (SELECT userstamp AS u FROM users UNION SELECT usertag FROM accountbalances
+      UNION SELECT userlink FROM orders)
+    separates:
+      nothing-cut: SELECT COUNT(*) FROM users
+      other-system: SELECT COUNT(*) FROM users
+      mistyped: SELECT COUNT(*) FROM users
+      cut-with-children: SELECT COUNT(*) FROM users
+  - id: spot-share
+    database: crypto
+    defect: margin-cut
+    text: What share of the exchange's users have spot accounts, as a fraction between 0 and 1?
+    gold_sql: >-
+      SELECT CAST((SELECT COUNT(*) FROM users WHERE acctscope = 'Spot') AS REAL) / COUNT(*)
+      FROM (SELECT TRIM(userstamp) AS u FROM users UNION SELECT TRIM(usertag) FROM accountbalances)
+    separates:
+      nothing-cut: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
+      other-system: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
+      mistyped: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
+      cut-with-children: SELECT CAST(SUM(acctscope = 'Spot') AS REAL) / COUNT(*) FROM users
+  - id: margin-orders
+    database: crypto
+    defect: margin-cut
+    text: How many orders were placed by accounts of the margin type?
+    gold_sql: SELECT COUNT(*) FROM orders WHERE userlink NOT IN (SELECT userstamp FROM users)
+    separates:
+      nothing-cut: >-
+        SELECT COUNT(*) FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      closed-accounts: >-
+        SELECT COUNT(*) FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      other-system: >-
+        SELECT COUNT(*) FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      mistyped: >-
+        SELECT COUNT(*) FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      options-cut: >-
+        SELECT COUNT(*) FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      cut-with-children: >-
+        SELECT COUNT(*) FROM orders WHERE userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+  - id: margin-wallet-balance
+    database: crypto
+    defect: margin-cut
+    text: What is the total wallet balance of the accounts of the margin type?
+    gold_sql: SELECT SUM(walletsum) FROM accountbalances WHERE usertag NOT IN (SELECT userstamp FROM users)
+    separates:
+      nothing-cut: >-
+        SELECT COALESCE(SUM(walletsum), 0) FROM accountbalances
+        WHERE usertag IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      closed-accounts: >-
+        SELECT COALESCE(SUM(walletsum), 0) FROM accountbalances
+        WHERE usertag IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      other-system: >-
+        SELECT COALESCE(SUM(walletsum), 0) FROM accountbalances
+        WHERE usertag IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      mistyped: >-
+        SELECT COALESCE(SUM(walletsum), 0) FROM accountbalances
+        WHERE usertag IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      options-cut: >-
+        SELECT COALESCE(SUM(walletsum), 0) FROM accountbalances
+        WHERE usertag IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      cut-with-children: >-
+        SELECT COALESCE(SUM(walletsum), 0) FROM accountbalances
+        WHERE usertag IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+  - id: margin-fees
+    database: crypto
+    defect: margin-cut
+    text: What is the total amount of trading fees charged on orders placed by accounts of the margin type?
+    gold_sql: >-
+      SELECT SUM(f.feetotal) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+      WHERE o.userlink NOT IN (SELECT userstamp FROM users)
+    separates:
+      nothing-cut: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      closed-accounts: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      other-system: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      mistyped: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      options-cut: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+      cut-with-children: >-
+        SELECT COALESCE(SUM(f.feetotal), 0) FROM fees f JOIN orders o ON o.recordvault = f.orderslink
+        WHERE o.userlink IN (SELECT userstamp FROM users WHERE acctscope = 'Margin')
+  # Value meaning: the six probes of freeze/NOTE_2.md, worded as there with #166's review changes
+  # (which records, "as a single number", "as a positive number"). They ask over account balance
+  # records, never joining users, and fix the sign for the account holder. usertag is padded to 36
+  # characters, so a key literal is compared with TRIM. The probes are correlated through one sign.
+  - id: realised-loss-accounts
+    database: crypto
+    defect: pnl-sign
+    text: How many account balance records show a realised loss for the account holder?
+    gold_sql: SELECT COUNT(*) FROM accountbalances WHERE realline > 0
+    separates:
+      positive-is-profit: SELECT COUNT(*) FROM accountbalances WHERE realline < 0
+  - id: net-realised-pnl
+    database: crypto
+    defect: pnl-sign
+    text: >-
+      What is the net realised profit and loss across all account balance records, positive meaning a
+      net profit for the account holders, as a single number?
+    gold_sql: SELECT -SUM(realline) FROM accountbalances
+    separates:
+      positive-is-profit: SELECT SUM(realline) FROM accountbalances
+  - id: total-realised-losses
+    database: crypto
+    defect: pnl-sign
+    text: >-
+      Summed over the account balance records that show a realised loss for the account holder, what
+      is the total realised loss, as a positive amount?
+    gold_sql: SELECT SUM(realline) FROM accountbalances WHERE realline > 0
+    separates:
+      positive-is-profit: SELECT -SUM(realline) FROM accountbalances WHERE realline < 0
+  - id: profit-to-loss-ratio
+    database: crypto
+    defect: pnl-sign
+    text: >-
+      Across all account balance records, what is the ratio of the account holders' total realised
+      profits to their total realised losses, as a positive number?
+    gold_sql: >-
+      SELECT -SUM(CASE WHEN realline < 0 THEN realline END) / SUM(CASE WHEN realline > 0 THEN realline END)
+      FROM accountbalances
+    separates:
+      positive-is-profit: >-
+        SELECT SUM(CASE WHEN realline > 0 THEN realline END) / -SUM(CASE WHEN realline < 0 THEN realline END)
+        FROM accountbalances
+  - id: large-realised-losses
+    database: crypto
+    defect: pnl-sign
+    text: How many account balance records show a realised loss above 10,000 for the account holder?
+    gold_sql: SELECT COUNT(*) FROM accountbalances WHERE realline > 10000
+    separates:
+      positive-is-profit: SELECT COUNT(*) FROM accountbalances WHERE realline < -10000
+  - id: user-realised-pnl
+    database: crypto
+    defect: pnl-sign
+    text: >-
+      For user U458616, what is the user's realised profit and loss, positive meaning a profit for the
+      user, as a single number?
+    gold_sql: SELECT -realline FROM accountbalances WHERE TRIM(usertag) = 'U458616'
+    separates:
+      positive-is-profit: SELECT realline FROM accountbalances WHERE TRIM(usertag) = 'U458616'
+  # Controls: marketstats and marketdata, which no defect touches and which have no declared key to a
+  # touched table (analyticsindicators is left out: systemmonitoring references it). The run checks
+  # that each gold answer is the same on the clean and the injected copy.
+  - id: negative-funding-rate
+    database: crypto
+    text: How many market statistics records have a negative funding rate?
+    gold_sql: SELECT COUNT(*) FROM marketstats WHERE fundrate < 0
+  - id: total-open-interest
+    database: crypto
+    text: What is the total open interest across all market statistics records?
+    gold_sql: SELECT SUM(openstake) FROM marketstats
+  - id: average-liquidity-score
+    database: crypto
+    text: What is the average liquidity score across market statistics records?
+    gold_sql: SELECT AVG(liquidscore) FROM marketstats
+  - id: positive-price-change
+    database: crypto
+    text: How many market statistics records show a positive 24-hour price change?
+    gold_sql: SELECT COUNT(*) FROM marketstats WHERE priceshiftday > 0
+  - id: average-daily-range
+    database: crypto
+    text: What is the average 24-hour price range (high minus low) across market statistics records?
+    gold_sql: SELECT AVG(highspotday - lowspotday) FROM marketstats
+  - id: largest-daily-volume
+    database: crypto
+    text: What is the largest 24-hour trading volume in any market statistics record?
+    gold_sql: SELECT MAX(volday) FROM marketstats
+  - id: top-ten-trading-rank
+    database: crypto
+    text: How many market statistics records have a trading rank of 10 or better?
+    gold_sql: SELECT COUNT(*) FROM marketstats WHERE traderank <= 10
+  - id: btc-usdt-snapshots
+    database: crypto
+    text: How many market data snapshots are for the BTC-USDT pair?
+    gold_sql: >-
+      SELECT COUNT(*) FROM marketdata WHERE json_extract(quote_depth_snapshot, '$.metadata.mktcombo') = 'BTC-USDT'
+  - id: average-spread-rate
+    database: crypto
+    text: What is the average spread rate across market data snapshots?
+    gold_sql: SELECT AVG(json_extract(quote_depth_snapshot, '$.spread.spreadrate')) FROM marketdata
+  - id: bid-heavy-books
+    database: crypto
+    text: In how many market data snapshots is the bid depth greater than the ask depth?
+    gold_sql: >-
+      SELECT COUNT(*) FROM marketdata
+      WHERE json_extract(quote_depth_snapshot, '$.depth.biddepth') > json_extract(quote_depth_snapshot, '$.depth.askdepth')
+# The business-term list for claim writing (freeze: global.claim_writing.business_terms and
+# grounding): the named quantities the probe questions use, without definitions, and no population or
+# code term of any defect, so no margin account, snapshot or account type. Its only grounding is the
+# frozen one, "realised profit and loss" to accountbalances.realline.
+business_terms:
+  crypto:
+    terms:
+      - execution time
+      - API latency
+      - queueing
+      - wallet balance
+      - trading fees
+      - realised profit and loss
+    grounding:
+      realised profit and loss: accountbalances.realline
