@@ -1,0 +1,525 @@
+{
+  "run_id": "13df7df436aa434d9b82358eb1db221a",
+  "items": {
+    "C01": {
+      "defect": "exec-throttle",
+      "claim": "exectimespan is mostly equal to apilatmark + queueline (90.1% of non-zero rows), but for about 9.9% of rows it exceeds that sum, implying an additional, unrecorded latency component contributes to execution time for those rows.",
+      "occurrences": [
+        [
+          1,
+          38
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C02": {
+      "defect": "exec-throttle",
+      "claim": "Execution time (exectimespan) equals API latency (apilatmark) plus queueing time (queueline) for about 90% of rows; for the remaining roughly 10% the recorded execution time exceeds that sum, meaning at least one further unmodeled component contributes to execution time on those rows.",
+      "occurrences": [
+        [
+          2,
+          35
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C03": {
+      "defect": "exec-throttle",
+      "claim": "exectimespan equals apilatmark + queueline for 90.1% of non-zero rows; for the remaining ~9.9% it exceeds that sum, meaning a further, unrecorded time component contributes to execution time on those rows.",
+      "occurrences": [
+        [
+          3,
+          13
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C04": {
+      "defect": "exec-throttle",
+      "claim": "exectimespan ('execution time') equals apilatmark ('API latency') plus queueline ('queueing') for 90.1% of non-zero rows; for the remaining ~9.9% it is larger than that sum, meaning at least one further, uncaptured component contributes to execution time on those rows.",
+      "occurrences": [
+        [
+          4,
+          42
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C05": {
+      "defect": "exec-throttle",
+      "claim": "exectimespan (execution time) equals apilatmark (API latency) plus queueline (queueing) for about 90% of non-zero rows; for the remaining ~10% exectimespan exceeds that sum, meaning execution time includes at least one further, unstored component for those rows.",
+      "occurrences": [
+        [
+          5,
+          32
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C06": {
+      "defect": "exec-throttle",
+      "claim": "exectimespan is largely, but not fully, explained by apilatmark + queueline; treating it as exactly that sum understates it for roughly 10% of rows.",
+      "occurrences": [
+        [
+          6,
+          13
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C07": {
+      "defect": "exec-throttle",
+      "claim": "exectimespan (execution time) equals apilatmark (API latency) plus queueline (queueing) for 90.1% of non-zero rows; for the remaining 9.9% exectimespan exceeds that sum, implying an unmodeled extra latency component.",
+      "occurrences": [
+        [
+          7,
+          38
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C08": {
+      "defect": "exec-throttle",
+      "claim": "Execution time (exectimespan) equals API latency (apilatmark) plus queueing (queueline) for about 90% of rows, but for roughly 10% of rows it is larger than that sum, meaning at least one further, unrecorded component also contributes to execution time.",
+      "occurrences": [
+        [
+          8,
+          33
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C09": {
+      "defect": "exec-throttle",
+      "claim": "exectimespan equals apilatmark + queueline for 90.1% of non-zero rows, but for the remaining ~9.9% exectimespan exceeds that sum, implying an additional unmeasured component contributes to execution time for those rows.",
+      "occurrences": [
+        [
+          9,
+          33
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C10": {
+      "defect": "exec-throttle",
+      "claim": "exectimespan (execution time) equals apilatmark (API latency) plus queueline (queueing) for about 90.1% of rows; for the remaining ~9.9% exectimespan exceeds that sum, indicating an additional, unrecorded latency component.",
+      "occurrences": [
+        [
+          10,
+          32
+        ]
+      ],
+      "letters": {
+        "A": "throttle-wait",
+        "B": "sum-everywhere",
+        "C": "retry-rows",
+        "D": "cause-gateway",
+        "E": "as-released",
+        "F": "cause-retries",
+        "G": "cause-old-logger"
+      }
+    },
+    "C11": {
+      "defect": "margin-cut",
+      "claim": "The users table covers only 776 user records; about 22% of the distinct user identifiers referenced from accountbalances.usertag and orders.userlink (e.g. 'U105156') do not exist in users, so joining orders or balances to users will silently drop those rows.",
+      "occurrences": [
+        [
+          1,
+          14
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C12": {
+      "defect": "margin-cut",
+      "claim": "The users table holds only 776 distinct users, fewer than the distinct user identifiers referenced from orders.userlink and accountbalances.usertag; it does not cover every user that appears elsewhere in the data.",
+      "occurrences": [
+        [
+          2,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C13": {
+      "defect": "margin-cut",
+      "claim": "The users table does not cover all user identifiers that appear elsewhere in the database: about 22% of orders.userlink values and about 22% of accountbalances.usertag values reference a userstamp that does not exist in users, so joining orders or balances to users will silently drop roughly a fifth of activity.",
+      "occurrences": [
+        [
+          3,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C14": {
+      "defect": "margin-cut",
+      "claim": "The users table is an incomplete directory of all users with activity: roughly 22% of the distinct user tags referenced in orders and accountbalances do not exist in users, so about 224 active users are missing from this table.",
+      "occurrences": [
+        [
+          4,
+          45
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C15": {
+      "defect": "margin-cut",
+      "claim": "The users table does not cover all user identifiers that appear in orders.userlink and accountbalances.usertag: about 22% of referencing rows point to a userstamp not present in users, so users is an incomplete population relative to the activity tables.",
+      "occurrences": [
+        [
+          5,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C16": {
+      "defect": "margin-cut",
+      "claim": "The users table (776 rows) is incomplete relative to the user tags used elsewhere: roughly 22% of the usertag/userlink values in accountbalances and orders do not exist in users, so an inner join against users silently drops those account and order rows.",
+      "occurrences": [
+        [
+          6,
+          1
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C17": {
+      "defect": "margin-cut",
+      "claim": "The users table does not cover every user that appears elsewhere: about 22.3% of orders.userlink values and 22.4% of accountbalances.usertag values reference user identifiers that do not exist in users, so those users' orders and balances cannot be joined to a user record.",
+      "occurrences": [
+        [
+          7,
+          11
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C18": {
+      "defect": "margin-cut",
+      "claim": "The users table does not cover all users referenced elsewhere: about 22.3-22.4% of orders.userlink and accountbalances.usertag values (e.g. 'U105156') have no matching userstamp in users, so roughly a fifth of users who placed orders or hold balances are missing from this table.",
+      "occurrences": [
+        [
+          8,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C19": {
+      "defect": "margin-cut",
+      "claim": "The users table covers only 776 users. Roughly 22% of orders (userlink) and 22% of accountbalances (usertag) reference user identifiers, e.g. 'U105156', that do not exist in users, so users does not cover all individuals who placed orders or hold balances.",
+      "occurrences": [
+        [
+          9,
+          11
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C20": {
+      "defect": "margin-cut",
+      "claim": "The users table covers only 776 distinct users, but about 22% of the userstamp values referenced from orders.userlink and accountbalances.usertag do not exist in it, so users is missing roughly a fifth of the users that appear elsewhere in the data.",
+      "occurrences": [
+        [
+          10,
+          10
+        ]
+      ],
+      "letters": {
+        "A": "options-cut",
+        "B": "nothing-cut",
+        "C": "margin-left-out",
+        "D": "closed-accounts",
+        "E": "mistyped",
+        "F": "cut-with-children",
+        "G": "other-system"
+      }
+    },
+    "C21": {
+      "defect": "pnl-sign",
+      "claim": "realline (realised profit and loss) is a signed value: negative values represent a realised loss and positive values a realised gain; the detected 'format split' is simply due to the minus sign on losses.",
+      "occurrences": [
+        [
+          1,
+          35
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    },
+    "C22": {
+      "defect": "pnl-sign",
+      "claim": "realline is the realised profit and loss value for the account; it is a signed real number where negative values indicate a realised loss and positive values a realised gain. The apparent split into 'numeric' and 'alphanumeric' format classes in automated checks is an artifact of the minus sign, not two genuinely different kinds of value.",
+      "occurrences": [
+        [
+          2,
+          27
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    },
+    "C23": {
+      "defect": "pnl-sign",
+      "claim": "realline holds signed decimal amounts (both positive and negative), not pure integers despite its declared integer type; the sign indicates gain versus loss.",
+      "occurrences": [
+        [
+          3,
+          16
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    },
+    "C24": {
+      "defect": "pnl-sign",
+      "claim": "realline (realised profit and loss) is a signed amount, with negative values representing a realised loss and positive values a realised gain.",
+      "occurrences": [
+        [
+          4,
+          4
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    },
+    "C25": {
+      "defect": "pnl-sign",
+      "claim": "realline (realised profit and loss) is a signed real number: negative values represent a realised loss and positive values a realised gain; the apparent split into two automated 'formats' is only the minus sign on loss values, not two different kinds of data.",
+      "occurrences": [
+        [
+          5,
+          25
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    },
+    "C26": {
+      "defect": "pnl-sign",
+      "claim": "realline is a signed numeric amount (not two separate kinds of values); the 'alphanumeric' vs 'numeric' split reported is an artifact of negative signs on an otherwise single continuous quantity.",
+      "occurrences": [
+        [
+          6,
+          6
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    },
+    "C27": {
+      "defect": "pnl-sign",
+      "claim": "realline stores realised profit and loss for the account, a signed amount that can be negative (loss) or positive (profit); the two detected 'format classes' are just the sign.",
+      "occurrences": [
+        [
+          7,
+          32
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    },
+    "C28": {
+      "defect": "pnl-sign",
+      "claim": "realline (realised profit and loss) is a signed amount; negative values denote a realised loss and positive values a realised gain. The 'numeric'/'alphanumeric' split flagged by automated checks is just the presence of a leading minus sign, not two distinct kinds of data.",
+      "occurrences": [
+        [
+          8,
+          24
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    },
+    "C29": {
+      "defect": "pnl-sign",
+      "claim": "realline is a signed amount: positive values indicate realised profit, negative values realised loss. The automated check's 'alphanumeric' bucket is simply values with a leading minus sign, not a distinct code system.",
+      "occurrences": [
+        [
+          9,
+          26
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    },
+    "C30": {
+      "defect": "pnl-sign",
+      "claim": "realline holds a signed decimal value (realised profit and loss), with negative values representing losses and positive values representing gains; the apparent split between a 'numeric' and 'alphanumeric' format in checks is only an artifact of the minus sign, not two distinct kinds of data.",
+      "occurrences": [
+        [
+          10,
+          25
+        ]
+      ],
+      "letters": {
+        "A": "positive-is-loss",
+        "B": "positive-is-profit"
+      }
+    }
+  }
+}
