@@ -42,8 +42,8 @@ under each variant:
 
 **A descriptive finding on the sign.** On the one slot where the data cannot show the truth, the
 agent was wrong in the same way every time, and none of its own signals marked the error clearly:
-the wrong claim agreed with itself, its stated confidence was about the same as when the same claim
-was right in the first run, and the "don't guess" prompt did not hold it back. The wrong claim also
+the wrong claim agreed with itself, under `confident` its stated confidence was about the same as when
+the same claim was right in the first run, and the "don't guess" prompt did not hold it back. The wrong claim also
 made wrong answers more confident. The person's claim fixed all 90 sign answers.
 
 **The blind audit.** Juan labelled 160 (claim, reading) pairs blind to the judge's labels and agreed
@@ -102,7 +102,7 @@ In order (`results/second/README.md`):
 2. **Claim writing:** 20 samples.
 3. **Judging:** 59 judgements. `abstain` sample 7 wrote no value-meaning claim on `realline`; its
    only claim there is a term-boundary claim (positive meaning a realised gain). This is the
-   displacement disclosure 9 of the freeze note warned about.
+   kind of displacement disclosure 9 of the freeze note warned about for sample 1.
 4. **Stores:** 8, one per rule.
 5. **Answers:** 28 questions × 8 rules × 3 runs = 672. 25 failed after two attempts each (22 malformed
    responses, 3 with more than 8 tool calls) and 2 were clarification requests. Failed answers were
@@ -227,8 +227,8 @@ and clarification requests.
 | settlement_abstain | 0.722 | 15 | 0 | 0 |
 | confidence_abstain | 0.736 | 14 | 0.019 | 0 |
 
-`all_person` is below 1 mainly because of the four probes no rule answered right ("all parts" and
-`spot-share`) and its coverage over-refusals. Each settlement and confidence pair answered from
+`all_person` is below 1 mainly because of the four probes that carry no contrast (the three "all
+parts" probes, which no rule answered right, and `spot-share`, right once in 24) and its coverage over-refusals. Each settlement and confidence pair answered from
 identical stores, so their differences are noise.
 
 The freeze's sensitivity analyses on failures (failures as wrong, clarifications as wrong, all
@@ -280,8 +280,10 @@ Counted from the results file:
   `abstain` samples committed to a sign (disclosure 3 of the freeze note), so the prompt's effect
   is not stable across runs.
 - **Consistency did not mark the error.** The wrong claim agreed in 7 of 9 later samples and so ranked
-  as more reliable than the coverage claims (1/3 and 1/9), which all hold on their true reading. The
-  two samples that differed named no direction, so no disagreement pointed to the right reading.
+  as more reliable than the coverage claims (1/3 and 1/9), which all hold on their true reading. Under
+  `confident` the two samples that differed named no direction; under `abstain` one wrote no claim
+  and the other's direction was read as not committing. So no disagreement pointed to the right
+  reading.
 - **Stated confidence did not separate right from wrong, claim by claim.** The wrong sign claims were
   stated at 0.55 to 0.70 (mean 0.62) under `confident` and 0.55 to 0.75 (mean 0.68) under `abstain`.
   In the first run, where the same statement matched the release's documentation, `confident`
@@ -293,8 +295,9 @@ Counted from the results file:
   sign answers rose from 0.733 under the empty store to 0.933 (`all_agent`) and 0.934
   (`all_agent_abstain`), above the 0.90 of `all_person`'s correct answers.
 - **The person's claim won over the agent's.** Settlement and confidence stores also hold sample 1's
-  claims outside the slots, one of which says positive values are realised gains. Their answers still
-  followed the person's claim in 36 of 36 cases, at lower stated confidence (0.787 and 0.769).
+  claims outside the slots, one of which says positive values are realised gains. Under `confident`,
+  their answers still followed the person's claim in 36 of 36 cases, at lower stated confidence
+  (0.787 and 0.769) than `all_person`'s 0.90.
 
 ### The agreement split (#154)
 
@@ -340,7 +343,7 @@ audit measures agreement only.
 | Value meaning | none written | 20 of 20 |
 | True readings | 20 of 20 | 27 of 30 |
 
-- **The differences are mostly on coverage's provenance readings,** as in the first run: judge fails
+- **The differences are mostly on coverage (20 of the 25), on its provenance readings,** as in the first run: judge fails
   and auditor not addressed on `cut-with-children` (9) and `closed-accounts` (1); and holds against
   fails on `other-system` both ways (3 each). On 8 of the 25 differences the judge's own three calls
   did not all agree.
@@ -396,7 +399,10 @@ here. Where the run bears on them:
 - **9, a term-boundary claim may take the value-meaning slot's place:** it happened in `abstain`
   sample 7, not in sample 1.
 - **13, the auditor's possible learning effect:** see the blind audit.
-- **14, aligned row keys:** no sign answer was restricted to rows with a user.
+- **14, aligned row keys:** the data suggests user rows were removed, which weighs against
+  `mistyped` and `other-system`; no prediction uses it.
+- **Open risk 3, an answerer may join users on the sign probes:** no sign answer was restricted to
+  rows with a user.
 
 Departures and other facts:
 
