@@ -26,7 +26,11 @@ caffeinate -i uv run python -m warrant.write_line.run --config configs/write_lin
 
 ## Other files
 
-- `summary.json`: the summary (#154), added on this branch by Sola before merge.
+- `summary.json`: the summary (#154), recomputed from the results file with no model call:
+
+  ```bash
+  uv run python -m warrant.write_line.summary --config configs/write_line_second.yaml --results results/second/2026-11-09-ab11a48.jsonl --judge-validation results/judge_validation/2026-11-09-b88d33f.jsonl
+  ```
 - `audit/`: the blind audit (#155).
   - `2026-11-09-sheet.csv` is the blank sheet (#168).
   - `2026-11-09-sheet-filled.csv` is Juan's labels (#169).
@@ -38,6 +42,26 @@ caffeinate -i uv run python -m warrant.write_line.run --config configs/write_lin
     uv run python -m warrant.write_line.audit agreement --results results/second/2026-11-09-ab11a48.jsonl --sheet results/second/audit/2026-11-09-sheet-filled.csv --key results/second/audit/2026-11-09-key.json --auditor juan-de-haro --out results/second/audit/2026-11-09-audit.jsonl
     ```
 
+## Confirmatory result: rules coincide
+
+Under both prompt variants, the settlement rule and the confidence rule composed identical stores at
+k = 2, so no test ran: "rules coincide; H3 not tested at write time" (`confirmatory.result`).
+
+| Rule | exec-throttle | margin-cut | pnl-sign |
+|---|---|---|---|
+| empty | none | none | none |
+| all_person | person | person | person |
+| all_agent, all_agent_abstain | agent | agent | agent |
+| settlement, settlement_abstain | agent | person | person |
+| confidence, confidence_abstain | agent | person | person |
+
+- **The confidence ranking**, least confident first, was margin-cut, pnl-sign, exec-throttle under
+  both variants. Agreement alone set it: margin-cut 1/3 (`confident`) and 1/9 (`abstain`), pnl-sign
+  7/9 in both, exec-throttle 1 in both.
+- **Exec-throttle:** every sample restated the battery's finding, so it ranked most confident and
+  kept the agent's claim, the risk `freeze/NOTE_2.md` names ("the formula slot may rank first
+  again").
+
 ## The 59 judgements
 
 Each of the 20 samples (10 per variant) could write one claim on each of the three defects' slots:
@@ -48,8 +72,8 @@ Each of the 20 samples (10 per variant) could write one claim on each of the thr
 | margin-cut | coverage | `users` |
 | pnl-sign | value meaning | `accountbalances.realline` |
 
-That is 60 possible judgements. `abstain` sample 7 wrote no claim on `accountbalances.realline`, so
-there are 59. Every judgement is complete, with no error, no re-sent call and no split.
+That is 60 possible judgements. `abstain` sample 7 wrote no value-meaning claim on
+`accountbalances.realline` (its only claim on that column is a term-boundary claim), so there are 59. Every judgement is complete, with no error, no re-sent call and no split.
 
 ## Failures
 
