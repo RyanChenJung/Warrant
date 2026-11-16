@@ -384,6 +384,27 @@ the claims a rule needs:
 Counting the answers, which both rules pay for, the confidence rule cost about twice as much in both
 runs.
 
+**With fewer samples (post hoc, #174).** Computed after both runs (2026-11-13), so this is not a
+registered result. Measuring agreement needs at least two samples of each claim and the judging of
+both; the settlement rule needs sample 1 and no judging. Had the confidence rule used only samples 1
+to n, its method cost would have been this multiple of the settlement rule's:
+
+| Run, variant | 2 samples | 3 | 5 | 10 (as run) |
+|---|---|---|---|---|
+| first, `confident` | 2.1× | 3.2× | 5.3× | 10.5× |
+| first, `abstain` | 3.0× | 4.7× | 7.5× | 14.7× |
+| second, `confident` | 3.0× | 5.2× | 7.8× | 15.9× |
+| second, `abstain` | 4.1× | 5.9× | 9.3× | 18.5× |
+
+Each figure takes the records `descriptive.cost.method` takes for the variant's confidence rule (the
+selected run's `sample` records, its `spent` records of claim writing, and its `judgement` records),
+keeps those of samples 1 to n, and prices their tokens the same way; a judgement made without a call
+costs nothing. The 10-sample column reproduces `descriptive.cost.method` in both runs'
+`summary.json`. So "under a tenth" holds for the ten samples both freezes set
+(`confidence_combination`, "samples 2 to 10", first committed in 6676db7 on 2026-10-18, before any
+injection), and even with two samples the confidence rule's method would have cost two to four times
+the settlement rule's.
+
 ## Disclosures
 
 The freeze note lists 14 disclosures (`freeze/NOTE_2.md`, "Disclosures"); they are not repeated
